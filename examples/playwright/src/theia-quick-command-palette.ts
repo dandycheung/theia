@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ElementHandle } from '@playwright/test';
@@ -25,6 +25,11 @@ export class TheiaQuickCommandPalette extends TheiaPageObject {
     async open(): Promise<void> {
         await this.page.keyboard.press(OSUtil.isMacOS ? 'Meta+Shift+p' : 'Control+Shift+p');
         await this.page.waitForSelector(this.selector);
+    }
+
+    async hide(): Promise<void> {
+        await this.page.keyboard.press('Escape');
+        await this.page.waitForSelector(this.selector, { state: 'hidden' });
     }
 
     async isOpen(): Promise<boolean> {
@@ -54,14 +59,15 @@ export class TheiaQuickCommandPalette extends TheiaPageObject {
         await this.page.keyboard.press('Enter');
     }
 
-    async type(command: string): Promise<void> {
+    async type(value: string, confirm = false): Promise<void> {
         if (!await this.isOpen()) {
             this.open();
         }
-        const input = await this.page.waitForSelector(`${this.selector} .monaco-inputbox .input`);
-        if (input != null) {
-            await input.focus();
-            await input.type(command, { delay: USER_KEY_TYPING_DELAY });
+        const input = this.page.locator(`${this.selector} .monaco-inputbox .input`);
+        await input.focus();
+        await input.pressSequentially(value, { delay: USER_KEY_TYPING_DELAY });
+        if (confirm) {
+            await this.page.keyboard.press('Enter');
         }
     }
 
@@ -72,4 +78,14 @@ export class TheiaQuickCommandPalette extends TheiaPageObject {
         }
         return command.$('.monaco-list-row.focused .monaco-highlighted-label');
     }
+
+    async visibleItems(): Promise<ElementHandle<SVGElement | HTMLElement>[]> {
+        // FIXME rewrite with locators
+        const command = await this.page.waitForSelector(this.selector);
+        if (!command) {
+            throw new Error('No selected command found!');
+        }
+        return command.$$('.monaco-highlighted-label');
+    }
+
 }

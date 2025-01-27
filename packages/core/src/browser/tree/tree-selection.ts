@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { TreeNode } from './tree';
-import { Event, Disposable, SelectionProvider } from '../../common';
+import { Event, Disposable, isObject, SelectionProvider } from '../../common';
 
 /**
  * The tree selection service.
@@ -87,7 +87,7 @@ export namespace TreeSelection {
     }
 
     export function is(arg: unknown): arg is TreeSelection {
-        return !!arg && typeof arg === 'object' && 'node' in arg;
+        return isObject(arg) && 'node' in arg;
     }
 
     export function isRange(arg: TreeSelection | SelectionType | undefined): boolean {

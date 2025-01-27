@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { injectable } from '@theia/core/shared/inversify';
-import { v4 } from 'uuid';
+import { generateUuid } from '@theia/core/lib/common/uuid';
 import URI from '@theia/core/lib/common/uri';
 import { Location } from '@theia/editor/lib/browser/editor';
 import { TreeDecoration, DecoratedTreeNode } from '@theia/core/lib/browser/tree/tree-decorator';
@@ -134,7 +134,7 @@ export namespace TypeHierarchyTree {
                 resolved = true;
             }
             const node = {
-                id: v4(),
+                id: generateUuid(),
                 name: item.name,
                 description: item.detail,
                 parent: undefined,

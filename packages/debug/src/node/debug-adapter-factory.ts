@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /*---------------------------------------------------------------------------------------------
@@ -41,6 +41,7 @@ import {
 import { DebugAdapterSessionImpl } from '../common/debug-adapter-session';
 import { environment } from '@theia/core/shared/@theia/application-package';
 import { ProcessDebugAdapter, SocketDebugAdapter } from './stream-debug-adapter';
+import { isObject } from '@theia/core/lib/common';
 
 /**
  * [DebugAdapterFactory](#DebugAdapterFactory) implementation based on
@@ -67,7 +68,7 @@ export class LaunchBasedDebugAdapterFactory implements DebugAdapterFactory {
 
     private childProcess(executable: DebugAdapterExecutable): RawProcess {
         const isForkOptions = (forkOptions: unknown): forkOptions is RawForkOptions =>
-            !!forkOptions && typeof forkOptions === 'object' && 'modulePath' in forkOptions;
+            isObject(forkOptions) && 'modulePath' in forkOptions;
 
         const processOptions: RawProcessOptions | RawForkOptions = { ...executable };
         const options: { stdio: (string | number)[], env?: object, execArgv?: string[] } = { stdio: ['pipe', 'pipe', 2] };

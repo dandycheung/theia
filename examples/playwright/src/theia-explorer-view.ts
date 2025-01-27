@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ElementHandle } from '@playwright/test';
@@ -47,8 +47,8 @@ export class TheiaExplorerFileStatNode extends TheiaTreeNode {
         return elementContainsClass(this.elementHandle, 'theia-DirNode');
     }
 
-    async getMenuItemByNamePath(...names: string[]): Promise<TheiaMenuItem> {
-        const contextMenu = await this.openContextMenu();
+    async getMenuItemByNamePath(names: string[], nodeSegmentLabel?: string): Promise<TheiaMenuItem> {
+        const contextMenu = nodeSegmentLabel ? await this.openContextMenuOnSegment(nodeSegmentLabel) : await this.openContextMenu();
         const menuItem = await contextMenu.menuItemByNamePath(...names);
         if (!menuItem) { throw Error('MenuItem could not be retrieved by path'); }
         return menuItem;
@@ -106,17 +106,17 @@ export class TheiaExplorerView extends TheiaView {
         return [];
     }
 
-    async getFileStatNodeByLabel(label: string): Promise<TheiaExplorerFileStatNode> {
-        const file = await this.fileStatNode(label);
+    async getFileStatNodeByLabel(label: string, compact = false): Promise<TheiaExplorerFileStatNode> {
+        const file = await this.fileStatNode(label, compact);
         if (!file) { throw Error('File stat node could not be retrieved by path fragments'); }
         return file;
     }
 
-    async fileStatNode(filePath: string): Promise<TheiaExplorerFileStatNode | undefined> {
-        return this.fileStatNodeBySegments(...filePath.split('/'));
+    async fileStatNode(filePath: string, compact = false): Promise<TheiaExplorerFileStatNode | undefined> {
+        return compact ? this.compactFileStatNode(filePath) : this.fileStatNodeBySegments(...filePath.split('/'));
     }
 
-    async fileStatNodeBySegments(...pathFragments: string[]): Promise<TheiaExplorerFileStatNode | undefined> {
+    protected async fileStatNodeBySegments(...pathFragments: string[]): Promise<TheiaExplorerFileStatNode | undefined> {
         await super.activate();
         const viewElement = await this.viewElement();
 
@@ -141,6 +141,35 @@ export class TheiaExplorerView extends TheiaView {
         return currentTreeNode;
     }
 
+    protected async compactFileStatNode(path: string): Promise<TheiaExplorerFileStatNode | undefined> {
+        // default setting `explorer.compactFolders=true` renders folders in a compact form - single child folders will be compressed in a combined tree element
+        await super.activate();
+        const viewElement = await this.viewElement();
+
+        // check if first segment folder needs to be expanded first (if folder has never been expanded, it will not show the compact folder structure)
+        await this.waitForVisibleFileNodes();
+        const firstSegment = path.split('/')[0];
+        const selector = this.treeNodeSelector(firstSegment);
+        const folderElement = await viewElement?.$(selector);
+        if (folderElement && await folderElement.isVisible()) {
+            const folderNode = await viewElement?.waitForSelector(selector, { state: 'visible' });
+            if (!folderNode) {
+                throw new Error(`Tree node '${selector}' not found in explorer`);
+            }
+            const folderFileStatNode = new TheiaExplorerFileStatNode(folderNode, this);
+            if (await folderFileStatNode.isCollapsed()) {
+                await folderFileStatNode.expand();
+            }
+        }
+        // now get tree node via the full path
+        const fullPathSelector = this.treeNodeSelector(path);
+        const treeNode = await viewElement?.waitForSelector(fullPathSelector, { state: 'visible' });
+        if (!treeNode) {
+            throw new Error(`Tree node '${fullPathSelector}' not found in explorer`);
+        }
+        return new TheiaExplorerFileStatNode(treeNode, this);
+    }
+
     async selectTreeNode(filePath: string): Promise<void> {
         await this.activate();
         const treeNode = await this.page.waitForSelector(this.treeNodeSelector(filePath));
@@ -148,7 +177,12 @@ export class TheiaExplorerView extends TheiaView {
             await treeNode.focus();
         } else {
             await treeNode.click({ modifiers: ['Control'] });
+            // make sure the click has been acted-upon before returning
+            while (!await this.isTreeNodeSelected(filePath)) {
+                console.debug('Waiting for clicked tree node to be selected: ' + filePath);
+            }
         }
+        await this.page.waitForSelector(this.treeNodeSelector(filePath) + '.theia-mod-selected');
     }
 
     async isTreeNodeSelected(filePath: string): Promise<boolean> {
@@ -169,16 +203,16 @@ export class TheiaExplorerView extends TheiaView {
         return nodeId;
     }
 
-    async clickContextMenuItem(file: string, path: string[]): Promise<void> {
+    async clickContextMenuItem(file: string, path: string[], nodeSegmentLabel?: string): Promise<void> {
         await this.activate();
-        const fileStatNode = await this.fileStatNode(file);
+        const fileStatNode = await this.fileStatNode(file, !!nodeSegmentLabel);
         if (!fileStatNode) { throw Error('File stat node could not be retrieved by path fragments'); }
-        const menuItem = await fileStatNode.getMenuItemByNamePath(...path);
+        const menuItem = await fileStatNode.getMenuItemByNamePath(path, nodeSegmentLabel);
         await menuItem.click();
     }
 
-    protected async existsNode(path: string, isDirectory: boolean): Promise<boolean> {
-        const fileStatNode = await this.fileStatNode(path);
+    protected async existsNode(path: string, isDirectory: boolean, compact = false): Promise<boolean> {
+        const fileStatNode = await this.fileStatNode(path, compact);
         if (!fileStatNode) {
             return false;
         }
@@ -198,8 +232,14 @@ export class TheiaExplorerView extends TheiaView {
         return this.existsNode(path, false);
     }
 
-    async existsDirectoryNode(path: string): Promise<boolean> {
-        return this.existsNode(path, true);
+    async existsDirectoryNode(path: string, compact = false): Promise<boolean> {
+        return this.existsNode(path, true, compact);
+    }
+
+    async waitForTreeNodeVisible(path: string): Promise<void> {
+        // wait for tree node to be visible, e.g. after triggering create
+        const viewElement = await this.viewElement();
+        await viewElement?.waitForSelector(this.treeNodeSelector(path), { state: 'visible' });
     }
 
     async getNumberOfVisibleNodes(): Promise<number> {
@@ -209,9 +249,9 @@ export class TheiaExplorerView extends TheiaView {
         return fileStatElements.length;
     }
 
-    async deleteNode(path: string, confirm = true): Promise<void> {
+    async deleteNode(path: string, confirm = true, nodeSegmentLabel?: string): Promise<void> {
         await this.activate();
-        await this.clickContextMenuItem(path, ['Delete']);
+        await this.clickContextMenuItem(path, ['Delete'], nodeSegmentLabel);
 
         const confirmDialog = new TheiaDialog(this.app);
         await confirmDialog.waitForVisible();
@@ -219,16 +259,53 @@ export class TheiaExplorerView extends TheiaView {
         await confirmDialog.waitForClosed();
     }
 
-    async renameNode(path: string, newName: string, confirm = true): Promise<void> {
+    async renameNode(path: string, newName: string, confirm = true, nodeSegmentLabel?: string): Promise<void> {
         await this.activate();
-        await this.clickContextMenuItem(path, ['Rename']);
+        await this.clickContextMenuItem(path, ['Rename'], nodeSegmentLabel);
 
         const renameDialog = new TheiaRenameDialog(this.app);
         await renameDialog.waitForVisible();
         await renameDialog.enterNewName(newName);
+        await renameDialog.waitUntilMainButtonIsEnabled();
         confirm ? await renameDialog.confirm() : await renameDialog.close();
         await renameDialog.waitForClosed();
         await this.refresh();
+    }
+
+    override async waitForVisible(): Promise<void> {
+        await super.waitForVisible();
+        await this.page.waitForSelector(this.tabSelector, { state: 'visible' });
+    }
+
+    /**
+     * Waits until some non-dot file nodes are visible
+     */
+    async waitForVisibleFileNodes(): Promise<void> {
+        while ((await this.visibleFileStatNodes(DOT_FILES_FILTER)).length === 0) {
+            console.debug('Awaiting for tree nodes to appear');
+        }
+    }
+
+    async waitForFileNodesToIncrease(numberBefore: number): Promise<void> {
+        const fileStatNodesSelector = `${this.viewSelector} .theia-FileStatNode`;
+        await this.page.waitForFunction(
+            (predicate: { selector: string; numberBefore: number; }) => {
+                const elements = document.querySelectorAll(predicate.selector);
+                return !!elements && elements.length > predicate.numberBefore;
+            },
+            { selector: fileStatNodesSelector, numberBefore }
+        );
+    }
+
+    async waitForFileNodesToDecrease(numberBefore: number): Promise<void> {
+        const fileStatNodesSelector = `${this.viewSelector} .theia-FileStatNode`;
+        await this.page.waitForFunction(
+            (predicate: { selector: string; numberBefore: number; }) => {
+                const elements = document.querySelectorAll(predicate.selector);
+                return !!elements && elements.length < predicate.numberBefore;
+            },
+            { selector: fileStatNodesSelector, numberBefore }
+        );
     }
 
 }

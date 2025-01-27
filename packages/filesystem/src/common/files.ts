@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -26,6 +26,8 @@ import { BinaryBuffer, BinaryBufferReadableStream } from '@theia/core/lib/common
 import type { TextDocumentContentChangeEvent } from '@theia/core/shared/vscode-languageserver-protocol';
 import { ReadableStreamEvents } from '@theia/core/lib/common/stream';
 import { CancellationToken } from '@theia/core/lib/common/cancellation';
+import { isObject } from '@theia/core/lib/common';
+import { MarkdownString } from '@theia/core/lib/common/markdown-rendering';
 
 export const enum FileOperation {
     CREATE,
@@ -201,9 +203,9 @@ export interface BaseStat {
 }
 export namespace BaseStat {
     export function is(arg: unknown): arg is BaseStat {
-        return !!arg && typeof arg === 'object'
-            && ('resource' in arg && (arg as BaseStat).resource instanceof URI)
-            && ('name' in arg && typeof (arg as BaseStat).name === 'string');
+        return isObject<BaseStat>(arg)
+            && arg.resource instanceof URI
+            && typeof arg.name === 'string';
     }
 }
 
@@ -523,6 +525,7 @@ export interface WatchOptions {
 }
 
 export const enum FileSystemProviderCapabilities {
+    None = 0,
     FileReadWrite = 1 << 1,
     FileOpenReadWriteClose = 1 << 2,
     FileReadStream = 1 << 4,
@@ -762,6 +765,18 @@ export interface FileSystemProviderWithUpdateCapability extends FileSystemProvid
 
 export function hasUpdateCapability(provider: FileSystemProvider): provider is FileSystemProviderWithUpdateCapability {
     return !!(provider.capabilities & FileSystemProviderCapabilities.Update);
+}
+
+export interface ReadOnlyMessageFileSystemProvider {
+    readOnlyMessage: MarkdownString | undefined;
+    readonly onDidChangeReadOnlyMessage: Event<MarkdownString | undefined>;
+}
+
+export namespace ReadOnlyMessageFileSystemProvider {
+    export function is(arg: unknown): arg is ReadOnlyMessageFileSystemProvider {
+        return isObject<ReadOnlyMessageFileSystemProvider>(arg)
+            && 'readOnlyMessage' in arg;
+    }
 }
 
 /**

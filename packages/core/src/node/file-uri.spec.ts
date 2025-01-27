@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as os from 'os';
 import * as path from 'path';
 import * as chai from 'chai';
-import { FileUri } from './file-uri';
+import { FileUri } from '../common/file-uri';
 import { isWindows } from '../common/os';
 
 const expect = chai.expect;

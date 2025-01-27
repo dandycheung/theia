@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable } from '@theia/core/shared/inversify';
@@ -21,7 +21,22 @@ import { FileStat } from '../../common/files';
 
 @injectable()
 export class FileDialogTree extends FileTree {
+    protected _showHidden = false;
+    set showHidden(show: boolean) {
+        this._showHidden = show;
+        this.refresh();
+    }
 
+    get showHidden(): boolean {
+        return this._showHidden;
+    }
+
+    protected isHiddenFile = (fileStat: FileStat): boolean => {
+        const { name } = fileStat;
+        const filename = name ?? '';
+        const isHidden = filename.startsWith('.');
+        return isHidden;
+    };
     /**
      * Extensions for files to be shown
      */
@@ -57,6 +72,9 @@ export class FileDialogTree extends FileTree {
      * @param fileStat resource to check
      */
     protected isVisible(fileStat: FileStat): boolean {
+        if (!this._showHidden && this.isHiddenFile(fileStat)) {
+            return false;
+        }
         if (fileStat.isDirectory) {
             return true;
         }

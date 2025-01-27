@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
@@ -230,8 +230,8 @@ export class EditorLanguageStatusService {
         pin.className = this.pinnedCommands.has(id) ? codicon('pinned', true) : codicon('pin', true);
         pin.ariaRoleDescription = 'button';
         const pinText = this.pinnedCommands.has(id)
-            ? nls.localize('theia/editor/status-bar-unpin', 'Remove from Status Bar')
-            : nls.localize('theia/editor/status-bar-pin', 'Add to Status Bar');
+            ? nls.localizeByDefault('Remove from Status Bar')
+            : nls.localizeByDefault('Add to Status Bar');
         pin.ariaLabel = pinText;
         pin.title = pinText;
     }

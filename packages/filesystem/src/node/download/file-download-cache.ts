@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { ILogger } from '@theia/core/lib/common/logger';
-import * as rimraf from 'rimraf';
+import { rimraf } from 'rimraf';
 
 export interface DownloadStorageItem {
     file: string;
@@ -70,10 +70,8 @@ export class FileDownloadCache {
     }
 
     protected deleteRecursively(pathToDelete: string): void {
-        rimraf(pathToDelete, error => {
-            if (error) {
-                this.logger.warn(`An error occurred while deleting the temporary data from the disk. Cannot clean up: ${pathToDelete}.`, error);
-            }
+        rimraf(pathToDelete).catch(error => {
+            this.logger.warn(`An error occurred while deleting the temporary data from the disk. Cannot clean up: ${pathToDelete}.`, error);
         });
     }
 

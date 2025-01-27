@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation and others. All rights reserved.
@@ -19,6 +19,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Event, Emitter } from './event';
+import { isBoolean, isObject } from './types';
+import { Disposable } from './disposable';
 
 export interface CancellationToken {
     readonly isCancellationRequested: boolean;
@@ -51,10 +53,9 @@ export namespace CancellationToken {
     });
 
     export function is(value: unknown): value is CancellationToken {
-        const candidate = value as CancellationToken;
-        return candidate && (candidate === CancellationToken.None
-            || candidate === CancellationToken.Cancelled
-            || (typeof candidate.isCancellationRequested === 'boolean' && !!candidate.onCancellationRequested));
+        return isObject<CancellationToken>(value) && (value === CancellationToken.None
+            || value === CancellationToken.Cancelled
+            || (isBoolean(value.isCancellationRequested) && !!value.onCancellationRequested));
     }
 }
 
@@ -93,11 +94,23 @@ class MutableToken implements CancellationToken {
         }
         return this._emitter.event;
     }
+
+    public dispose(): void {
+        if (this._emitter) {
+            this._emitter.dispose();
+            this._emitter = undefined;
+        }
+    }
 }
 
 export class CancellationTokenSource {
 
     private _token: CancellationToken;
+    private _parentListener?: Disposable = undefined;
+
+    constructor(parent?: CancellationToken) {
+        this._parentListener = parent && parent.onCancellationRequested(this.cancel, this);
+    }
 
     get token(): CancellationToken {
         if (!this._token) {
@@ -121,6 +134,15 @@ export class CancellationTokenSource {
 
     dispose(): void {
         this.cancel();
+        this._parentListener?.dispose();
+        if (!this._token) {
+            // ensure to initialize with an empty token if we had none
+            this._token = CancellationToken.None;
+
+        } else if (this._token instanceof MutableToken) {
+            // actually dispose
+            this._token.dispose();
+        }
     }
 }
 

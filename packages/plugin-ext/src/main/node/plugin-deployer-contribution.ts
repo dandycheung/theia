@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { BackendApplicationContribution } from '@theia/core/lib/node';
@@ -28,7 +28,8 @@ export class PluginDeployerContribution implements BackendApplicationContributio
     @inject(PluginDeployer)
     protected pluginDeployer: PluginDeployer;
 
-    initialize(): void {
-        this.pluginDeployer.start();
+    initialize(): Promise<void> {
+        this.pluginDeployer.start().catch(error => this.logger.error('Initializing plugin deployer failed.', error));
+        return Promise.resolve();
     }
 }

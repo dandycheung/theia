@@ -11,11 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { SelectionService } from '@theia/core/lib/common/selection-service';
 import { SelectionCommandHandler } from '@theia/core/lib/common/selection-command-handler';
+import { isObject } from '@theia/core/lib/common';
 import { Marker } from '../../common/marker';
 import { ProblemMarker } from '../../common/problem-marker';
 
@@ -24,7 +25,7 @@ export interface ProblemSelection {
 }
 export namespace ProblemSelection {
     export function is(arg: unknown): arg is ProblemSelection {
-        return !!arg && typeof arg === 'object' && ('marker' in arg) && ProblemMarker.is((arg as ProblemSelection).marker);
+        return isObject<ProblemSelection>(arg) && ProblemMarker.is(arg.marker);
     }
 
     export class CommandHandler extends SelectionCommandHandler<ProblemSelection> {

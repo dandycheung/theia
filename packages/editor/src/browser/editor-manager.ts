@@ -11,13 +11,16 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, postConstruct, inject } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
-import { RecursivePartial, Emitter, Event, MaybePromise } from '@theia/core/lib/common';
-import { WidgetOpenerOptions, NavigatableWidgetOpenHandler, NavigatableWidgetOptions, Widget } from '@theia/core/lib/browser';
+import { RecursivePartial, Emitter, Event, MaybePromise, CommandService, nls } from '@theia/core/lib/common';
+import {
+    WidgetOpenerOptions, NavigatableWidgetOpenHandler, NavigatableWidgetOptions, Widget, PreferenceService, CommonCommands, OpenWithService, getDefaultHandler,
+    defaultHandlerPriority
+} from '@theia/core/lib/browser';
 import { EditorWidget } from './editor-widget';
 import { Range, Position, Location, TextEditor } from './editor';
 import { EditorWidgetFactory } from './editor-widget-factory';
@@ -38,7 +41,7 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
 
     readonly id = EditorWidgetFactory.ID;
 
-    readonly label = 'Code Editor';
+    readonly label = nls.localizeByDefault('Text Editor');
 
     protected readonly editorCounters = new Map<string, number>();
 
@@ -54,11 +57,18 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
      */
     readonly onCurrentEditorChanged: Event<EditorWidget | undefined> = this.onCurrentEditorChangedEmitter.event;
 
+    @inject(CommandService) protected readonly commands: CommandService;
+    @inject(PreferenceService) protected readonly preferenceService: PreferenceService;
+    @inject(OpenWithService) protected readonly openWithService: OpenWithService;
+
     @postConstruct()
     protected override init(): void {
         super.init();
         this.shell.onDidChangeActiveWidget(() => this.updateActiveEditor());
         this.shell.onDidChangeCurrentWidget(() => this.updateCurrentEditor());
+        this.shell.onDidDoubleClickMainArea(() =>
+            this.commands.executeCommand(CommonCommands.NEW_UNTITLED_TEXT_FILE.id)
+        );
         this.onCreated(widget => {
             widget.onDidChangeVisibility(() => {
                 if (widget.isVisible) {
@@ -78,6 +88,16 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
                 this.addRecentlyVisible(widget);
             }
         }
+        this.openWithService.registerHandler({
+            id: 'default',
+            label: this.label,
+            providerName: nls.localizeByDefault('Built-in'),
+            canHandle: () => 100,
+            // Higher priority than any other handler
+            // so that the text editor always appears first in the quick pick
+            getOrder: () => 10000,
+            open: uri => this.open(uri)
+        });
         this.updateCurrentEditor();
     }
 
@@ -96,7 +116,7 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
             if (!(editorPromise instanceof Widget)) {
                 editorPromise.then(editor => this.revealSelection(editor, options, uri));
             } else {
-                this.revealSelection(editorPromise, options);
+                this.revealSelection(editorPromise, options, uri);
             }
         }
         return editorPromise;
@@ -167,10 +187,8 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
         return this._currentEditor;
     }
     protected setCurrentEditor(current: EditorWidget | undefined): void {
-        if (this._currentEditor !== current) {
-            this._currentEditor = current;
-            this.onCurrentEditorChangedEmitter.fire(this._currentEditor);
-        }
+        this._currentEditor = current;
+        this.onCurrentEditorChangedEmitter.fire(this._currentEditor);
     }
     protected updateCurrentEditor(): void {
         const widget = this.shell.currentWidget;
@@ -182,6 +200,9 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
     }
 
     canHandle(uri: URI, options?: WidgetOpenerOptions): number {
+        if (getDefaultHandler(uri, this.preferenceService) === 'default') {
+            return defaultHandlerPriority;
+        }
         return 100;
     }
 
@@ -203,6 +224,13 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
                             return super.open(uri, { counter: id, ...options });
                         }
                     }
+                }
+            }
+            // If the user has opted to prefer to open an existing editor even if it's on a different tab, check if we have anything about the URI.
+            if (this.preferenceService.get('workbench.editor.revealIfOpen', false)) {
+                const counter = this.getCounterForUri(uri);
+                if (counter !== undefined) {
+                    return super.open(uri, { counter, ...options });
                 }
             }
             // Open a new widget.
@@ -245,7 +273,10 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
                 editor.revealPosition(selection);
             } else if (Range.is(selection)) {
                 editor.cursor = selection.end;
-                editor.selection = selection;
+                editor.selection = {
+                    ...selection,
+                    direction: 'ltr'
+                };
                 editor.revealRange(selection);
             }
         }
@@ -253,6 +284,12 @@ export class EditorManager extends NavigatableWidgetOpenHandler<EditorWidget> {
 
     protected getSelection(widget: EditorWidget, selection: RecursivePartial<Range>): Range | Position | undefined {
         const { start, end } = selection;
+        if (Position.is(start)) {
+            if (Position.is(end)) {
+                return widget.editor.document.toValidRange({ start, end });
+            }
+            return widget.editor.document.toValidPosition(start);
+        }
         const line = start && start.line !== undefined && start.line >= 0 ? start.line : undefined;
         if (line === undefined) {
             return undefined;

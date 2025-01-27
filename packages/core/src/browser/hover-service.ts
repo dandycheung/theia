@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable } from 'inversify';
@@ -24,6 +24,10 @@ import { PreferenceService } from './preferences';
 import '../../src/browser/style/hover-service.css';
 
 export type HoverPosition = 'left' | 'right' | 'top' | 'bottom';
+
+// Threshold, in milliseconds, over which a mouse movement is not considered
+// quick enough as to be ignored
+const quickMouseThresholdMillis = 200;
 
 export namespace HoverPosition {
     export function invertIfNecessary(position: HoverPosition, target: DOMRect, host: DOMRect, totalWidth: number, totalHeight: number): HoverPosition {
@@ -57,6 +61,16 @@ export interface HoverRequest {
      * if the specified content does not fit in the window next to the target element
      */
     position: HoverPosition
+    /**
+     * Additional css classes that should be added to the hover box.
+     * Used to style certain boxes different e.g. for the extended tab preview.
+     */
+    cssClasses?: string[]
+    /**
+     * A function to render a visual preview on the hover.
+     * Function that takes the desired width and returns a HTMLElement to be rendered.
+     */
+    visualPreview?: (width: number) => HTMLElement | undefined;
 }
 
 @injectable()
@@ -90,33 +104,50 @@ export class HoverService {
         if (request.target !== this.hoverTarget) {
             this.cancelHover();
             this.pendingTimeout = disposableTimeout(() => this.renderHover(request), this.getHoverDelay());
+            this.hoverTarget = request.target;
+            this.listenForMouseOut();
         }
     }
 
     protected getHoverDelay(): number {
-        return Date.now() - this.lastHidHover < 200
+        return Date.now() - this.lastHidHover < quickMouseThresholdMillis
             ? 0
             : this.preferences.get('workbench.hover.delay', isOSX ? 1500 : 500);
     }
 
     protected async renderHover(request: HoverRequest): Promise<void> {
         const host = this.hoverHost;
-        const { target, content, position } = request;
-        this.hoverTarget = target;
+        let firstChild: HTMLElement | undefined;
+        const { target, content, position, cssClasses } = request;
+        if (cssClasses) {
+            host.classList.add(...cssClasses);
+        }
         if (content instanceof HTMLElement) {
             host.appendChild(content);
+            firstChild = content;
         } else if (typeof content === 'string') {
             host.textContent = content;
         } else {
             const renderedContent = this.markdownRenderer.render(content);
             this.disposeOnHide.push(renderedContent);
             host.appendChild(renderedContent.element);
+            firstChild = renderedContent.element;
         }
         // browsers might insert linebreaks when the hover appears at the edge of the window
         // resetting the position prevents that
         host.style.left = '0px';
         host.style.top = '0px';
         document.body.append(host);
+
+        if (request.visualPreview) {
+            // If just a string is being rendered use the size of the outer box
+            const width = firstChild ? firstChild.offsetWidth : this.hoverHost.offsetWidth;
+            const visualPreview = request.visualPreview(width);
+            if (visualPreview) {
+                host.appendChild(visualPreview);
+            }
+        }
+
         await animationFrame(); // Allow the browser to size the host
         const updatedPosition = this.setHostPosition(target, host, position);
 
@@ -124,10 +155,11 @@ export class HoverService {
             dispose: () => {
                 this.lastHidHover = Date.now();
                 host.classList.remove(updatedPosition);
+                if (cssClasses) {
+                    host.classList.remove(...cssClasses);
+                }
             }
         });
-
-        this.listenForMouseOut();
     }
 
     protected setHostPosition(target: HTMLElement, host: HTMLElement, position: HoverPosition): HoverPosition {
@@ -168,7 +200,11 @@ export class HoverService {
     protected listenForMouseOut(): void {
         const handleMouseMove = (e: MouseEvent) => {
             if (e.target instanceof Node && !this.hoverHost.contains(e.target) && !this.hoverTarget?.contains(e.target)) {
-                this.cancelHover();
+                this.disposeOnHide.push(disposableTimeout(() => {
+                    if (!this.hoverHost.matches(':hover') && !this.hoverTarget?.matches(':hover')) {
+                        this.cancelHover();
+                    }
+                }, quickMouseThresholdMillis));
             }
         };
         document.addEventListener('mousemove', handleMouseMove);

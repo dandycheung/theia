@@ -11,17 +11,15 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { FileSystemWatcherServer, WatchOptions, FileSystemWatcherClient, FileSystemWatcherService } from '../common/filesystem-watcher-protocol';
 import { FileSystemWatcherServiceDispatcher } from './filesystem-watcher-dispatcher';
 
-export const NSFW_WATCHER = 'nsfw-watcher';
-
 /**
- * Wraps the NSFW singleton service for each frontend.
+ * Wraps the watcher singleton service for each frontend.
  */
 @injectable()
 export class FileSystemWatcherServerClient implements FileSystemWatcherServer {

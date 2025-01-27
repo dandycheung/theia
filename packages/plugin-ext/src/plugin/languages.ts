@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import {
@@ -69,7 +69,9 @@ import {
     InlineValue,
     InlineValueContext,
     TypeHierarchyItem,
-    InlineCompletionContext
+    InlineCompletionContext,
+    DocumentDropEdit,
+    DataTransferDTO
 } from '../common/plugin-api-rpc-model';
 import { CompletionAdapter } from './languages/completion';
 import { Diagnostics } from './languages/diagnostics';
@@ -106,9 +108,12 @@ import { isReadonlyArray } from '../common/arrays';
 import { DisposableCollection, disposableTimeout, Disposable as TheiaDisposable } from '@theia/core/lib/common/disposable';
 import { Severity } from '@theia/core/lib/common/severity';
 import { LinkedEditingRangeAdapter } from './languages/linked-editing-range';
-import { serializeEnterRules, serializeIndentation, serializeRegExp } from './languages-utils';
+import { serializeAutoClosingPairs, serializeEnterRules, serializeIndentation, serializeRegExp } from './languages-utils';
 import { InlayHintsAdapter } from './languages/inlay-hints';
 import { InlineCompletionAdapter, InlineCompletionAdapterBase } from './languages/inline-completion';
+import { DocumentDropEditAdapter } from './languages/document-drop-edit';
+import { IDisposable } from '@theia/monaco-editor-core';
+import { FileSystemExtImpl, FsLinkProvider } from './file-system-ext-impl';
 
 type Adapter = CompletionAdapter |
     SignatureHelpAdapter |
@@ -139,7 +144,8 @@ type Adapter = CompletionAdapter |
     DocumentSemanticTokensAdapter |
     LinkedEditingRangeAdapter |
     TypeHierarchyAdapter |
-    InlineCompletionAdapter;
+    InlineCompletionAdapter |
+    DocumentDropEditAdapter;
 
 export class LanguagesExtImpl implements LanguagesExt {
 
@@ -147,15 +153,25 @@ export class LanguagesExtImpl implements LanguagesExt {
 
     private readonly diagnostics: Diagnostics;
 
+    private linkProviderRegistration?: IDisposable;
+
     private callId = 0;
     private adaptersMap = new Map<number, Adapter>();
 
     constructor(
         rpc: RPCProtocol,
         private readonly documents: DocumentsExtImpl,
-        private readonly commands: CommandRegistryImpl) {
+        private readonly commands: CommandRegistryImpl,
+        private readonly filesSystem: FileSystemExtImpl) {
         this.proxy = rpc.getProxy(PLUGIN_RPC_CONTEXT.LANGUAGES_MAIN);
         this.diagnostics = new Diagnostics(rpc);
+        filesSystem.onWillRegisterFileSystemProvider(linkProvider => this.registerLinkProviderIfNotYetRegistered(linkProvider));
+    }
+
+    dispose(): void {
+        if (this.linkProviderRegistration) {
+            this.linkProviderRegistration.dispose();
+        }
     }
 
     get onDidChangeDiagnostics(): Event<theia.DiagnosticChangeEvent> {
@@ -192,7 +208,8 @@ export class LanguagesExtImpl implements LanguagesExt {
             comments: configuration.comments,
             onEnterRules: serializeEnterRules(configuration.onEnterRules),
             wordPattern: serializeRegExp(configuration.wordPattern),
-            indentationRules: serializeIndentation(configuration.indentationRules)
+            indentationRules: serializeIndentation(configuration.indentationRules),
+            autoClosingPairs: serializeAutoClosingPairs(configuration.autoClosingPairs)
         };
 
         this.proxy.$setLanguageConfiguration(callId, language, config);
@@ -250,11 +267,21 @@ export class LanguagesExtImpl implements LanguagesExt {
                 $serialized: true,
                 language: selector.language,
                 scheme: selector.scheme,
-                pattern: selector.pattern
+                pattern: selector.pattern,
+                notebookType: selector.notebookType
             };
         }
 
         return undefined;
+    }
+
+    private registerLinkProviderIfNotYetRegistered(linkProvider: FsLinkProvider): void {
+        if (!this.linkProviderRegistration) {
+            this.linkProviderRegistration = this.registerDocumentLinkProvider('*', linkProvider, {
+                id: 'theia.fs-ext-impl',
+                name: 'fs-ext-impl'
+            });
+        }
     }
 
     // ### Completion begin
@@ -461,6 +488,23 @@ export class LanguagesExtImpl implements LanguagesExt {
         return this.withAdapter(handle, DocumentFormattingAdapter, adapter => adapter.provideDocumentFormattingEdits(URI.revive(resource), options, token), undefined);
     }
     // ### Document Formatting Edit end
+
+    // ### Drop Edit Provider start
+    $provideDocumentDropEdits(handle: number, resource: UriComponents, position: Position,
+        dataTransfer: DataTransferDTO, token: theia.CancellationToken): Promise<DocumentDropEdit | undefined> {
+        return this.withAdapter(handle, DocumentDropEditAdapter, adapter => adapter.provideDocumentDropEdits(URI.revive(resource), position, dataTransfer, token), undefined);
+    }
+
+    registerDocumentDropEditProvider(
+        selector: theia.DocumentSelector,
+        provider: theia.DocumentDropEditProvider,
+        metadata?: theia.DocumentDropEditProviderMetadata
+    ): theia.Disposable {
+        const callId = this.addNewAdapter(new DocumentDropEditAdapter(provider, this.documents, this.filesSystem));
+        this.proxy.$registerDocumentDropEditProvider(callId, this.transformDocumentSelector(selector), metadata);
+        return this.createDisposable(callId);
+    }
+    // ### Drop Edit Provider end
 
     // ### Document Range Formatting Edit begin
     registerDocumentRangeFormattingEditProvider(selector: theia.DocumentSelector, provider: theia.DocumentRangeFormattingEditProvider,
@@ -958,6 +1002,16 @@ export class LanguagesExtImpl implements LanguagesExt {
         };
         updateAsync();
         return result;
+    }
+    // #endregion
+
+    // region DocumentPaste
+
+    /** @stubbed */
+    registerDocumentPasteEditProvider(
+        extension: Plugin, selector: theia.DocumentSelector, provider: theia.DocumentPasteEditProvider, metadata: theia.DocumentPasteProviderMetadata
+    ): theia.Disposable {
+        return Disposable.NULL;
     }
     // #endregion
 }

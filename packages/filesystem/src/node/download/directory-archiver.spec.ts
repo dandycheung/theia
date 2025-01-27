@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as fs from '@theia/core/shared/fs-extra';
@@ -21,7 +21,7 @@ import { extract } from 'tar-fs';
 import { expect } from 'chai';
 import URI from '@theia/core/lib/common/uri';
 import { MockDirectoryArchiver } from './test/mock-directory-archiver';
-import { FileUri } from '@theia/core/lib/node/file-uri';
+import { FileUri } from '@theia/core/lib/common/file-uri';
 
 const track = temp.track();
 

@@ -11,15 +11,16 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable } from 'inversify';
 import { Event, Emitter, WaitUntilEvent } from '../../common/event';
 import { Disposable, DisposableCollection } from '../../common/disposable';
 import { CancellationToken, CancellationTokenSource } from '../../common/cancellation';
-import { Mutable } from '../../common/types';
 import { timeout } from '../../common/promise-util';
+import { isObject, Mutable } from '../../common';
+import { AccessibilityInformation } from '../../common/accessibility';
 
 export const Tree = Symbol('Tree');
 
@@ -70,6 +71,19 @@ export interface Tree extends Disposable {
      * A token source of the given token should be canceled to unmark.
      */
     markAsBusy(node: Readonly<TreeNode>, ms: number, token: CancellationToken): Promise<void>;
+
+    /**
+     * An update to the tree node occurred, but the tree structure remains unchanged
+     */
+    readonly onDidUpdate: Event<TreeNode[]>;
+
+    markAsChecked(node: TreeNode, checked: boolean): void;
+}
+
+export interface TreeViewItemCheckboxInfo {
+    checked: boolean;
+    tooltip?: string;
+    accessibilityInformation?: AccessibilityInformation
 }
 
 /**
@@ -120,11 +134,16 @@ export interface TreeNode {
      * Whether this node is busy. Greater than 0 then busy; otherwise not.
      */
     readonly busy?: number;
+
+    /**
+     * Whether this node is checked.
+     */
+    readonly checkboxInfo?: TreeViewItemCheckboxInfo;
 }
 
 export namespace TreeNode {
     export function is(node: unknown): node is TreeNode {
-        return !!node && typeof node === 'object' && 'id' in node && 'parent' in node;
+        return isObject(node) && 'id' in node && 'parent' in node;
     }
 
     export function equals(left: TreeNode | undefined, right: TreeNode | undefined): boolean {
@@ -148,7 +167,7 @@ export interface CompositeTreeNode extends TreeNode {
 
 export namespace CompositeTreeNode {
     export function is(node: unknown): node is CompositeTreeNode {
-        return typeof node === 'object' && !!node && 'children' in node;
+        return isObject(node) && 'children' in node;
     }
 
     export function getFirstChild(parent: CompositeTreeNode): TreeNode | undefined {
@@ -238,6 +257,8 @@ export class TreeImpl implements Tree {
 
     protected readonly onDidChangeBusyEmitter = new Emitter<TreeNode>();
     readonly onDidChangeBusy = this.onDidChangeBusyEmitter.event;
+    protected readonly onDidUpdateEmitter = new Emitter<TreeNode[]>();
+    readonly onDidUpdate = this.onDidUpdateEmitter.event;
 
     protected nodes: {
         [id: string]: Mutable<TreeNode> | undefined
@@ -368,11 +389,18 @@ export class TreeImpl implements Tree {
             await this.doMarkAsBusy(node, ms, token);
         }
     }
+
+    markAsChecked(node: Mutable<TreeNode>, checked: boolean): void {
+        node.checkboxInfo!.checked = checked;
+        this.onDidUpdateEmitter.fire([node]);
+    }
+
     protected async doMarkAsBusy(node: Mutable<TreeNode>, ms: number, token: CancellationToken): Promise<void> {
         try {
-            await timeout(ms, token);
-            this.doSetBusy(node);
             token.onCancellationRequested(() => this.doResetBusy(node));
+            await timeout(ms, token);
+            if (token.isCancellationRequested) { return; }
+            this.doSetBusy(node);
         } catch {
             /* no-op */
         }

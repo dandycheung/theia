@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { CommandRegistry, Disposable, MenuCommandAdapter, MenuPath, SelectionService, UriSelection } from '@theia/core';
@@ -21,12 +21,17 @@ import { URI as CodeUri } from '@theia/core/shared/vscode-uri';
 import { TreeWidgetSelection } from '@theia/core/lib/browser/tree/tree-widget-selection';
 import { ScmRepository } from '@theia/scm/lib/browser/scm-repository';
 import { ScmService } from '@theia/scm/lib/browser/scm-service';
+import { DirtyDiffWidget } from '@theia/scm/lib/browser/dirty-diff/dirty-diff-widget';
+import { Change, LineRange } from '@theia/scm/lib/browser/dirty-diff/diff-computer';
+import { IChange } from '@theia/monaco-editor-core/esm/vs/editor/common/diff/legacyLinesDiffComputer';
 import { TimelineItem } from '@theia/timeline/lib/common/timeline-model';
-import { ScmCommandArg, TimelineCommandArg, TreeViewSelection } from '../../../common';
+import { ScmCommandArg, TimelineCommandArg, TreeViewItemReference } from '../../../common';
+import { TestItemReference, TestMessageArg } from '../../../common/test-types';
 import { PluginScmProvider, PluginScmResource, PluginScmResourceGroup } from '../scm-main';
 import { TreeViewWidget } from '../view/tree-view-widget';
 import { CodeEditorWidgetUtil, codeToTheiaMappings, ContributionPoint } from './vscode-theia-menu-mappings';
 import { TAB_BAR_TOOLBAR_CONTEXT_MENU } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
+import { TestItem, TestMessage } from '@theia/test/lib/browser/test-service';
 
 export type ArgumentAdapter = (...args: unknown[]) => unknown[];
 
@@ -79,6 +84,7 @@ export class PluginMenuCommandAdapter implements MenuCommandAdapter {
     @postConstruct()
     protected init(): void {
         const toCommentArgs: ArgumentAdapter = (...args) => this.toCommentArgs(...args);
+        const toTestMessageArgs: ArgumentAdapter = (...args) => this.toTestMessageArgs(...args);
         const firstArgOnly: ArgumentAdapter = (...args) => [args[0]];
         const noArgs: ArgumentAdapter = () => [];
         const toScmArgs: ArgumentAdapter = (...args) => this.toScmArgs(...args);
@@ -89,18 +95,27 @@ export class PluginMenuCommandAdapter implements MenuCommandAdapter {
             ['comments/comment/title', toCommentArgs],
             ['comments/commentThread/context', toCommentArgs],
             ['debug/callstack/context', firstArgOnly],
+            ['debug/variables/context', firstArgOnly],
             ['debug/toolBar', noArgs],
             ['editor/context', selectedResource],
             ['editor/title', widgetURI],
             ['editor/title/context', selectedResource],
+            ['editor/title/run', widgetURI],
             ['explorer/context', selectedResource],
             ['scm/resourceFolder/context', toScmArgs],
             ['scm/resourceGroup/context', toScmArgs],
             ['scm/resourceState/context', toScmArgs],
-            ['scm/title', () => this.toScmArg(this.scmService.selectedRepository)],
+            ['scm/title', () => [this.toScmArg(this.scmService.selectedRepository)]],
+            ['testing/message/context', toTestMessageArgs],
+            ['testing/profiles/context', noArgs],
+            ['scm/change/title', (...args) => this.toScmChangeArgs(...args)],
             ['timeline/item/context', (...args) => this.toTimelineArgs(...args)],
             ['view/item/context', (...args) => this.toTreeArgs(...args)],
             ['view/title', noArgs],
+            ['webview/context', firstArgOnly],
+            ['extension/context', noArgs],
+            ['terminal/context', noArgs],
+            ['terminal/title/context', noArgs],
         ]).forEach(([contributionPoint, adapter]) => {
             if (adapter) {
                 const paths = codeToTheiaMappings.get(contributionPoint);
@@ -153,7 +168,27 @@ export class PluginMenuCommandAdapter implements MenuCommandAdapter {
     }
 
     protected getArgumentAdapterForMenu(menuPath: MenuPath): ArgumentAdapter | undefined {
-        return this.argumentAdapters.get(menuPath.join(this.separator));
+        let result;
+        let length = 0;
+        for (const [key, value] of this.argumentAdapters.entries()) {
+            const candidate = key.split(this.separator);
+            if (this.isPrefixOf(candidate, menuPath) && candidate.length > length) {
+                result = value;
+                length = candidate.length;
+            }
+        }
+        return result;
+    }
+    isPrefixOf(candidate: string[], menuPath: MenuPath): boolean {
+        if (candidate.length > menuPath.length) {
+            return false;
+        }
+        for (let i = 0; i < candidate.length; i++) {
+            if (candidate[i] !== menuPath[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     protected addArgumentAdapter(menuPath: MenuPath, adapter: ArgumentAdapter): void {
@@ -218,6 +253,41 @@ export class PluginMenuCommandAdapter implements MenuCommandAdapter {
         }
     }
 
+    protected toScmChangeArgs(...args: any[]): any[] {
+        const arg = args[0];
+        if (arg instanceof DirtyDiffWidget) {
+            const toIChange = (change: Change): IChange => {
+                const convert = (range: LineRange): [number, number] => {
+                    let startLineNumber;
+                    let endLineNumber;
+                    if (!LineRange.isEmpty(range)) {
+                        startLineNumber = range.start + 1;
+                        endLineNumber = range.end;
+                    } else {
+                        startLineNumber = range.start;
+                        endLineNumber = 0;
+                    }
+                    return [startLineNumber, endLineNumber];
+                };
+                const { previousRange, currentRange } = change;
+                const [originalStartLineNumber, originalEndLineNumber] = convert(previousRange);
+                const [modifiedStartLineNumber, modifiedEndLineNumber] = convert(currentRange);
+                return {
+                    originalStartLineNumber,
+                    originalEndLineNumber,
+                    modifiedStartLineNumber,
+                    modifiedEndLineNumber
+                };
+            };
+            return [
+                arg.uri['codeUri'],
+                arg.changes.map(toIChange),
+                arg.currentChangeIndex
+            ];
+        }
+        return [];
+    }
+
     protected toTimelineArgs(...args: any[]): any[] {
         const timelineArgs: any[] = [];
         const arg = args[0];
@@ -225,6 +295,31 @@ export class PluginMenuCommandAdapter implements MenuCommandAdapter {
         timelineArgs.push(CodeUri.parse(arg.uri));
         timelineArgs.push(arg.source ?? '');
         return timelineArgs;
+    }
+
+    protected toTestMessageArgs(...args: any[]): any[] {
+        let testItem: TestItem | undefined;
+        let testMessage: TestMessage | undefined;
+        for (const arg of args) {
+            if (TestItem.is(arg)) {
+                testItem = arg;
+            } else if (Array.isArray(arg) && TestMessage.is(arg[0])) {
+                testMessage = arg[0];
+            }
+        }
+        if (testMessage) {
+            const testItemReference = (testItem && testItem.controller) ? TestItemReference.create(testItem.controller.id, testItem.path) : undefined;
+            const testMessageDTO = {
+                message: testMessage.message,
+                actual: testMessage.actual,
+                expected: testMessage.expected,
+                contextValue: testMessage.contextValue,
+                location: testMessage.location,
+                stackTrace: testMessage.stackTrace
+            };
+            return [TestMessageArg.create(testItemReference, testMessageDTO)];
+        }
+        return [];
     }
 
     protected toTimelineArg(arg: TimelineItem): TimelineCommandArg {
@@ -238,19 +333,21 @@ export class PluginMenuCommandAdapter implements MenuCommandAdapter {
     protected toTreeArgs(...args: any[]): any[] {
         const treeArgs: any[] = [];
         for (const arg of args) {
-            if (TreeViewSelection.is(arg)) {
+            if (TreeViewItemReference.is(arg)) {
                 treeArgs.push(arg);
+            } else if (Array.isArray(arg)) {
+                treeArgs.push(arg.filter(TreeViewItemReference.is));
             }
         }
         return treeArgs;
     }
 
-    protected getSelectedResources(): [CodeUri | TreeViewSelection | undefined, CodeUri[] | undefined] {
+    protected getSelectedResources(): [CodeUri | TreeViewItemReference | undefined, CodeUri[] | undefined] {
         const selection = this.selectionService.selection;
         const resourceKey = this.resourceContextKey.get();
         const resourceUri = resourceKey ? CodeUri.parse(resourceKey) : undefined;
         const firstMember = TreeWidgetSelection.is(selection) && selection.source instanceof TreeViewWidget && selection[0]
-            ? selection.source.toTreeViewSelection(selection[0])
+            ? selection.source.toTreeViewItemReference(selection[0])
             : UriSelection.getUri(selection)?.['codeUri'] ?? resourceUri;
         const secondMember = TreeWidgetSelection.is(selection)
             ? UriSelection.getUris(selection).map(uri => uri['codeUri'])

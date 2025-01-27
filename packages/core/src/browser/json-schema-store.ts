@@ -11,16 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, named } from 'inversify';
 import { ContributionProvider } from '../common/contribution-provider';
-import { FrontendApplicationContribution } from './frontend-application';
+import { FrontendApplicationContribution } from './frontend-application-contribution';
 import { MaybePromise } from '../common';
-import { Endpoint } from './endpoint';
 import { timeout, Deferred } from '../common/promise-util';
-import { RequestContext, RequestService } from '@theia/request';
 
 export interface JsonSchemaConfiguration {
     fileMatch: string | string[];
@@ -95,15 +93,9 @@ export class JsonSchemaStore implements FrontendApplicationContribution {
 
 @injectable()
 export class DefaultJsonSchemaContribution implements JsonSchemaContribution {
-
-    @inject(RequestService)
-    protected readonly requestService: RequestService;
-
     async registerSchemas(context: JsonSchemaRegisterContext): Promise<void> {
-        const url = `${new Endpoint().httpScheme}//schemastore.azurewebsites.net/api/json/catalog.json`;
-        const response = await this.requestService.request({ url });
-        const schemas = RequestContext.asJson<{ schemas: DefaultJsonSchemaContribution.SchemaData[] }>(response).schemas;
-        for (const s of schemas) {
+        const catalog = require('./catalog.json') as { schemas: DefaultJsonSchemaContribution.SchemaData[] };
+        for (const s of catalog.schemas) {
             if (s.fileMatch) {
                 context.registerSchema({
                     fileMatch: s.fileMatch,

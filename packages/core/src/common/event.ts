@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Disposable, DisposableGroup } from './disposable';
+import { Disposable, DisposableGroup, DisposableCollection } from './disposable';
 import { MaybePromise } from './types';
 
 /**
@@ -58,6 +58,44 @@ export namespace Event {
     });
 
     /**
+     * Given an event, returns another event which only fires once.
+     */
+    export function once<T>(event: Event<T>): Event<T> {
+        return (listener, thisArgs = undefined, disposables?) => {
+            // we need this, in case the event fires during the listener call
+            let didFire = false;
+            let result: Disposable | undefined = undefined;
+            result = event(e => {
+                if (didFire) {
+                    return;
+                } else if (result) {
+                    result.dispose();
+                } else {
+                    didFire = true;
+                }
+
+                return listener.call(thisArgs, e);
+            }, undefined, disposables);
+
+            if (didFire) {
+                result.dispose();
+            }
+
+            return result;
+        };
+    }
+
+    export function toPromise<T>(event: Event<T>): Promise<T> {
+        return new Promise(resolve => once(event)(resolve));
+    }
+
+    export function filter<T>(event: Event<T>, predicate: (e: T) => unknown): Event<T>;
+    export function filter<T, S extends T>(event: Event<T>, predicate: (e: T) => e is S): Event<S>;
+    export function filter<T>(event: Event<T>, predicate: (e: T) => unknown): Event<T> {
+        return (listener, thisArg, disposables) => event(e => predicate(e) && listener.call(thisArg, e), undefined, disposables);
+    }
+
+    /**
      * Given an event and a `map` function, returns another event which maps each element
      * through the mapping function.
      */
@@ -66,6 +104,16 @@ export namespace Event {
             get maxListeners(): number { return 0; },
             set maxListeners(maxListeners: number) { }
         });
+    }
+
+    /**
+     * Given a collection of events, returns a single event which emits whenever any of the provided events emit.
+     */
+    export function any<T>(...events: Event<T>[]): Event<T>;
+    export function any(...events: Event<any>[]): Event<void>;
+    export function any<T>(...events: Event<T>[]): Event<T> {
+        return (listener, thisArgs = undefined, disposables?: Disposable[]) =>
+            new DisposableCollection(...events.map(event => event(e => listener.call(thisArgs, e), undefined, disposables)));
     }
 }
 
@@ -276,7 +324,7 @@ export class Emitter<T = any> {
      */
     fire(event: T): any {
         if (this._callbacks) {
-            this._callbacks.invoke(event);
+            return this._callbacks.invoke(event);
         }
     }
 
@@ -414,7 +462,7 @@ export class AsyncEmitter<T extends WaitUntilEvent> extends Emitter<T> {
                 delete (asyncEvent as any)['waitUntil'];
             }
             if (!waitables.length) {
-                return;
+                continue;
             }
             try {
                 await Promise.all(waitables);
@@ -422,6 +470,24 @@ export class AsyncEmitter<T extends WaitUntilEvent> extends Emitter<T> {
                 console.error(e);
             }
         }
+    }
+
+}
+
+export class QueueableEmitter<T> extends Emitter<T[]> {
+
+    currentQueue?: T[];
+
+    queue(...arg: T[]): void {
+        if (!this.currentQueue) {
+            this.currentQueue = [];
+        }
+        this.currentQueue.push(...arg);
+    }
+
+    override fire(): void {
+        super.fire(this.currentQueue || []);
+        this.currentQueue = undefined;
     }
 
 }

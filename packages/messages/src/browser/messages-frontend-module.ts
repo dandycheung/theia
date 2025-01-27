@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../src/browser/style/index.css';
@@ -21,8 +21,8 @@ import { MessageClient } from '@theia/core/lib/common';
 import { NotificationManager } from './notifications-manager';
 import { bindNotificationPreferences } from './notification-preferences';
 import { NotificationsRenderer } from './notifications-renderer';
-import { NotificationsContribution, NotificationsKeybindingContext } from './notifications-contribution';
-import { FrontendApplicationContribution, KeybindingContribution, KeybindingContext, StylingParticipant } from '@theia/core/lib/browser';
+import { NotificationsContribution } from './notifications-contribution';
+import { FrontendApplicationContribution, KeybindingContribution, StylingParticipant } from '@theia/core/lib/browser';
 import { CommandContribution } from '@theia/core';
 import { ColorContribution } from '@theia/core/lib/browser/color-application-contribution';
 import { NotificationContentRenderer } from './notification-content-renderer';
@@ -36,8 +36,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(KeybindingContribution).toService(NotificationsContribution);
     bind(ColorContribution).toService(NotificationsContribution);
     bind(StylingParticipant).toService(NotificationsContribution);
-    bind(NotificationsKeybindingContext).toSelf().inSingletonScope();
-    bind(KeybindingContext).toService(NotificationsKeybindingContext);
     bind(NotificationManager).toSelf().inSingletonScope();
     rebind(MessageClient).toService(NotificationManager);
     bindNotificationPreferences(bind);

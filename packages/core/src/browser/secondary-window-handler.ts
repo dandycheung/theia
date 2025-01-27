@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import debounce = require('lodash.debounce');
@@ -22,7 +22,6 @@ import { ApplicationShell } from './shell/application-shell';
 import { Emitter } from '../common/event';
 import { SecondaryWindowService } from './window/secondary-window-service';
 import { KeybindingRegistry } from './keybinding';
-import { ColorApplicationContribution } from './color-application-contribution';
 
 /** Widget to be contained directly in a secondary window. */
 class SecondaryWindowRootWidget extends Widget {
@@ -46,12 +45,9 @@ class SecondaryWindowRootWidget extends Widget {
  * This handler manages the opened secondary windows and sets up messaging between them and the Theia main window.
  * In addition, it provides access to the extracted widgets and provides notifications when widgets are added to or removed from this handler.
  *
- * @experimental The functionality provided by this handler is experimental and has known issues in Electron apps.
  */
 @injectable()
 export class SecondaryWindowHandler {
-    /** List of currently open secondary windows. Window references should be removed once the window is closed. */
-    protected readonly secondaryWindows: Window[] = [];
     /** List of widgets in secondary windows. */
     protected readonly _widgets: ExtractableWidget[] = [];
 
@@ -60,14 +56,19 @@ export class SecondaryWindowHandler {
     @inject(KeybindingRegistry)
     protected keybindings: KeybindingRegistry;
 
-    @inject(ColorApplicationContribution)
-    protected colorAppContribution: ColorApplicationContribution;
+    protected readonly onWillAddWidgetEmitter = new Emitter<[Widget, Window]>();
+    /** Subscribe to get notified when a widget is added to this handler, i.e. the widget was moved to an secondary window . */
+    readonly onWillAddWidget = this.onWillAddWidgetEmitter.event;
 
-    protected readonly onDidAddWidgetEmitter = new Emitter<Widget>();
+    protected readonly onDidAddWidgetEmitter = new Emitter<[Widget, Window]>();
     /** Subscribe to get notified when a widget is added to this handler, i.e. the widget was moved to an secondary window . */
     readonly onDidAddWidget = this.onDidAddWidgetEmitter.event;
 
-    protected readonly onDidRemoveWidgetEmitter = new Emitter<Widget>();
+    protected readonly onWillRemoveWidgetEmitter = new Emitter<[Widget, Window]>();
+    /** Subscribe to get notified when a widget is removed from this handler, i.e. the widget's window was closed or the widget was disposed. */
+    readonly onWillRemoveWidget = this.onWillRemoveWidgetEmitter.event;
+
+    protected readonly onDidRemoveWidgetEmitter = new Emitter<[Widget, Window]>();
     /** Subscribe to get notified when a widget is removed from this handler, i.e. the widget's window was closed or the widget was disposed. */
     readonly onDidRemoveWidget = this.onDidRemoveWidgetEmitter.event;
 
@@ -95,33 +96,6 @@ export class SecondaryWindowHandler {
             return;
         }
         this.applicationShell = shell;
-
-        // Set up messaging with secondary windows
-        window.addEventListener('message', (event: MessageEvent) => {
-            console.trace('Message on main window', event);
-            if (event.data.fromSecondary) {
-                console.trace('Message comes from secondary window');
-                return;
-            }
-            if (event.data.fromMain) {
-                console.trace('Message has mainWindow marker, therefore ignore it');
-                return;
-            }
-
-            // Filter setImmediate messages. Do not forward because these come in with very high frequency.
-            // They are not needed in secondary windows because these messages are just a work around
-            // to make setImmediate work in the main window: https://developer.mozilla.org/en-US/docs/Web/API/Window/setImmediate
-            if (typeof event.data === 'string' && event.data.startsWith('setImmediate')) {
-                return;
-            }
-
-            console.trace('Delegate main window message to secondary windows', event);
-            this.secondaryWindows.forEach(secondaryWindow => {
-                if (!secondaryWindow.window.closed) {
-                    secondaryWindow.window.postMessage({ ...event.data, fromMain: true }, '*');
-                }
-            });
-        });
     }
 
     /**
@@ -139,23 +113,16 @@ export class SecondaryWindowHandler {
             return;
         }
 
-        const newWindow = this.secondaryWindowService.createSecondaryWindow(closed => {
-            this.applicationShell.closeWidget(widget.id);
-            const extIndex = this.secondaryWindows.indexOf(closed);
-            if (extIndex > -1) {
-                this.secondaryWindows.splice(extIndex, 1);
-            }
-        });
+        const newWindow = this.secondaryWindowService.createSecondaryWindow(widget, this.applicationShell);
 
         if (!newWindow) {
             this.messageService.error('The widget could not be moved to a secondary window because the window creation failed. Please make sure to allow popups.');
             return;
         }
 
-        this.secondaryWindows.push(newWindow);
-
         const mainWindowTitle = document.title;
-        newWindow.onload = () => {
+
+        newWindow.addEventListener('load', () => {
             this.keybindings.registerEventListeners(newWindow);
             // Use the widget's title as the window title
             // Even if the widget's label were malicious, this should be safe against XSS because the HTML standard defines this is inserted via a text node.
@@ -167,7 +134,8 @@ export class SecondaryWindowHandler {
                 console.error('Could not find dom element to attach to in secondary window');
                 return;
             }
-            const unregisterWithColorContribution = this.colorAppContribution.registerWindow(newWindow);
+
+            this.onWillAddWidgetEmitter.fire([widget, newWindow]);
 
             widget.secondaryWindow = newWindow;
             const rootWidget = new SecondaryWindowRootWidget();
@@ -177,12 +145,12 @@ export class SecondaryWindowHandler {
             widget.show();
             widget.update();
 
-            this.addWidget(widget);
+            this.addWidget(widget, newWindow);
 
             // Close the window if the widget is disposed, e.g. by a command closing all widgets.
             widget.disposed.connect(() => {
-                unregisterWithColorContribution.dispose();
-                this.removeWidget(widget);
+                this.onWillRemoveWidgetEmitter.fire([widget, newWindow]);
+                this.removeWidget(widget, newWindow);
                 if (!newWindow.closed) {
                     newWindow.close();
                 }
@@ -196,7 +164,7 @@ export class SecondaryWindowHandler {
                 updateWidget();
             });
             widget.activate();
-        };
+        });
     }
 
     /**
@@ -226,18 +194,18 @@ export class SecondaryWindowHandler {
         return undefined;
     }
 
-    protected addWidget(widget: ExtractableWidget): void {
+    protected addWidget(widget: ExtractableWidget, win: Window): void {
         if (!this._widgets.includes(widget)) {
             this._widgets.push(widget);
-            this.onDidAddWidgetEmitter.fire(widget);
+            this.onDidAddWidgetEmitter.fire([widget, win]);
         }
     }
 
-    protected removeWidget(widget: ExtractableWidget): void {
+    protected removeWidget(widget: ExtractableWidget, win: Window): void {
         const index = this._widgets.indexOf(widget);
         if (index > -1) {
             this._widgets.splice(index, 1);
-            this.onDidRemoveWidgetEmitter.fire(widget);
+            this.onDidRemoveWidgetEmitter.fire([widget, win]);
         }
     }
 }

@@ -11,10 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { FrontendApplicationContribution } from '../frontend-application';
+import { FrontendApplicationContribution } from '../frontend-application-contribution';
 import { ApplicationShell } from './application-shell';
 import { injectable, inject } from 'inversify';
 import { DisposableCollection, Disposable } from '../../common/disposable';

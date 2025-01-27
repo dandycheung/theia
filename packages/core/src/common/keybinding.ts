@@ -11,8 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
+
+import { isObject } from './types';
+
 /**
  * A Keybinding binds a specific key sequence ({@link Keybinding#keybinding}) to trigger a command ({@link Keybinding#command}). A Keybinding optionally may
  * define a "when clause" ({@link Keybinding#when}) to specify in which context it becomes active.
@@ -102,7 +105,33 @@ export namespace Keybinding {
 
     /* Determine whether object is a KeyBinding */
     export function is(arg: unknown): arg is Keybinding {
-        return !!arg && typeof arg === 'object' && 'command' in arg && 'keybinding' in arg;
+        return isObject(arg) && 'command' in arg && 'keybinding' in arg;
+    }
+
+    export function replaceKeybinding(keybindings: Keybinding[], oldKeybinding: Keybinding, newKeybinding: Keybinding): boolean {
+        const indexOld = keybindings.findIndex(keybinding => Keybinding.equals(keybinding, oldKeybinding, false, true));
+        if (indexOld >= 0) {
+            const indexNew = keybindings.findIndex(keybinding => Keybinding.equals(keybinding, newKeybinding, false, true));
+            if (indexNew >= 0 && indexNew !== indexOld) {
+                // if keybindings already contain the new keybinding, remove the old keybinding and update the new one
+                keybindings.splice(indexOld, 1);
+                keybindings[indexNew] = newKeybinding;
+            } else {
+                keybindings[indexOld] = newKeybinding;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    export function addKeybinding(keybindings: Keybinding[], newKeybinding: Keybinding): void {
+        const index = keybindings.findIndex(keybinding => Keybinding.equals(keybinding, newKeybinding, false, true));
+        if (index >= 0) {
+            // if keybindings already contain the new keybinding, update it
+            keybindings[index] = newKeybinding;
+        } else {
+            keybindings.push(newKeybinding);
+        }
     }
 }
 
@@ -118,6 +147,6 @@ export interface RawKeybinding extends Omit<Keybinding, 'keybinding'> {
 
 export namespace RawKeybinding {
     export function is(candidate: unknown): candidate is RawKeybinding {
-        return typeof candidate === 'object' && !!candidate && 'command' in candidate && 'key' in candidate;
+        return isObject(candidate) && 'command' in candidate && 'key' in candidate;
     }
 }

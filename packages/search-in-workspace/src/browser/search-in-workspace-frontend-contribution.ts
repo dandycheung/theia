@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import {
@@ -20,7 +20,7 @@ import {
 } from '@theia/core/lib/browser';
 import { SearchInWorkspaceWidget } from './search-in-workspace-widget';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
-import { CommandRegistry, MenuModelRegistry, SelectionService, Command } from '@theia/core';
+import { CommandRegistry, MenuModelRegistry, SelectionService, Command, isOSX, nls } from '@theia/core';
 import { codicon, Widget } from '@theia/core/lib/browser/widgets';
 import { FileNavigatorCommands, NavigatorContextMenu } from '@theia/navigator/lib/browser/navigator-contribution';
 import { UriCommandHandler, UriAwareCommandHandler } from '@theia/core/lib/common/uri-command-handler';
@@ -32,7 +32,7 @@ import { EditorManager } from '@theia/editor/lib/browser/editor-manager';
 import { Range } from '@theia/core/shared/vscode-languageserver-protocol';
 import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { SEARCH_VIEW_CONTAINER_ID } from './search-in-workspace-factory';
-import { SearchInWorkspaceResultTreeWidget } from './search-in-workspace-result-tree-widget';
+import { SearchInWorkspaceFileNode, SearchInWorkspaceResultTreeWidget } from './search-in-workspace-result-tree-widget';
 import { TreeWidgetSelection } from '@theia/core/lib/browser/tree/tree-widget-selection';
 import { ClipboardService } from '@theia/core/lib/browser/clipboard-service';
 import { isHighContrast } from '@theia/core/lib/common/theme';
@@ -56,6 +56,16 @@ export namespace SearchInWorkspaceCommands {
         id: 'search-in-workspace.in-folder',
         category: SEARCH_CATEGORY,
         label: 'Find in Folder...'
+    });
+    export const FOCUS_NEXT_RESULT = Command.toDefaultLocalizedCommand({
+        id: 'search.action.focusNextSearchResult',
+        category: SEARCH_CATEGORY,
+        label: 'Focus Next Search Result'
+    });
+    export const FOCUS_PREV_RESULT = Command.toDefaultLocalizedCommand({
+        id: 'search.action.focusPreviousSearchResult',
+        category: SEARCH_CATEGORY,
+        label: 'Focus Previous Search Result'
     });
     export const REFRESH_RESULTS = Command.toDefaultLocalizedCommand({
         id: 'search-in-workspace.refresh',
@@ -101,6 +111,12 @@ export namespace SearchInWorkspaceCommands {
         id: 'search.action.remove',
         category: SEARCH_CATEGORY,
         label: 'Dismiss',
+    });
+    export const REPLACE_RESULT = Command.toDefaultLocalizedCommand({
+        id: 'search.action.replace',
+    });
+    export const REPLACE_ALL_RESULTS = Command.toDefaultLocalizedCommand({
+        id: 'search.action.replaceAll'
     });
 }
 
@@ -163,6 +179,22 @@ export class SearchInWorkspaceFrontendContribution extends AbstractViewContribut
             }
         });
 
+        commands.registerCommand(SearchInWorkspaceCommands.FOCUS_NEXT_RESULT, {
+            isEnabled: () => this.withWidget(undefined, widget => widget.hasResultList()),
+            execute: async () => {
+                const widget = await this.openView({ reveal: true });
+                widget.resultTreeWidget.selectNextResult();
+            }
+        });
+
+        commands.registerCommand(SearchInWorkspaceCommands.FOCUS_PREV_RESULT, {
+            isEnabled: () => this.withWidget(undefined, widget => widget.hasResultList()),
+            execute: async () => {
+                const widget = await this.openView({ reveal: true });
+                widget.resultTreeWidget.selectPreviousResult();
+            }
+        });
+
         commands.registerCommand(SearchInWorkspaceCommands.FIND_IN_FOLDER, this.newMultiUriAwareCommandHandler({
             execute: async uris => {
                 const resources: string[] = [];
@@ -218,9 +250,43 @@ export class SearchInWorkspaceFrontendContribution extends AbstractViewContribut
             execute: () => this.withWidget(undefined, widget => {
                 const { selection } = this.selectionService;
                 if (TreeWidgetSelection.is(selection)) {
-                    widget.resultTreeWidget.removeNode(selection[0]);
+                    selection.forEach(n => widget.resultTreeWidget.removeNode(n));
                 }
             })
+        });
+        commands.registerCommand(SearchInWorkspaceCommands.REPLACE_RESULT, {
+            isEnabled: () => this.withWidget(undefined, widget => {
+                const { selection } = this.selectionService;
+                return TreeWidgetSelection.isSource(selection, widget.resultTreeWidget) && selection.length > 0 && !SearchInWorkspaceFileNode.is(selection[0]);
+            }),
+            isVisible: () => this.withWidget(undefined, widget => {
+                const { selection } = this.selectionService;
+                return TreeWidgetSelection.isSource(selection, widget.resultTreeWidget) && selection.length > 0 && !SearchInWorkspaceFileNode.is(selection[0]);
+            }),
+            execute: () => this.withWidget(undefined, widget => {
+                const { selection } = this.selectionService;
+                if (TreeWidgetSelection.is(selection)) {
+                    selection.forEach(n => widget.resultTreeWidget.replace(n));
+                }
+            }),
+        });
+        commands.registerCommand(SearchInWorkspaceCommands.REPLACE_ALL_RESULTS, {
+            isEnabled: () => this.withWidget(undefined, widget => {
+                const { selection } = this.selectionService;
+                return TreeWidgetSelection.isSource(selection, widget.resultTreeWidget) && selection.length > 0
+                    && SearchInWorkspaceFileNode.is(selection[0]);
+            }),
+            isVisible: () => this.withWidget(undefined, widget => {
+                const { selection } = this.selectionService;
+                return TreeWidgetSelection.isSource(selection, widget.resultTreeWidget) && selection.length > 0
+                    && SearchInWorkspaceFileNode.is(selection[0]);
+            }),
+            execute: () => this.withWidget(undefined, widget => {
+                const { selection } = this.selectionService;
+                if (TreeWidgetSelection.is(selection)) {
+                    selection.forEach(n => widget.resultTreeWidget.replace(n));
+                }
+            }),
         });
         commands.registerCommand(SearchInWorkspaceCommands.COPY_ONE, {
             isEnabled: () => this.withWidget(undefined, widget => {
@@ -303,6 +369,36 @@ export class SearchInWorkspaceFrontendContribution extends AbstractViewContribut
             keybinding: 'shift+alt+f',
             when: 'explorerResourceIsFolder'
         });
+        keybindings.registerKeybinding({
+            command: SearchInWorkspaceCommands.FOCUS_NEXT_RESULT.id,
+            keybinding: 'f4',
+            when: 'hasSearchResult'
+        });
+        keybindings.registerKeybinding({
+            command: SearchInWorkspaceCommands.FOCUS_PREV_RESULT.id,
+            keybinding: 'shift+f4',
+            when: 'hasSearchResult'
+        });
+        keybindings.registerKeybinding({
+            command: SearchInWorkspaceCommands.DISMISS_RESULT.id,
+            keybinding: isOSX ? 'cmd+backspace' : 'del',
+            when: 'searchViewletFocus && !inputBoxFocus'
+        });
+        keybindings.registerKeybinding({
+            command: SearchInWorkspaceCommands.REPLACE_RESULT.id,
+            keybinding: 'ctrlcmd+shift+1',
+            when: 'searchViewletFocus && replaceActive',
+        });
+        keybindings.registerKeybinding({
+            command: SearchInWorkspaceCommands.REPLACE_ALL_RESULTS.id,
+            keybinding: 'ctrlcmd+shift+1',
+            when: 'searchViewletFocus && replaceActive',
+        });
+        keybindings.registerKeybinding({
+            command: SearchInWorkspaceCommands.COPY_ONE.id,
+            keybinding: 'ctrlcmd+c',
+            when: 'searchViewletFocus && !inputBoxFocus'
+        });
     }
 
     override registerMenus(menus: MenuModelRegistry): void {
@@ -318,6 +414,18 @@ export class SearchInWorkspaceFrontendContribution extends AbstractViewContribut
         menus.registerMenuAction(CommonMenus.EDIT_FIND, {
             commandId: SearchInWorkspaceCommands.REPLACE_IN_FILES.id,
             order: '3'
+        });
+        menus.registerMenuAction(SearchInWorkspaceResultTreeWidget.Menus.INTERNAL, {
+            commandId: SearchInWorkspaceCommands.REPLACE_RESULT.id,
+            label: nls.localizeByDefault('Replace'),
+            order: '1',
+            when: 'replaceActive',
+        });
+        menus.registerMenuAction(SearchInWorkspaceResultTreeWidget.Menus.INTERNAL, {
+            commandId: SearchInWorkspaceCommands.REPLACE_ALL_RESULTS.id,
+            label: nls.localizeByDefault('Replace All'),
+            order: '1',
+            when: 'replaceActive',
         });
         menus.registerMenuAction(SearchInWorkspaceResultTreeWidget.Menus.INTERNAL, {
             commandId: SearchInWorkspaceCommands.DISMISS_RESULT.id,

@@ -11,32 +11,48 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import debounce from 'p-debounce';
 import * as markdownit from '@theia/core/shared/markdown-it';
 import * as DOMPurify from '@theia/core/shared/dompurify';
-import { Emitter } from '@theia/core/lib/common/event';
+import { Emitter, Event } from '@theia/core/lib/common/event';
 import { CancellationToken, CancellationTokenSource } from '@theia/core/lib/common/cancellation';
 import { HostedPluginSupport } from '@theia/plugin-ext/lib/hosted/browser/hosted-plugin';
 import { VSXExtension, VSXExtensionFactory } from './vsx-extension';
 import { ProgressService } from '@theia/core/lib/common/progress-service';
 import { VSXExtensionsSearchModel } from './vsx-extensions-search-model';
-import { Deferred } from '@theia/core/lib/common/promise-util';
 import { PreferenceInspectionScope, PreferenceService } from '@theia/core/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { RecommendedExtensions } from './recommended-extensions/recommended-extensions-preference-contribution';
 import URI from '@theia/core/lib/common/uri';
-import { VSXResponseError, VSXSearchParam } from '@theia/ovsx-client/lib/ovsx-types';
+import { OVSXClient, VSXAllVersions, VSXExtensionRaw, VSXResponseError, VSXSearchEntry, VSXSearchOptions, VSXTargetPlatform } from '@theia/ovsx-client/lib/ovsx-types';
 import { OVSXClientProvider } from '../common/ovsx-client-provider';
+import { RequestContext, RequestService } from '@theia/core/shared/@theia/request';
+import { OVSXApiFilterProvider } from '@theia/ovsx-client';
+import { ApplicationServer } from '@theia/core/lib/common/application-protocol';
 
 @injectable()
 export class VSXExtensionsModel {
 
+    protected initialized: Promise<void>;
+    /**
+     * Single source for all extensions
+     */
+    protected readonly extensions = new Map<string, VSXExtension>();
     protected readonly onDidChangeEmitter = new Emitter<void>();
-    readonly onDidChange = this.onDidChangeEmitter.event;
+    protected _installed = new Set<string>();
+    protected _recommended = new Set<string>();
+    protected _searchResult = new Set<string>();
+    protected _searchError?: string;
+
+    protected searchCancellationTokenSource = new CancellationTokenSource();
+    protected updateSearchResult = debounce(async () => {
+        const { token } = this.resetSearchCancellationTokenSource();
+        await this.doUpdateSearchResult({ query: this.search.query, includeAllVersions: true }, token);
+    }, 500);
 
     @inject(OVSXClientProvider)
     protected clientProvider: OVSXClientProvider;
@@ -59,16 +75,83 @@ export class VSXExtensionsModel {
     @inject(VSXExtensionsSearchModel)
     readonly search: VSXExtensionsSearchModel;
 
-    protected readonly initialized = new Deferred<void>();
+    @inject(RequestService)
+    protected request: RequestService;
+
+    @inject(OVSXApiFilterProvider)
+    protected vsxApiFilter: OVSXApiFilterProvider;
+
+    @inject(ApplicationServer)
+    protected readonly applicationServer: ApplicationServer;
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
+        this.initialized = this.doInit().catch(console.error);
+    }
+
+    protected async doInit(): Promise<void> {
         await Promise.all([
             this.initInstalled(),
             this.initSearchResult(),
             this.initRecommended(),
         ]);
-        this.initialized.resolve();
+    }
+
+    get onDidChange(): Event<void> {
+        return this.onDidChangeEmitter.event;
+    }
+
+    get installed(): IterableIterator<string> {
+        return this._installed.values();
+    }
+
+    get searchError(): string | undefined {
+        return this._searchError;
+    }
+
+    get searchResult(): IterableIterator<string> {
+        return this._searchResult.values();
+    }
+
+    get recommended(): IterableIterator<string> {
+        return this._recommended.values();
+    }
+
+    setOnlyShowVerifiedExtensions(bool: boolean): void {
+        if (this.preferences.get('extensions.onlyShowVerifiedExtensions') !== bool) {
+            this.preferences.updateValue('extensions.onlyShowVerifiedExtensions', bool);
+        }
+        this.updateSearchResult();
+    }
+
+    isInstalled(id: string): boolean {
+        return this._installed.has(id);
+    }
+
+    getExtension(id: string): VSXExtension | undefined {
+        return this.extensions.get(id);
+    }
+
+    resolve(id: string): Promise<VSXExtension> {
+        return this.doChange(async () => {
+            await this.initialized;
+            const extension = await this.refresh(id);
+            if (!extension) {
+                throw new Error(`Failed to resolve ${id} extension.`);
+            }
+            if (extension.readmeUrl) {
+                try {
+                    const rawReadme = RequestContext.asText(await this.request.request({ url: extension.readmeUrl }));
+                    const readme = this.compileReadme(rawReadme);
+                    extension.update({ readme });
+                } catch (e) {
+                    if (!VSXResponseError.is(e) || e.statusCode !== 404) {
+                        console.error(`[${id}]: failed to compile readme, reason:`, e);
+                    }
+                }
+            }
+            return extension;
+        });
     }
 
     protected async initInstalled(): Promise<void> {
@@ -104,37 +187,9 @@ export class VSXExtensionsModel {
         }
     }
 
-    /**
-     * single source of all extensions
-     */
-    protected readonly extensions = new Map<string, VSXExtension>();
-
-    protected _installed = new Set<string>();
-    get installed(): IterableIterator<string> {
-        return this._installed.values();
-    }
-
-    isInstalled(id: string): boolean {
-        return this._installed.has(id);
-    }
-
-    protected _searchError?: string;
-    get searchError(): string | undefined {
-        return this._searchError;
-    }
-
-    protected _searchResult = new Set<string>();
-    get searchResult(): IterableIterator<string> {
-        return this._searchResult.values();
-    }
-
-    protected _recommended = new Set<string>();
-    get recommended(): IterableIterator<string> {
-        return this._recommended.values();
-    }
-
-    getExtension(id: string): VSXExtension | undefined {
-        return this.extensions.get(id);
+    protected resetSearchCancellationTokenSource(): CancellationTokenSource {
+        this.searchCancellationTokenSource.cancel();
+        return this.searchCancellationTokenSource = new CancellationTokenSource();
     }
 
     protected setExtension(id: string): VSXExtension {
@@ -151,55 +206,94 @@ export class VSXExtensionsModel {
     protected doChange<T>(task: () => Promise<T>, token: CancellationToken = CancellationToken.None): Promise<T | undefined> {
         return this.progressService.withProgress('', 'extensions', async () => {
             if (token && token.isCancellationRequested) {
-                return undefined;
+                return;
             }
             const result = await task();
             if (token && token.isCancellationRequested) {
-                return undefined;
+                return;
             }
-            this.onDidChangeEmitter.fire(undefined);
+            this.onDidChangeEmitter.fire();
             return result;
         });
     }
 
-    protected searchCancellationTokenSource = new CancellationTokenSource();
-    protected updateSearchResult = debounce(() => {
-        this.searchCancellationTokenSource.cancel();
-        this.searchCancellationTokenSource = new CancellationTokenSource();
-        const query = this.search.query;
-        return this.doUpdateSearchResult({ query, includeAllVersions: true }, this.searchCancellationTokenSource.token);
-    }, 500);
-    protected doUpdateSearchResult(param: VSXSearchParam, token: CancellationToken): Promise<void> {
+    protected doUpdateSearchResult(param: VSXSearchOptions, token: CancellationToken): Promise<void> {
         return this.doChange(async () => {
-            const searchResult = new Set<string>();
+            this._searchResult = new Set<string>();
             if (!param.query) {
-                this._searchResult = searchResult;
                 return;
             }
             const client = await this.clientProvider();
-            const result = await client.search(param);
-            this._searchError = result.error;
-            if (token.isCancellationRequested) {
-                return;
-            }
-            for (const data of result.extensions) {
-                const id = data.namespace.toLowerCase() + '.' + data.name.toLowerCase();
-                const extension = client.getLatestCompatibleVersion(data);
-                if (!extension) {
-                    continue;
+            const filter = await this.vsxApiFilter();
+            try {
+                const result = await client.search(param);
+
+                if (token.isCancellationRequested) {
+                    return;
                 }
-                this.setExtension(id).update(Object.assign(data, {
-                    publisher: data.namespace,
-                    downloadUrl: data.files.download,
-                    iconUrl: data.files.icon,
-                    readmeUrl: data.files.readme,
-                    licenseUrl: data.files.license,
-                    version: extension.version
-                }));
-                searchResult.add(id);
+                for (const data of result.extensions) {
+                    const id = data.namespace.toLowerCase() + '.' + data.name.toLowerCase();
+                    const allVersions = filter.getLatestCompatibleVersion(data);
+                    if (!allVersions) {
+                        continue;
+                    }
+                    if (this.preferences.get('extensions.onlyShowVerifiedExtensions')) {
+                        this.fetchVerifiedStatus(id, client, allVersions).then(verified => {
+                            this.doChange(() => {
+                                this.addExtensions(data, id, allVersions, !!verified);
+                                return Promise.resolve();
+                            });
+                        });
+                    } else {
+                        this.addExtensions(data, id, allVersions);
+                        this.fetchVerifiedStatus(id, client, allVersions).then(verified => {
+                            this.doChange(() => {
+                                let extension = this.getExtension(id);
+                                extension = this.setExtension(id);
+                                extension.update(Object.assign({
+                                    verified: verified
+                                }));
+                                return Promise.resolve();
+                            });
+                        });
+                    }
+                }
+            } catch (error) {
+                this._searchError = error?.message || String(error);
             }
-            this._searchResult = searchResult;
+
         }, token);
+    }
+
+    protected async fetchVerifiedStatus(id: string, client: OVSXClient, allVersions: VSXAllVersions): Promise<boolean | undefined> {
+        try {
+            const res = await client.query({ extensionId: id, extensionVersion: allVersions.version, includeAllVersions: true });
+            const extension = res.extensions?.[0];
+            let verified = extension?.verified;
+            if (!verified && extension?.publishedBy.loginName === 'open-vsx') {
+                verified = true;
+            }
+            return verified;
+        } catch (error) {
+            console.error(error);
+            return false;
+        }
+    }
+
+    protected addExtensions(data: VSXSearchEntry, id: string, allVersions: VSXAllVersions, verified?: boolean): void {
+        if (!this.preferences.get('extensions.onlyShowVerifiedExtensions') || verified) {
+            const extension = this.setExtension(id);
+            extension.update(Object.assign(data, {
+                publisher: data.namespace,
+                downloadUrl: data.files.download,
+                iconUrl: data.files.icon,
+                readmeUrl: data.files.readme,
+                licenseUrl: data.files.license,
+                version: allVersions.version,
+                verified: verified
+            }));
+            this._searchResult.add(id);
+        }
     }
 
     protected async updateInstalled(): Promise<void> {
@@ -264,29 +358,6 @@ export class VSXExtensionsModel {
         };
     }
 
-    resolve(id: string): Promise<VSXExtension> {
-        return this.doChange(async () => {
-            await this.initialized.promise;
-            const extension = await this.refresh(id);
-            if (!extension) {
-                throw new Error(`Failed to resolve ${id} extension.`);
-            }
-            if (extension.readmeUrl) {
-                try {
-                    const client = await this.clientProvider();
-                    const rawReadme = await client.fetchText(extension.readmeUrl);
-                    const readme = this.compileReadme(rawReadme);
-                    extension.update({ readme });
-                } catch (e) {
-                    if (!VSXResponseError.is(e) || e.statusCode !== 404) {
-                        console.error(`[${id}]: failed to compile readme, reason:`, e);
-                    }
-                }
-            }
-            return extension;
-        });
-    }
-
     protected compileReadme(readmeMarkdown: string): string {
         const readmeHtml = markdownit({ html: true }).render(readmeMarkdown);
         return DOMPurify.sanitize(readmeHtml);
@@ -298,15 +369,33 @@ export class VSXExtensionsModel {
             if (!this.shouldRefresh(extension)) {
                 return extension;
             }
-            const client = await this.clientProvider();
-            const data = version !== undefined
-                ? await client.getExtension(id, { extensionVersion: version, includeAllVersions: true })
-                : await client.getLatestCompatibleExtensionVersion(id);
+            const filter = await this.vsxApiFilter();
+            const targetPlatform = await this.applicationServer.getApplicationPlatform() as VSXTargetPlatform;
+            let data: VSXExtensionRaw | undefined;
+            if (version === undefined) {
+                data = await filter.findLatestCompatibleExtension({
+                    extensionId: id,
+                    includeAllVersions: true,
+                    targetPlatform
+                });
+            } else {
+                data = await filter.findLatestCompatibleExtension({
+                    extensionId: id,
+                    extensionVersion: version,
+                    includeAllVersions: true,
+                    targetPlatform
+                });
+            }
             if (!data) {
                 return;
             }
             if (data.error) {
                 return this.onDidFailRefresh(id, data.error);
+            }
+            if (!data.verified) {
+                if (data.publishedBy.loginName === 'open-vsx') {
+                    data.verified = true;
+                }
             }
             extension = this.setExtension(id);
             extension.update(Object.assign(data, {
@@ -315,7 +404,8 @@ export class VSXExtensionsModel {
                 iconUrl: data.files.icon,
                 readmeUrl: data.files.readme,
                 licenseUrl: data.files.license,
-                version: data.version
+                version: data.version,
+                verified: data.verified
             }));
             return extension;
         } catch (e) {

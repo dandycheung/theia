@@ -16,10 +16,16 @@
       "path": "../editor"
     },
     {
+      "path": "../file-search"
+    },
+    {
       "path": "../filesystem"
     },
     {
       "path": "../process"
+    },
+    {
+      "path": "../variable-resolver"
     },
     {
       "path": "../workspace"

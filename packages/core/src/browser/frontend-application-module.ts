@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../src/browser/style/index.css';
@@ -35,10 +35,12 @@ import {
     MenuCommandAdapterRegistry,
     MenuCommandExecutor,
     MenuCommandAdapterRegistryImpl,
-    MenuCommandExecutorImpl
+    MenuCommandExecutorImpl,
+    MenuPath
 } from '../common';
 import { KeybindingRegistry, KeybindingContext, KeybindingContribution } from './keybinding';
-import { FrontendApplication, FrontendApplicationContribution, DefaultFrontendApplicationContribution } from './frontend-application';
+import { FrontendApplication } from './frontend-application';
+import { FrontendApplicationContribution, DefaultFrontendApplicationContribution } from './frontend-application-contribution';
 import { DefaultOpenerService, OpenerService, OpenHandler } from './opener-service';
 import { HttpOpenHandler } from './http-open-handler';
 import { CommonFrontendContribution } from './common-frontend-contribution';
@@ -96,7 +98,7 @@ import { EncodingRegistry } from './encoding-registry';
 import { EncodingService } from '../common/encoding-service';
 import { AuthenticationService, AuthenticationServiceImpl } from '../browser/authentication-service';
 import { DecorationsService, DecorationsServiceImpl } from './decorations-service';
-import { keytarServicePath, KeytarService } from '../common/keytar-protocol';
+import { keyStoreServicePath, KeyStoreService } from '../common/key-store';
 import { CredentialsService, CredentialsServiceImpl } from './credentials-service';
 import { ContributionFilterRegistry, ContributionFilterRegistryImpl } from '../common/contribution-filter';
 import { QuickCommandFrontendContribution } from './quick-input/quick-command-frontend-contribution';
@@ -121,11 +123,11 @@ import {
     BreadcrumbsService,
     DefaultBreadcrumbRenderer,
 } from './breadcrumbs';
-import { RendererHost } from './widgets';
+import { DockPanel, RendererHost } from './widgets';
 import { TooltipService, TooltipServiceImpl } from './tooltip-service';
 import { BackendRequestService, RequestService, REQUEST_SERVICE_PATH } from '@theia/request';
 import { bindFrontendStopwatch, bindBackendStopwatch } from './performance';
-import { SaveResourceService } from './save-resource-service';
+import { SaveableService } from './saveable-service';
 import { SecondaryWindowHandler } from './secondary-window-handler';
 import { UserWorkingDirectoryProvider } from './user-working-directory-provider';
 import { WindowTitleService } from './window/window-title-service';
@@ -136,6 +138,13 @@ import { MarkdownRenderer, MarkdownRendererFactory, MarkdownRendererImpl } from 
 import { StylingParticipant, StylingService } from './styling-service';
 import { bindCommonStylingParticipants } from './common-styling-participants';
 import { HoverService } from './hover-service';
+import { AdditionalViewsMenuPath, AdditionalViewsMenuWidget, AdditionalViewsMenuWidgetFactory } from './shell/additional-views-menu-widget';
+import { LanguageIconLabelProvider } from './language-icon-provider';
+import { bindTreePreferences } from './tree';
+import { OpenWithService } from './open-with-service';
+import { ViewColumnService } from './shell/view-column-service';
+import { DomInputUndoRedoHandler, UndoRedoHandler, UndoRedoHandlerService } from './undo-redo-handler';
+import { WidgetStatusBarContribution, WidgetStatusBarService } from './widget-status-bar-service';
 
 export { bindResourceProvider, bindMessageService, bindPreferenceService };
 
@@ -148,6 +157,8 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     bind(IconThemeContribution).toService(DefaultFileIconThemeContribution);
     bind(IconThemeApplicationContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(IconThemeApplicationContribution);
+    bind(LanguageIconLabelProvider).toSelf().inSingletonScope();
+    bind(LabelProviderContribution).toService(LanguageIconLabelProvider);
 
     bind(ColorRegistry).toSelf().inSingletonScope();
     bindContributionProvider(bind, ColorContribution);
@@ -167,6 +178,12 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     bind(SidebarMenuWidget).toSelf();
     bind(SidebarBottomMenuWidget).toSelf();
     bind(SidebarBottomMenuWidgetFactory).toAutoFactory(SidebarBottomMenuWidget);
+    bind(AdditionalViewsMenuWidget).toSelf();
+    bind(AdditionalViewsMenuWidgetFactory).toFactory(ctx => (side: 'left' | 'right') => {
+        const childContainer = ctx.container.createChild();
+        childContainer.bind<MenuPath>(AdditionalViewsMenuPath).toConstantValue(['additional_views_menu', side]);
+        return childContainer.resolve(AdditionalViewsMenuWidget);
+    });
     bind(SplitPositionHandler).toSelf().inSingletonScope();
 
     bindContributionProvider(bind, TabBarToolbarContribution);
@@ -188,9 +205,11 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
         const commandService = container.get<CommandService>(CommandService);
         const corePreferences = container.get<CorePreferences>(CorePreferences);
         const hoverService = container.get(HoverService);
-        return new TabBarRenderer(contextMenuRenderer, tabBarDecoratorService, iconThemeService, selectionService, commandService, corePreferences, hoverService);
+        const contextKeyService: ContextKeyService = container.get(ContextKeyService);
+        return new TabBarRenderer(contextMenuRenderer, tabBarDecoratorService, iconThemeService,
+            selectionService, commandService, corePreferences, hoverService, contextKeyService);
     });
-    bind(TheiaDockPanel.Factory).toFactory(({ container }) => options => {
+    bind(TheiaDockPanel.Factory).toFactory(({ container }) => (options?: DockPanel.IOptions) => {
         const corePreferences = container.get<CorePreferences>(CorePreferences);
         return new TheiaDockPanel(options, corePreferences);
     });
@@ -209,6 +228,8 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
 
     bind(CommandOpenHandler).toSelf().inSingletonScope();
     bind(OpenHandler).toService(CommandOpenHandler);
+
+    bind(OpenWithService).toSelf().inSingletonScope();
 
     bind(TooltipServiceImpl).toSelf().inSingletonScope();
     bind(TooltipService).toService(TooltipServiceImpl);
@@ -240,7 +261,7 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
 
     bind(SelectionService).toSelf().inSingletonScope();
     bind(CommandRegistry).toSelf().inSingletonScope().onActivation(({ container }, registry) => {
-        WebSocketConnectionProvider.createProxy(container, commandServicePath, registry);
+        WebSocketConnectionProvider.createHandler(container, commandServicePath, registry);
         return registry;
     });
     bind(CommandService).toService(CommandRegistry);
@@ -260,7 +281,7 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
 
     bindMessageService(bind).onActivation(({ container }, messages) => {
         const client = container.get(MessageClient);
-        WebSocketConnectionProvider.createProxy(container, messageServicePath, client);
+        WebSocketConnectionProvider.createHandler(container, messageServicePath, client);
         return messages;
     });
 
@@ -288,7 +309,7 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     bind(QuickAccessContribution).toService(QuickHelpService);
 
     bind(QuickPickService).to(QuickPickServiceImpl).inSingletonScope().onActivation(({ container }, quickPickService: QuickPickService) => {
-        WebSocketConnectionProvider.createProxy(container, quickPickServicePath, quickPickService);
+        WebSocketConnectionProvider.createHandler(container, quickPickServicePath, quickPickService);
         return quickPickService;
     });
 
@@ -335,7 +356,6 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     });
     bind(FrontendConnectionStatusService).toSelf().inSingletonScope();
     bind(ConnectionStatusService).toService(FrontendConnectionStatusService);
-    bind(FrontendApplicationContribution).toService(FrontendConnectionStatusService);
     bind(ApplicationConnectionStatusContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(ApplicationConnectionStatusContribution);
 
@@ -355,6 +375,7 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     bind(ThemeService).toSelf().inSingletonScope();
 
     bindCorePreferences(bind);
+    bindTreePreferences(bind);
 
     bind(MimeService).toSelf().inSingletonScope();
 
@@ -391,9 +412,9 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     bind(AuthenticationService).to(AuthenticationServiceImpl).inSingletonScope();
     bind(DecorationsService).to(DecorationsServiceImpl).inSingletonScope();
 
-    bind(KeytarService).toDynamicValue(ctx => {
+    bind(KeyStoreService).toDynamicValue(ctx => {
         const connection = ctx.container.get(WebSocketConnectionProvider);
-        return connection.createProxy<KeytarService>(keytarServicePath);
+        return connection.createProxy<KeyStoreService>(keyStoreServicePath);
     }).inSingletonScope();
 
     bind(CredentialsService).to(CredentialsServiceImpl);
@@ -432,8 +453,11 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     bindFrontendStopwatch(bind);
     bindBackendStopwatch(bind);
 
-    bind(SaveResourceService).toSelf().inSingletonScope();
+    bind(SaveableService).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(SaveableService);
+
     bind(UserWorkingDirectoryProvider).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(UserWorkingDirectoryProvider);
 
     bind(HoverService).toSelf().inSingletonScope();
 
@@ -442,4 +466,14 @@ export const frontendApplicationModule = new ContainerModule((bind, _unbind, _is
     bind(FrontendApplicationContribution).toService(StylingService);
 
     bind(SecondaryWindowHandler).toSelf().inSingletonScope();
+    bind(ViewColumnService).toSelf().inSingletonScope();
+
+    bind(UndoRedoHandlerService).toSelf().inSingletonScope();
+    bindContributionProvider(bind, UndoRedoHandler);
+    bind(DomInputUndoRedoHandler).toSelf().inSingletonScope();
+    bind(UndoRedoHandler).toService(DomInputUndoRedoHandler);
+
+    bind(WidgetStatusBarService).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(WidgetStatusBarService);
+    bindContributionProvider(bind, WidgetStatusBarContribution);
 });

@@ -2,7 +2,7 @@
   "private": true,
   "name": "@theia/example-{{app}}",
   "version": "{{version}}",
-  "license": "EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0",
+  "license": "EPL-2.0 OR GPL-2.0-with-classpath-exception",
   "theia": {
     "target": "{{app}}",
     "frontend": {
@@ -25,11 +25,11 @@
   },
   "scripts": {
     "clean": "theia clean",
-    "build": "yarn -s compile && yarn -s bundle",
+    "build": "npm run -s compile && npm run -s bundle",
     "bundle": "theia build --mode development",
     "compile": "tsc -b",
     "rebuild": "theia rebuild:{{app}} --cacheRoot ../..",
-    "start": "yarn -s rebuild && THEIA_CONFIG_DIR=./theia-config-dir theia start --plugins=local-dir:../../noPlugins --log-level=fatal"
+    "start": "THEIA_CONFIG_DIR=./theia-config-dir theia start --plugins=local-dir:../../noPlugins --log-level=fatal"
   },
   "devDependencies": {
     "@theia/cli": "{{version}}"

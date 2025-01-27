@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /*---------------------------------------------------------------------------------------------
@@ -22,7 +22,7 @@
 
 import { inject, injectable } from 'inversify';
 import { Emitter, Event } from '../common/event';
-import { KeytarService } from '../common/keytar-protocol';
+import { KeyStoreService } from '../common/key-store';
 
 export interface CredentialsProvider {
     getPassword(service: string, account: string): Promise<string | undefined>;
@@ -50,7 +50,7 @@ export class CredentialsServiceImpl implements CredentialsService {
 
     private credentialsProvider: CredentialsProvider;
 
-    constructor(@inject(KeytarService) private readonly keytarService: KeytarService) {
+    constructor(@inject(KeyStoreService) private readonly keytarService: KeyStoreService) {
         this.credentialsProvider = new KeytarCredentialsProvider(this.keytarService);
     }
 
@@ -82,7 +82,7 @@ export class CredentialsServiceImpl implements CredentialsService {
 
 class KeytarCredentialsProvider implements CredentialsProvider {
 
-    constructor(private readonly keytarService: KeytarService) {}
+    constructor(private readonly keytarService: KeyStoreService) { }
 
     deletePassword(service: string, account: string): Promise<boolean> {
         return this.keytarService.deletePassword(service, account);

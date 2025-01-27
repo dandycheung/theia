@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { StorageService } from '../storage-service';
@@ -22,7 +22,7 @@ import { injectable } from 'inversify';
  */
 @injectable()
 export class MockStorageService implements StorageService {
-    readonly data = new Map<string, {} | undefined>();
+    readonly data = new Map<string, unknown | undefined>();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     onSetDataCallback?: (key: string, data?: any) => void;

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as idb from 'idb';
@@ -21,7 +21,7 @@ import * as monaco from '@theia/monaco-editor-core';
 import { injectable } from '@theia/core/shared/inversify';
 import type { ThemeMix } from './textmate/monaco-theme-types';
 import { Theme } from '@theia/core/lib/common/theme';
-import { Emitter, Event } from '@theia/core';
+import { Emitter, Event, isObject } from '@theia/core';
 
 let _monacoDB: Promise<idb.IDBPDatabase> | undefined;
 if ('indexedDB' in window) {
@@ -45,7 +45,7 @@ export interface MonacoThemeState {
 }
 export namespace MonacoThemeState {
     export function is(state: unknown): state is MonacoThemeState {
-        return !!state && typeof state === 'object' && 'id' in state && 'label' in state && 'uiTheme' in state && 'data' in state;
+        return isObject(state) && 'id' in state && 'label' in state && 'uiTheme' in state && 'data' in state;
     }
 }
 

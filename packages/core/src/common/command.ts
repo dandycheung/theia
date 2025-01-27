@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, named } from 'inversify';
@@ -20,6 +20,7 @@ import { Disposable, DisposableCollection } from './disposable';
 import { ContributionProvider } from './contribution-provider';
 import { nls } from './nls';
 import debounce = require('p-debounce');
+import { isObject } from './types';
 
 /**
  * A command is a unique identifier of a function
@@ -41,6 +42,10 @@ export interface Command {
      */
     iconClass?: string;
     /**
+     * A short title used for display in menus.
+     */
+    shortTitle?: string;
+    /**
      * A category of this command.
      */
     category?: string;
@@ -50,7 +55,7 @@ export interface Command {
 export namespace Command {
     /* Determine whether object is a Command */
     export function is(arg: unknown): arg is Command {
-        return !!arg && typeof arg === 'object' && 'id' in arg;
+        return isObject(arg) && 'id' in arg;
     }
 
     /** Utility function to easily translate commands */
@@ -121,6 +126,7 @@ export interface CommandHandler {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     isEnabled?(...args: any[]): boolean;
+    onDidChangeEnabled?: Event<void>;
     /**
      * Test whether menu items for this handler should be visible.
      */

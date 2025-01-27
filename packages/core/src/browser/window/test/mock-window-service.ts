@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { injectable } from 'inversify';
 import { Event } from '../../../common/event';
@@ -21,6 +21,7 @@ import { WindowService } from '../window-service';
 export class MockWindowService implements WindowService {
     openNewWindow(): undefined { return undefined; }
     openNewDefaultWindow(): void { }
+    focus(): void { }
     reload(): void { }
     isSafeToShutDown(): Promise<boolean> { return Promise.resolve(true); }
     setSafeToShutDown(): void { }

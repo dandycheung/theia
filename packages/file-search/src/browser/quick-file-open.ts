@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, optional, postConstruct } from '@theia/core/shared/inversify';
-import { OpenerService, KeybindingRegistry, QuickAccessRegistry, QuickAccessProvider, CommonCommands } from '@theia/core/lib/browser';
+import { OpenerService, KeybindingRegistry, QuickAccessRegistry, QuickAccessProvider, CommonCommands, PreferenceService } from '@theia/core/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser/workspace-service';
 import URI from '@theia/core/lib/common/uri';
 import { FileSearchService, WHITESPACE_QUERY_SEPARATOR } from '../common/file-search-service';
@@ -66,6 +66,8 @@ export class QuickFileOpenService implements QuickAccessProvider {
     protected readonly messageService: MessageService;
     @inject(FileSystemPreferences)
     protected readonly fsPreferences: FileSystemPreferences;
+    @inject(PreferenceService)
+    protected readonly preferences: PreferenceService;
 
     registerQuickAccessProvider(): void {
         this.quickAccessRegistry.registerQuickAccessProvider({
@@ -162,17 +164,22 @@ export class QuickFileOpenService implements QuickAccessProvider {
         const alreadyCollected = new Set<string>();
         const recentlyUsedItems: QuickPicks = [];
 
-        const locations = [...this.navigationLocationService.locations()].reverse();
-        for (const location of locations) {
-            const uriString = location.uri.toString();
+        if (this.preferences.get('search.quickOpen.includeHistory')) {
+            const locations = [...this.navigationLocationService.locations()].reverse();
+            for (const location of locations) {
+                const uriString = location.uri.toString();
 
-            if (location.uri.scheme === 'file' && !alreadyCollected.has(uriString) && fuzzy.test(fileFilter, uriString)) {
-                if (recentlyUsedItems.length === 0) {
-                    recentlyUsedItems.push({ type: 'separator', label: 'recently opened' });
+                if (location.uri.scheme === 'file' && !alreadyCollected.has(uriString) && fuzzy.test(fileFilter, uriString)) {
+                    if (recentlyUsedItems.length === 0) {
+                        recentlyUsedItems.push({
+                            type: 'separator',
+                            label: nls.localizeByDefault('recently opened')
+                        });
+                    }
+                    const item = this.toItem(fileFilter, location.uri);
+                    recentlyUsedItems.push(item);
+                    alreadyCollected.add(uriString);
                 }
-                const item = this.toItem(fileFilter, location.uri);
-                recentlyUsedItems.push(item);
-                alreadyCollected.add(uriString);
             }
         }
 
@@ -198,7 +205,10 @@ export class QuickFileOpenService implements QuickAccessProvider {
                 sortedResults.sort((a, b) => this.compareItems(a, b));
 
                 if (sortedResults.length > 0) {
-                    result.push({ type: 'separator', label: 'file results' });
+                    result.push({
+                        type: 'separator',
+                        label: nls.localizeByDefault('file results')
+                    });
                     result.push(...sortedResults);
                 }
 
@@ -278,7 +288,10 @@ export class QuickFileOpenService implements QuickAccessProvider {
                     widget.editor.restoreViewState(closedEditor.viewState);
                 }
             })
-            .catch(error => this.messageService.error(error));
+            .catch(error => {
+                console.warn(error);
+                this.messageService.error(nls.localizeByDefault("Unable to open '{0}'", uri.path.toString()));
+            });
     }
 
     protected buildOpenerOptions(): EditorOpenerOptions {
@@ -344,7 +357,7 @@ export class QuickFileOpenService implements QuickAccessProvider {
                 const startColumn = Number.isFinite(column) && column > 0 ? column - 1 : 0;
                 const position = Position.create(lineNumber, startColumn);
 
-                filter = expression.substr(0, patternMatch.index);
+                filter = expression.substring(0, patternMatch.index);
                 range = Range.create(position, position);
             }
         }

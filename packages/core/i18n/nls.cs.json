@@ -1,16 +1,54 @@
 {
-  "disassemblyView": "Pohled na demontáž",
+  "aiConfiguration:open": "Otevřete zobrazení konfigurace AI",
+  "aiHistory:clear": "Historie umělé inteligence: Vymazat historii",
+  "aiHistory:open": "Otevřít zobrazení Historie AI",
+  "aiHistory:sortChronologically": "Historie umělé inteligence: Seřadit chronologicky",
+  "aiHistory:sortReverseChronologically": "Historie umělé inteligence: Řadit zpětně chronologicky",
+  "debug.breakpoint.editCondition": "Upravit stav...",
+  "notebook.cell.changeToCode": "Změna buňky na kód",
+  "notebook.cell.changeToMarkdown": "Změna buňky na Mardown",
+  "notebook.cell.insertMarkdownCellAbove": "Vložení buňky Markdown nad",
+  "notebook.cell.insertMarkdownCellBelow": "Vložení buňky Markdown níže",
+  "terminal:new:profile": "Vytvoření nového integrovaného terminálu z profilu",
+  "terminal:profile:default": "Zvolte výchozí profil terminálu",
   "theia": {
     "callhierarchy": {
       "noCallers": "Nebyl zjištěn žádný volající.",
       "open": "Hierarchie otevřených výzev"
     },
+    "collaboration": {
+      "collaborate": "Spolupracujte",
+      "collaboration": "Spolupráce",
+      "collaborationWorkspace": "Pracovní prostor pro spolupráci",
+      "connected": "Připojeno",
+      "connectedSession": "Připojení k relaci spolupráce",
+      "copiedInvitation": "Kód pozvánky zkopírovaný do schránky.",
+      "copyAgain": "Znovu kopírovat",
+      "createRoom": "Vytvoření nové relace spolupráce",
+      "creatingRoom": "Vytvoření relace",
+      "end": "Ukončení relace spolupráce",
+      "endDetail": "Ukončit relaci, ukončit sdílení obsahu a zrušit přístup ostatním uživatelům.",
+      "enterCode": "Zadejte kód relace spolupráce",
+      "failedCreate": "Nepodařilo se vytvořit prostor: {0}",
+      "failedJoin": "Nepodařilo se připojit k místnosti: {0}",
+      "invite": "Pozvat ostatní",
+      "inviteDetail": "Zkopírujte si kód pozvánky, abyste ji mohli sdílet s ostatními a připojit se k sezení.",
+      "joinRoom": "Připojte se k zasedání o spolupráci",
+      "joiningRoom": "Připojení k relaci",
+      "leave": "Opustit zasedání pro spolupráci",
+      "leaveDetail": "Odpojte se od aktuální relace spolupráce a zavřete pracovní prostor.",
+      "selectCollaboration": "Vyberte možnost spolupráce",
+      "sharedSession": "Společná relace spolupráce",
+      "startSession": "Zahájení relace spolupráce nebo připojení se k ní",
+      "userWantsToJoin": "Uživatel '{0}' se chce připojit k místnosti pro spolupráci",
+      "whatToDo": "Co byste chtěli dělat s dalšími spolupracovníky?"
+    },
     "core": {
       "about": {
         "compatibility": "{0} Kompatibilita",
-        "defaultApi": "Výchozí rozhraní API {0} "
+        "defaultApi": "Výchozí rozhraní API {0} ",
+        "version": "Verze"
       },
-      "availableLanguages": "Dostupné jazyky",
       "common": {
         "closeAll": "Zavřít všechny karty",
         "closeAllTabMain": "Zavření všech karet v hlavní oblasti",
@@ -28,11 +66,18 @@
         "showPreviousTabInGroup": "Přepnutí na předchozí kartu ve skupině",
         "toggleMaximized": "Přepínání Maximalizováno"
       },
+      "copyInfo": "Nejprve otevřete soubor a zkopírujte jeho cestu",
+      "copyWarn": "Použijte příkaz pro kopírování v prohlížeči nebo klávesovou zkratku.",
+      "cutWarn": "Použijte příkaz pro vyjmutí v prohlížeči nebo klávesovou zkratku.",
+      "enhancedPreview": {
+        "classic": "Zobrazí jednoduchý náhled karty se základními informacemi.",
+        "enhanced": "Zobrazení rozšířeného náhledu karty s dalšími informacemi.",
+        "visual": "Zobrazení vizuálního náhledu karty."
+      },
       "file": {
         "browse": "Procházet"
       },
       "highlightModifiedTabs": "Řídí, zda se na upravených (špinavých) kartách editoru vykreslí horní rámeček, nebo ne.",
-      "installedLanguages": "Nainstalované jazyky",
       "keybindingStatus": "{0} byl stisknut, čeká se na další klávesy",
       "keyboard": {
         "choose": "Výběr rozložení klávesnice",
@@ -43,132 +88,91 @@
         "pc": "Klávesnice PC",
         "tryDetect": "Pokuste se zjistit rozložení klávesnice z informací o prohlížeči a stisknutých klávesách."
       },
-      "mouseBackForwardToNavigate": "Umožňuje používat tlačítka myši čtyři a pět pro příkazy \"Zpět\" a \"Vpřed\".",
+      "navigator": {
+        "clipboardWarn": "Přístup do schránky je odepřen. Zkontrolujte oprávnění prohlížeče.",
+        "clipboardWarnFirefox": "Rozhraní API schránky není k dispozici. Lze ji povolit pomocí předvolby '{0}' na stránce '{1}'. Poté znovu načtěte aplikaci Theia. Všimněte si, že to umožní FireFoxu získat plný přístup k systémové schránce."
+      },
       "offline": "Offline",
-      "proxySupportFallback": "Povolit podporu proxy pro rozšíření, vrátit se k možnostem vyžádání, pokud není nalezen žádný proxy.",
+      "pasteWarn": "Použijte příkaz vložit v prohlížeči nebo klávesovou zkratku.",
       "quitMessage": "Neuložené změny se neuloží.",
-      "quitTitle": "Jste si jistý, že chcete skončit?",
       "resetWorkbenchLayout": "Obnovení rozložení pracovního stolu",
       "searchbox": {
         "close": "Zavřít (únik)",
         "next": "Další (dolů)",
         "previous": "Předchozí (Nahoru)"
       },
+      "secondaryWindow": {
+        "alwaysOnTop": "Je-li tato funkce povolena, zůstane sekundární okno nad všemi ostatními okny, včetně oken různých aplikací.",
+        "description": "Nastaví počáteční pozici a velikost extrahovaného sekundárního okna.",
+        "fullSize": "Pozice a velikost extrahovaného widgetu bude stejná jako u spuštěné aplikace Theia.",
+        "halfWidth": "Pozice a velikost extrahovaného widgetu bude odpovídat polovině šířky spuštěné aplikace Theia.",
+        "originalSize": "Pozice a velikost extrahovaného widgetu bude stejná jako u původního widgetu."
+      },
       "silentNotifications": "Řídí, zda se mají potlačit vyskakovací okna s oznámeními.",
-      "tabMaximize": "Ovládá, zda se mají karty maximalizovat při dvojím kliknutí."
+      "tabDefaultSize": "Určuje výchozí velikost karet s ouškem.",
+      "tabMaximize": "Ovládá, zda se mají karty maximalizovat při dvojím kliknutí.",
+      "tabMinimumSize": "Určuje minimální velikost oušek.",
+      "tabShrinkToFit": "Zmenšete karty tak, aby se vešly do dostupného prostoru."
     },
     "debug": {
       "addConfigurationPlaceholder": "Vyberte kořenový pracovní prostor, do kterého chcete přidat konfiguraci",
+      "breakpoint": "bod přerušení",
       "compound-cycle": "Konfigurace spuštění '{0}' obsahuje cyklus se sebou samým",
       "continueAll": "Pokračovat ve všem",
       "copyExpressionValue": "Kopírování hodnoty výrazu",
-      "debugSessionActive": "Je aktivní relace ladění, jste si jisti, že ji chcete zastavit?",
-      "debugSessionActiveMultiple": "Jsou aktivní relace ladění, jste si jisti, že je chcete zastavit?",
-      "disassembly-view": {
-        "show-source-code": "Zobrazení zdrojového kódu v zobrazení disassembleru."
-      },
+      "dataBreakpoint": "bod přerušení dat",
+      "debugVariableInput": "Nastavení hodnoty {0} ",
+      "entry": "vstup",
+      "exception": "výjimka",
+      "functionBreakpoint": "bod přerušení funkce",
+      "goto": "přejít na stránku",
       "instruction-breakpoint": "Bod přerušení instrukcí",
-      "instructionAddress": "Adresa",
-      "instructionBytes": "Byty",
-      "instructionNotAvailable": "Demontáž není k dispozici.",
-      "instructionText": "Pokyny",
+      "instructionBreakpoint": "bod přerušení instrukcí",
       "missingConfiguration": "Dynamická konfigurace '{0}:{1}' chybí nebo není použitelná",
-      "open-disassembly-view": "Otevřený pohled na demontáž",
+      "pause": "pauza",
       "pauseAll": "Pozastavit vše",
       "reveal": "Odhalení",
+      "step": "krok",
       "threads": "Vlákna",
       "toggleTracing": "Povolení/zakázání sledování komunikace s ladicími adaptéry"
     },
-    "disassembly-view": {
-      "disassemblyTableColumnLabel": "pokyny"
-    },
     "editor": {
-      "diffEditor.diffAlgorithm.experimental": "Používá experimentální algoritmus diffing.",
-      "diffEditor.diffAlgorithm.smart": "Používá výchozí algoritmus porovnávání.",
-      "diffEditor.maxFileSize": "Maximální velikost souboru v MB, pro kterou se vypočítávají rozdíly. Použijte hodnotu 0 pro žádný limit.",
-      "diffEditor.renderMarginRevertIcon": "Pokud je tato funkce povolena, zobrazuje editor rozdílů na okraji glyfů šipky pro vrácení změn.",
-      "editor.accessibilityPageSize": "Řídí počet řádků v editoru, které může čtečka obrazovky přečíst najednou. Při detekci čtečky obrazovky automaticky nastavíme výchozí hodnotu na 500. Upozornění: Pro čísla větší než výchozí to má vliv na výkon.",
-      "editor.bracketPairColorization.enabled": "Ovládá, zda je obarvení dvojice závorek povoleno, nebo ne. Pro přepsání barev zvýraznění závorek použijte 'workbench.colorCustomizations'.",
-      "editor.bracketPairColorization.independentColorPoolPerBracketType": "Řídí, zda má každý typ závorky svůj vlastní nezávislý fond barev.",
-      "editor.codeActionWidget.showHeaders": "Povolení/zakázání zobrazování záhlaví skupin v nabídce akcí kódu.",
-      "editor.codeLensFontSize": "Ovládá velikost písma v pixelech pro CodeLens. Při nastavení na `0` se použije 90 % hodnoty `#editor.fontSize#`.",
+      "diffEditor.wordWrap2": "Řádky se budou obtékat podle nastavení `#editor.wordWrap#`.",
+      "dirtyEncoding": "Soubor je znečištěný. Než jej znovu otevřete v jiném kódování, nejprve jej uložte.",
+      "editor.accessibilitySupport0": "Použití rozhraní API platformy ke zjištění, zda je připojena čtečka obrazovky.",
+      "editor.accessibilitySupport1": "Optimalizace pro použití se čtečkou obrazovky",
+      "editor.accessibilitySupport2": "Předpokládejme, že není připojena čtečka obrazovky",
+      "editor.bracketPairColorization.enabled": "Ovládá, zda je obarvení dvojice závorek povoleno, nebo ne. Pro přepsání barev zvýraznění závorek použijte `#workbench.colorCustomizations#`.",
+      "editor.codeActionWidget.includeNearbyQuickfixes": "Povolení/zakázání zobrazení nejbližší opravy v rámci řádku, pokud se zrovna neprovádí diagnostika.",
+      "editor.detectIndentation": "Řídí, zda se při otevření souboru automaticky zjistí `#editor.tabSize#` a `#editor.insertSpaces#` na základě obsahu souboru.",
       "editor.dropIntoEditor.enabled": "Ovládá, zda můžete soubor přetáhnout do textového editoru podržením klávesy `shift` (namísto otevření souboru v editoru).",
-      "editor.experimental.pasteActions.enabled": "Povolení/zakázání spouštění úprav z rozšíření při vkládání.",
-      "editor.find.seedSearchStringFromSelection0": "Nikdy nezadávejte vyhledávací řetězec z výběru editoru.",
-      "editor.find.seedSearchStringFromSelection1": "Hledaný řetězec se vždy vytvoří z výběru editoru, včetně slova na pozici kurzoru.",
-      "editor.find.seedSearchStringFromSelection2": "Z výběru v editoru vybíráte pouze vyhledávací řetězec.",
-      "editor.foldingImportsByDefault": "Řídí, zda editor automaticky sbalí rozsahy importu.",
-      "editor.foldingMaximumRegions": "Maximální počet skládaných oblastí. Zvýšení této hodnoty může vést k tomu, že editor bude méně citlivý, pokud má aktuální zdroj velký počet skládaných oblastí.",
-      "editor.formatOnSaveMode.modificationsIfAvailable": "Pokusí se formátovat pouze změny (vyžaduje kontrolu zdrojů). Pokud nelze použít kontrolu zdrojů, bude formátován celý soubor.",
-      "editor.guides.bracketPairs": "Řídí, zda jsou vodítka dvojic držáků povolena, nebo ne.",
-      "editor.guides.bracketPairs0": "Povoluje vodítka dvojic držáků.",
-      "editor.guides.bracketPairs1": "Povolí vodítka dvojice držáků pouze pro aktivní dvojici držáků.",
-      "editor.guides.bracketPairs2": "Zakáže vodítka dvojic držáků.",
-      "editor.guides.bracketPairsHorizontal": "Řídí, zda jsou vodítka vodorovných dvojic konzol povolena, nebo ne.",
-      "editor.guides.bracketPairsHorizontal0": "Umožňuje kromě vodítek svislých dvojic držáků také vodorovná vodítka.",
-      "editor.guides.bracketPairsHorizontal1": "Povolí vodorovná vodítka pouze pro aktivní pár držáků.",
-      "editor.guides.bracketPairsHorizontal2": "Zakáže vodítka vodorovných dvojic konzol.",
-      "editor.guides.highlightActiveBracketPair": "Řídí, zda má editor zvýraznit aktivní dvojici závorek.",
-      "editor.guides.highlightActiveIndentation0": "Zvýrazní aktivního průvodce odsazením.",
-      "editor.guides.highlightActiveIndentation1": "Zvýrazní aktivní vodítko odsazení, i když jsou zvýrazněna vodítka závorek.",
-      "editor.guides.highlightActiveIndentation2": "Nezvýrazňujte aktivního průvodce odsazením.",
-      "editor.hover.above": "Pokud je místo, raději se zobrazí nad řádkem.",
-      "editor.inlayHints.enabled": "Povolí v editoru nápovědy pro vložení.",
-      "editor.inlayHints.enabled0": "Nápovědy pro vložení jsou povoleny",
+      "editor.hover.hidingDelay": "Řídí prodlevu v milisekundách, po které se hover skryje. Vyžaduje, aby bylo povoleno `editor.hover.sticky`.",
       "editor.inlayHints.enabled1": "Vložené nápovědy se zobrazují ve výchozím nastavení a skrývají se při podržení `Ctrl+Alt`",
       "editor.inlayHints.enabled2": "Vložené nápovědy jsou ve výchozím nastavení skryté a zobrazí se při podržení `Ctrl+Alt`.",
-      "editor.inlayHints.enabled3": "Nápovědy pro vložení jsou zakázány",
       "editor.inlayHints.fontFamily": "Řídí rodinu písma vložených nápověd v editoru. Je-li nastaveno na prázdnou hodnotu, použije se `#editor.fontFamily#`.",
-      "editor.inlayHints.fontSize": "Ovládá velikost písma vložených nápověd v editoru. Pokud je nakonfigurovaná hodnota menší než `5` nebo větší než velikost písma editoru, použije se výchozí hodnota 90 % z `#editor.fontSize#`.",
-      "editor.inlayHints.padding": "Povolí v editoru vkládání výplně kolem náznaků vložky.",
-      "editor.inlineSuggest.enabled": "Ovládá, zda se mají v editoru automaticky zobrazovat návrhy na řádkování.",
-      "editor.language.colorizedBracketPairs": "Definuje dvojice závorek, které jsou obarveny podle úrovně vnoření, pokud je obarvení dvojic závorek povoleno.",
-      "editor.lineHeight": "Ovládá výšku čáry.\n - Chcete-li automaticky vypočítat výšku řádku z velikosti písma, použijte hodnotu 0.\n - Hodnoty mezi 0 a 8 se použijí jako násobitel s velikostí písma.\n - Hodnoty větší nebo rovné 8 budou použity jako efektivní hodnoty.",
-      "editor.minimap.autohide": "Ovládá, zda se má minimapa automaticky skrýt.",
-      "editor.multiCursorModifier": "Modifikátor, který se použije pro přidání více kurzorů myši. Gesta myši Přejít na definici a Otevřít odkaz se přizpůsobí tak, aby nebyla v konfliktu s modifikátorem [více kurzorů](https://code.visualstudio.com/docs/editor/codebasics#_multicursor-modifier).",
+      "editor.inlayHints.fontSize": "Ovládá velikost písma vložených nápověd v editoru. Ve výchozím nastavení se použije `#editor.fontSize#`, pokud je nastavená hodnota menší než `5` nebo větší než velikost písma editoru.",
+      "editor.insertSpaces": "Vkládání mezer při stisknutí `Tab`. Toto nastavení je přepsáno na základě obsahu souboru, pokud je zapnuta funkce `#editor.detectIndentation#`.",
+      "editor.occurrencesHighlight": "Řídí, zda má editor zvýrazňovat výskyty sémantických symbolů.",
       "editor.quickSuggestions": "Ovládá, zda se mají při psaní automaticky zobrazovat návrhy. To lze ovládat při psaní komentářů, řetězců a dalšího kódu. Rychlé návrhy lze nakonfigurovat tak, aby se zobrazovaly jako text ducha nebo s widgetem návrhu. Mějte také na paměti nastavení '#editor.suggestOnTriggerCharacters#', které řídí, zda se návrhy spouštějí pomocí speciálních znaků.",
-      "editor.quickSuggestions0": "Rychlé návrhy se zobrazují uvnitř widgetu pro navrhování",
-      "editor.quickSuggestions1": "Rychlé návrhy se zobrazují jako text duchů",
-      "editor.quickSuggestions2": "Rychlé návrhy jsou zakázány",
-      "editor.scrollbar.horizontal": "Ovládá viditelnost vodorovného posuvníku.",
-      "editor.scrollbar.horizontal0": "Vodorovný posuvník se zobrazí pouze v případě potřeby.",
-      "editor.scrollbar.horizontal1": "Vodorovný posuvník bude vždy viditelný.",
-      "editor.scrollbar.horizontal2": "Vodorovný posuvník bude vždy skrytý.",
-      "editor.scrollbar.horizontalScrollbarSize": "Výška horizontálního posuvníku.",
-      "editor.scrollbar.scrollByPage": "Řídí, zda se kliknutí posouvají podle stránky, nebo zda se přeskočí na pozici kliknutí.",
-      "editor.scrollbar.vertical": "Ovládá viditelnost svislého posuvníku.",
-      "editor.scrollbar.vertical0": "Svislý posuvník se zobrazí pouze v případě potřeby.",
-      "editor.scrollbar.vertical1": "Svislý posuvník bude vždy viditelný.",
-      "editor.scrollbar.vertical2": "Svislý posuvník bude vždy skrytý.",
-      "editor.scrollbar.verticalScrollbarSize": "Šířka svislého posuvníku.",
-      "editor.showFoldingControls1": "Nikdy nezobrazujte skládací ovládací prvky a zmenšujte velikost žlabu.",
-      "editor.stickyScroll.enabled": "Zobrazí vnořené aktuální obory během posouvání v horní části editoru.",
-      "editor.stickyScroll.maxLineCount": "Definuje maximální počet lepicích řádků, které se mají zobrazit.",
-      "editor.suggest.matchOnWordStartOnly": "Je-li zapnuto filtrování IntelliSense, vyžaduje, aby první znak odpovídal začátku slova, např. `c` u `Console` nebo `WebContext`, ale _ne_ u `description`. Když je funkce IntelliSense vypnutá, zobrazí více výsledků, ale stále je třídí podle kvality shody.",
-      "editor.suggest.preview": "Ovládá, zda se má v editoru zobrazit náhled výsledku návrhu.",
-      "editor.suggest.showDeprecated": "Pokud je funkce IntelliSense zapnutá, zobrazuje `deprecated` návrhy.",
-      "editor.unicodeHighlight.allowedCharacters": "Definuje povolené znaky, které nejsou zvýrazněny.",
-      "editor.unicodeHighlight.allowedLocales": "Znaky Unicode, které jsou běžné v povolených lokalitách, nejsou zvýrazněny.",
-      "editor.unicodeHighlight.ambiguousCharacters": "Řídí, zda budou zvýrazněny znaky, které lze zaměnit se základními znaky ASCII, s výjimkou těch, které jsou běžné v aktuálním uživatelském prostředí.",
-      "editor.unicodeHighlight.includeComments": "Řídí, zda mají být zvýrazněny i znaky v komentářích.",
-      "editor.unicodeHighlight.includeStrings": "Řídí, zda mají být znaky v řetězcích také zvýrazněny pomocí unicode.",
-      "editor.unicodeHighlight.invisibleCharacters": "Řídí, zda se zvýrazní znaky, které mají pouze rezervní místo nebo nemají žádnou šířku.",
-      "editor.unicodeHighlight.nonBasicASCII": "Řídí, zda se zvýrazní všechny nezákladní znaky ASCII. Za základní ASCII se považují pouze znaky mezi U+0020 a U+007E, tabulátor, řádkový posuv a carriage-return.",
-      "files.autoSave": "Ovládá [automatické ukládání](https://code.visualstudio.com/docs/editor/codebasics#_save-auto-save) editorů, které mají neuložené změny.",
-      "files.autoSave.afterDelay": "Editor se změnami se automaticky uloží po uplynutí nastavené doby `#files.autoSaveDelay#`.",
-      "files.autoSave.off": "Editor se změnami se nikdy automaticky neuloží.",
-      "files.autoSave.onFocusChange": "Editor se změnami se automaticky uloží, když ztratí fokus.",
-      "files.autoSave.onWindowChange": "Editor se změnami se automaticky uloží, když okno ztratí fokus.",
+      "editor.stickyScroll.scrollWithEditor": "Povolení posouvání widgetu sticky scroll pomocí horizontálního posuvníku editoru.",
+      "editor.suggestFontSize": "Velikost písma widgetu pro návrh. Je-li nastavena hodnota `0`, použije se hodnota `#editor.fontSize#`.",
+      "editor.suggestLineHeight": "Výška řádku pro widget návrhu. Je-li nastavena hodnota `0`, použije se hodnota `#editor.lineHeight#`. Minimální hodnota je 8.",
+      "editor.tabSize": "Počet mezer, kterým se rovná tabulátor. Toto nastavení je přepsáno na základě obsahu souboru, pokud je zapnuta funkce `#editor.detectIndentation#`.",
+      "editor.useTabStops": "Vkládání a odstraňování bílých znaků následuje po zarážkách tabulátoru.",
+      "editor.wordBasedSuggestions": "Řídí, zda se doplnění mají vypočítávat na základě slov v dokumentu.",
+      "editor.wordBasedSuggestionsMode": "Řídí, z jakých dokumentů se vypočítávají doplnění na základě slov.",
       "formatOnSaveTimeout": "Časový limit v milisekundách, po jehož uplynutí se formátování spuštěné při ukládání souboru zruší.",
       "persistClosedEditors": "Řídí, zda má historie zavřených editorů přetrvávat v pracovním prostoru i po opětovném načtení okna.",
       "showAllEditors": "Zobrazit všechny otevřené editory",
       "splitHorizontal": "Rozdělený editor Horizontální",
       "splitVertical": "Rozdělený editor Vertikální",
-      "status-bar-pin": "Přidat na stavový řádek",
-      "status-bar-unpin": "Odstranění ze stavového řádku"
+      "toggleStickyScroll": "Přepnout rychlé posouvání"
     },
     "file-search": {
       "toggleIgnoredFiles": " (Stisknutím {0} zobrazíte/skryjete ignorované soubory)"
+    },
+    "fileDialog": {
+      "showHidden": "Zobrazit skryté soubory"
     },
     "fileSystem": {
       "fileResource": {
@@ -176,6 +180,7 @@
       }
     },
     "filesystem": {
+      "copiedToClipboard": "Zkopírujte odkaz ke stažení do schránky.",
       "copyDownloadLink": "Kopírovat odkaz ke stažení",
       "dialog": {
         "initialLocation": "Přejít na počáteční umístění",
@@ -195,19 +200,26 @@
       "format": "Formát:",
       "maxConcurrentUploads": "Maximální počet současně nahrávaných souborů při nahrávání více souborů. 0 znamená, že všechny soubory budou nahrávány současně.",
       "maxFileSizeMB": "Ovládá maximální velikost souboru v MB, který je možné otevřít.",
+      "prepareDownload": "Příprava ke stažení...",
+      "prepareDownloadLink": "Připravujeme odkaz ke stažení...",
       "processedOutOf": "Zpracováno {0} z {1}",
+      "replaceTitle": "Nahradit soubor",
+      "uploadFailed": "Při nahrávání souboru došlo k chybě. {0}",
       "uploadFiles": "Nahrávání souborů...",
       "uploadedOutOf": "Nahráno {0} z {1}"
     },
     "getting-started": {
       "apiComparator": "{0} Kompatibilita API",
       "newExtension": "Budování nového rozšíření",
-      "newPlugin": "Vytvoření nového pluginu"
+      "newPlugin": "Vytvoření nového pluginu",
+      "startup-editor": {
+        "welcomePage": "Otevřete úvodní stránku s obsahem, který vám pomůže začít pracovat s webem {0} a rozšířeními."
+      }
     },
     "git": {
       "aFewSecondsAgo": "před několika sekundami",
       "addSignedOff": "Přidat Signed-off-by",
-      "amendReuseMessag": "Chcete-li znovu použít poslední zprávu o revizi, stiskněte klávesu \"Enter\" nebo klávesu \"Escape\" pro zrušení.",
+      "amendReuseMessage": "Chcete-li znovu použít poslední zprávu o revizi, stiskněte klávesu \"Enter\" nebo klávesu \"Escape\" pro zrušení.",
       "amendRewrite": "Přepsání předchozí zprávy o revizi. Stisknutím klávesy 'Enter' potvrdíte nebo klávesou 'Escape' zrušíte.",
       "checkoutCreateLocalBranchWithName": "Vytvořte novou místní větev s názvem: {0}. Stiskněte klávesu \"Enter\" pro potvrzení nebo \"Escape\" pro zrušení.",
       "checkoutProvideBranchName": "Uveďte prosím název pobočky.",
@@ -224,18 +236,33 @@
       "gitDecorationsColors": "Použití barevné dekorace v navigátoru.",
       "mergeQuickPickPlaceholder": "Vyberte větev, kterou chcete sloučit s aktuálně aktivní větví {0}:",
       "missingUserInfo": "Ujistěte se, že jste v systému git nakonfigurovali položky 'user.name' a 'user.email'.",
+      "noHistoryForError": "Není k dispozici žádná historie {0}",
       "noPreviousCommit": "Žádný předchozí závazek ke změně",
       "noRepositoriesSelected": "Nebyla vybrána žádná úložiště.",
+      "prepositionIn": "na adrese",
       "repositoryNotInitialized": "Úložiště {0} ještě není inicializováno.",
       "stashChanges": "Změny v úložišti. Stisknutím klávesy \"Enter\" potvrďte nebo klávesou \"Escape\" zrušte zadání.",
       "stashChangesWithMessage": "Úschovna se mění se zprávou: {0}. Stisknutím klávesy 'Enter' potvrďte nebo klávesou 'Escape' zrušte.",
+      "tabTitleIndex": "{0} (rejstřík)",
+      "tabTitleWorkingTree": "{0} (pracovní strom)",
       "toggleBlameAnnotations": "Přepínání Anotace obvinění"
     },
     "keybinding-schema-updater": {
       "deprecation": "Místo toho použijte klauzuli `when`."
     },
     "keymaps": {
+      "addKeybindingTitle": "Přidání vazby na klávesy pro {0}",
+      "editKeybinding": "Upravit vazbu kláves...",
       "editKeybindingTitle": "Upravit vazbu kláves pro {0}",
+      "editWhenExpression": "Upravit Při vyjádření...",
+      "editWhenExpressionTitle": "Upravit, když výraz pro {0}",
+      "keybinding": {
+        "copy": "Kopírování vazby kláves",
+        "copyCommandId": "Kopírování vazby na klávesy ID příkazu",
+        "copyCommandTitle": "Kopírovat vazbu kláves Název příkazu",
+        "edit": "Upravit vazbu kláves...",
+        "editWhenExpression": "Upravit vazbu kláves Při výrazu..."
+      },
       "keybindingCollidesValidation": "vazba kláves v současné době koliduje",
       "requiredKeybindingValidation": "je vyžadována hodnota keybindingu",
       "resetKeybindingConfirmation": "Opravdu chcete obnovit výchozí hodnotu této vazby kláves?",
@@ -251,7 +278,6 @@
       "tabbarDecorationsEnabled": "Zobrazení dekorátorů problémů (diagnostických značek) na pásech karet."
     },
     "memory-inspector": {
-      "address": "Adresa",
       "addressTooltip": "Místo v paměti, které se má zobrazit, adresa nebo výraz vyhodnocující adresu.",
       "ascii": "ASCII",
       "binary": "Binární",
@@ -340,6 +366,8 @@
     },
     "navigator": {
       "autoReveal": "Automatické odhalení",
+      "clipboardWarn": "Přístup do schránky je odepřen. Zkontrolujte oprávnění prohlížeče.",
+      "clipboardWarnFirefox": "Rozhraní API schránky není k dispozici. Lze ji povolit pomocí předvolby '{0}' na stránce '{1}'. Poté znovu načtěte aplikaci Theia. Všimněte si, že to umožní FireFoxu získat plný přístup k systémové schránce.",
       "refresh": "Obnovení v Průzkumníku",
       "reveal": "Odhalení v Průzkumníkovi",
       "toggleHiddenFiles": "Přepínání skrytých souborů"
@@ -353,10 +381,16 @@
       "outputChannels": "Výstupní kanály",
       "showOutputChannel": "Zobrazit výstupní kanál..."
     },
+    "plugin": {
+      "blockNewTab": "Váš prohlížeč zabránil otevření nové karty"
+    },
     "plugin-dev": {
       "alreadyRunning": "Hostovaná instance je již spuštěna.",
       "debugInstance": "Instance ladění",
       "debugMode": "Použití inspect nebo inspect-brk pro ladění Node.js",
+      "debugPorts": {
+        "debugPort": "Port, který se použije pro ladění Node.js tohoto serveru"
+      },
       "devHost": "Vývojový hostitel",
       "failed": "Nepodařilo se spustit hostovanou instanci zásuvného modulu: {0}",
       "hostedPlugin": "Hostovaný plugin",
@@ -381,10 +415,16 @@
       "watchMode": "Spuštění sledovacího nástroje na vyvíjeném zásuvném modulu"
     },
     "plugin-ext": {
+      "authentication-main": {
+        "loginTitle": "Přihlášení"
+      },
       "plugins": "Zásuvné moduly",
-      "signInAgain": "Rozšíření \"{0}\" po vás chce, abyste se znovu přihlásili pomocí {1}.",
       "webviewTrace": "Řídí sledování komunikace s webovými pohledy.",
       "webviewWarnIfUnsecure": "Upozorňuje uživatele, že webové náhledy jsou v současné době nasazeny nezabezpečeně."
+    },
+    "preferences": {
+      "hostedPlugin": "Hostovaný plugin",
+      "toolbar": "Panel nástrojů"
     },
     "preview": {
       "openByDefault": "Ve výchozím nastavení otevřete místo editoru náhled."
@@ -395,7 +435,6 @@
       "lastModified": "Naposledy upraveno",
       "location": "Umístění",
       "noProperties": "Žádné vlastnosti nejsou k dispozici.",
-      "path": "Cesta",
       "properties": "Vlastnosti",
       "size": "Velikost",
       "symbolicLink": "Symbolický odkaz"
@@ -409,6 +448,9 @@
       "config.untrackedChanges.hidden": "skryté",
       "config.untrackedChanges.mixed": "smíšené",
       "config.untrackedChanges.separate": "samostatné stránky",
+      "dirtyDiff": {
+        "close": "Zavřít Změnit pohled"
+      },
       "history": "Historie",
       "noRepositoryFound": "Nebylo nalezeno žádné úložiště",
       "unamend": "Odstranit změny",
@@ -424,33 +466,41 @@
       "extract-widget": "Přesunutí zobrazení do sekundárního okna"
     },
     "shell-area": {
-      "bottom": "Spodní část",
-      "left": "Vlevo",
-      "right": "Právo",
-      "secondary": "Sekundární okno",
-      "top": "Nahoru"
+      "secondary": "Sekundární okno"
     },
     "task": {
       "attachTask": "Připojte úkol...",
       "clearHistory": "Vymazat historii",
+      "noTaskToRun": "Nebyla nalezena žádná úloha ke spuštění. Konfigurace úloh...",
       "openUserTasks": "Otevřené uživatelské úlohy"
     },
     "terminal": {
-      "confirmClose": "Řídí, zda se má při zavření okna potvrdit, že jsou aktivní relace terminálu.",
-      "confirmCloseAlways": "Vždy si ověřte, zda jsou k dispozici svorky.",
-      "confirmCloseChildren": "Zkontrolujte, zda existují terminály s podřízenými procesy.",
-      "confirmCloseNever": "Nikdy nepotvrzujte.",
+      "defaultProfile": "Výchozí profil používaný v {0}",
       "enableCopy": "Povolení funkce ctrl-c (cmd-c v systému macOS) pro kopírování vybraného textu",
       "enablePaste": "Povolení funkce ctrl-v (cmd-v v systému macOS) pro vkládání ze schránky",
+      "profileArgs": "Argumenty shellu, které tento profil používá.",
+      "profileColor": "ID barvy motivu terminálu, které se přiřadí k terminálu.",
+      "profileDefault": "Zvolte výchozí profil...",
+      "profileIcon": "ID kodikonu, které se přiřadí k ikoně terminálu.\nterminal-tmux:\"$(terminal-tmux)\"",
+      "profileNew": "Nový terminál (s profilem)...",
+      "profilePath": "Cesta k shellu, který tento profil používá.",
+      "profiles": "Profily, které se mají zobrazit při vytváření nového terminálu. Vlastnost path nastavte ručně pomocí nepovinných argumentů.\nNastavením existujícího profilu na `null` jej skryjete ze seznamu, například: `\"{0}\": null`.",
+      "rendererType": "Ovládá způsob vykreslování terminálu.",
+      "rendererTypeDeprecationMessage": "Typ vykreslovače již není podporován jako volitelná možnost.",
+      "selectProfile": "Výběr profilu pro nový terminál",
+      "shell.deprecated": "Tento postup je zastaralý, nový doporučený způsob konfigurace výchozího shellu je vytvoření profilu terminálu v 'terminal.integrated.profiles.{0}' a nastavení jeho názvu jako výchozího v 'terminal.integrated.defaultProfile.{0}.'",
       "shellArgsLinux": "Argumenty příkazového řádku, které se použijí v terminálu Linuxu.",
       "shellArgsOsx": "Argumenty příkazového řádku, které se použijí v terminálu systému macOS.",
       "shellArgsWindows": "Argumenty příkazového řádku, které se použijí v terminálu systému Windows.",
       "shellLinux": "Cesta k shellu, který terminál používá v Linuxu (výchozí: '{0}'}).",
       "shellOsx": "Cesta k shellu, který terminál používá v systému macOS (výchozí: '{0}'}).",
-      "shellWindows": "Cesta k shellu, který terminál používá v systému Windows. (výchozí: '{0}').",
-      "terminate": "Konec",
-      "terminateActive": "Chcete ukončit aktivní relaci terminálu?",
-      "terminateActiveMultiple": "Chcete ukončit aktivní relace terminálu {0}?"
+      "shellWindows": "Cesta k shellu, který terminál používá v systému Windows. (výchozí: '{0}')."
+    },
+    "test": {
+      "cancelAllTestRuns": "Zrušení všech testovacích běhů",
+      "stackFrameAt": "na adrese",
+      "testRunDefaultName": "{0} spustit {1}",
+      "testRuns": "Testovací běhy"
     },
     "toolbar": {
       "addCommand": "Přidání příkazu na panel nástrojů",
@@ -474,18 +524,22 @@
     },
     "typehierarchy": {
       "subtypeHierarchy": "Hierarchie podtypů",
-      "supertypeHierarchy": "Hierarchie nadtypů",
-      "typeHierarchy": "Hierarchie typů"
+      "supertypeHierarchy": "Hierarchie nadtypů"
     },
     "vsx-registry": {
-      "averageRating": "Průměrné hodnocení: {0} z 5",
+      "confirmDialogMessage": "Rozšíření \"{0}\" není ověřeno a může představovat bezpečnostní riziko.",
+      "confirmDialogTitle": "Jste si jisti, že chcete pokračovat v instalaci ?",
       "downloadCount": "Počet stažení: {0}",
       "errorFetching": "Chyba při načítání rozšíření.",
+      "errorFetchingConfigurationHint": "To může být způsobeno problémy s konfigurací sítě.",
       "failedInstallingVSIX": "Nepodařilo se nainstalovat {0} z VSIX.",
       "invalidVSIX": "Vybraný soubor není platný zásuvný modul \"*.vsix\".",
       "license": "Licence: {0}",
+      "onlyShowVerifiedExtensionsDescription": "Díky tomu se na stránkách {0} zobrazují pouze ověřená rozšíření.",
+      "onlyShowVerifiedExtensionsTitle": "Zobrazit pouze ověřená rozšíření",
       "recommendedExtensions": "Seznam názvů rozšíření doporučených pro použití v tomto pracovním prostoru.",
       "searchPlaceholder": "Hledat rozšíření v {0}",
+      "showInstalled": "Zobrazit nainstalovaná rozšíření",
       "showRecommendedExtensions": "Řídí, zda se mají zobrazovat oznámení pro doporučení rozšíření.",
       "vsx-extensions-contribution": {
         "update-version-uninstall-error": "Chyba při odstraňování rozšíření: {0}.",
@@ -507,8 +561,9 @@
       "confirmMessage.uriMultiple": "Opravdu chcete odstranit všechny {0} vybrané soubory?",
       "confirmMessage.uriSingle": "Opravdu chcete odstranit {0}?",
       "duplicate": "Duplikát",
-      "failApply": "Nelze použít změny v novém souboru",
       "failSaveAs": "Nelze spustit \"{0}\" pro aktuální widget.",
+      "newFilePlaceholder": "Název souboru",
+      "newFolderPlaceholder": "Název složky",
       "noErasure": "Poznámka: Z disku se nic nevymaže",
       "openRecentPlaceholder": "Zadejte název pracovního prostoru, který chcete otevřít.",
       "openRecentWorkspace": "Otevřít nedávný pracovní prostor...",
@@ -518,7 +573,6 @@
       "trashTitle": "Přesun {0} do koše",
       "trustEmptyWindow": "Řídí, zda má být prázdný pracovní prostor ve výchozím nastavení důvěryhodný.",
       "trustEnabled": "Řídí, zda je povolena důvěryhodnost pracovního prostoru. Pokud je zakázáno, jsou důvěryhodné všechny pracovní prostory.",
-      "trustPrompt": "Řídí, kdy se zobrazí výzva ke svěření pracovního prostoru při spuštění.",
       "trustRequest": "Rozšíření požaduje důvěryhodnost pracovního prostoru, ale odpovídající rozhraní API ještě není plně podporováno. Chcete tomuto pracovnímu prostoru důvěřovat?",
       "untitled-cleanup": "Zdá se, že existuje mnoho nepojmenovaných souborů pracovního prostoru. Zkontrolujte prosím {0} a odstraňte všechny nepoužívané soubory.",
       "workspaceFolderAdded": "Byl vytvořen pracovní prostor s více kořeny. Chcete uložit konfiguraci pracovního prostoru jako soubor?",

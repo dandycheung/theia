@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, named } from 'inversify';
@@ -25,6 +25,7 @@ import { CancellationToken } from './cancellation';
 import { ApplicationError } from './application-error';
 import { ReadableStream, Readable } from './stream';
 import { SyncReferenceCollection, Reference } from './reference';
+import { MarkdownString } from './markdown-rendering';
 
 export interface ResourceVersion {
 }
@@ -55,7 +56,10 @@ export interface Resource extends Disposable {
      * Undefined if a resource did not read content yet.
      */
     readonly encoding?: string | undefined;
-    readonly isReadonly?: boolean;
+
+    readonly onDidChangeReadOnly?: Event<boolean | MarkdownString>;
+
+    readonly readOnly?: boolean | MarkdownString;
     /**
      * Reads latest content of this resource.
      *

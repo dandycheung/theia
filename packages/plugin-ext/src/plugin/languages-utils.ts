@@ -11,11 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as theia from '@theia/plugin';
-import { SerializedIndentationRule, SerializedOnEnterRule, SerializedRegExp } from '../common';
+import { SerializedAutoClosingPair, SerializedIndentationRule, SerializedOnEnterRule, SerializedRegExp } from '../common';
+import { SyntaxTokenType } from './types-impl';
 
 export function serializeEnterRules(rules?: theia.OnEnterRule[]): SerializedOnEnterRule[] | undefined {
     if (typeof rules === 'undefined' || rules === null) {
@@ -53,4 +54,15 @@ export function serializeIndentation(indentationRules?: theia.IndentationRule): 
         indentNextLinePattern: serializeRegExp(indentationRules.indentNextLinePattern),
         unIndentedLinePattern: serializeRegExp(indentationRules.unIndentedLinePattern)
     };
+}
+
+export function serializeAutoClosingPairs(pairs: theia.AutoClosingPair[] | undefined): SerializedAutoClosingPair[] | undefined {
+    if (!pairs) {
+        return undefined;
+    };
+    return pairs.map(pair => ({
+        open: pair.open,
+        close: pair.close,
+        notIn: pair.notIn ? pair.notIn.map(tokenType => SyntaxTokenType.toString(tokenType)) : undefined
+    }));
 }

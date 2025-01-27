@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,6 +28,7 @@ import { PreferenceTreeGenerator } from './preference-tree-generator';
 import { PreferenceTreeLabelProvider } from './preference-tree-label-provider';
 import { Preference } from './preference-types';
 import { SelectableTreeNode } from '@theia/core/lib/browser';
+import { PreferenceLayoutProvider } from './preference-layout';
 
 disableJSDOM();
 
@@ -37,6 +38,7 @@ describe('preference-tree-label-provider', () => {
 
     beforeEach(() => {
         const container = new Container();
+        container.bind(PreferenceLayoutProvider).toSelf().inSingletonScope();
         container.bind<any>(PreferenceTreeGenerator).toConstantValue({ getCustomLabelFor: () => { } });
         preferenceTreeLabelProvider = container.resolve(PreferenceTreeLabelProvider);
     });

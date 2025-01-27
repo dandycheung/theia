@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 const parseArgs = require('minimist');
@@ -23,7 +23,7 @@ const electron = require('electron');
  * Generate keyboard layouts for using Theia as web application.
  *
  * Usage:
- *     yarn generate-layout [--info] [--all] [--pretty] [--output file]
+ *     npm run generate-layout [--info] [--all] [--pretty] [--output file]
  *
  * --info          Print the keyboard layout information; if omitted, the full
  *                 keyboard layout with info and mapping is printed.

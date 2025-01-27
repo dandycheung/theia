@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Marker } from './marker';
@@ -24,7 +24,7 @@ export interface ProblemMarker extends Marker<Diagnostic> {
 }
 
 export namespace ProblemMarker {
-    export function is(node: Marker<object>): node is ProblemMarker {
-        return 'kind' in node && node.kind === PROBLEM_KIND;
+    export function is(node: unknown): node is ProblemMarker {
+        return Marker.is(node) && node.kind === PROBLEM_KIND;
     }
 }

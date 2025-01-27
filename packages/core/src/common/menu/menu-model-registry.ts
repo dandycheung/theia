@@ -11,16 +11,17 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { injectable, inject, named } from 'inversify';
-import { Disposable } from '../disposable';
-import { CommandRegistry, Command } from '../command';
+import { inject, injectable, named } from 'inversify';
+import { Command, CommandRegistry } from '../command';
 import { ContributionProvider } from '../contribution-provider';
-import { CompositeMenuNode, CompositeMenuNodeWrapper } from './composite-menu-node';
-import { CompoundMenuNode, MenuAction, MenuNode, MenuPath, MutableCompoundMenuNode, SubMenuOptions } from './menu-types';
+import { Disposable } from '../disposable';
+import { Emitter, Event } from '../event';
 import { ActionMenuNode } from './action-menu-node';
+import { CompositeMenuNode, CompositeMenuNodeWrapper } from './composite-menu-node';
+import { CompoundMenuNode, MenuAction, MenuNode, MenuNodeMetadata, MenuPath, MutableCompoundMenuNode, SubMenuOptions } from './menu-types';
 
 export const MenuContribution = Symbol('MenuContribution');
 
@@ -68,6 +69,14 @@ export class MenuModelRegistry {
     protected readonly root = new CompositeMenuNode('');
     protected readonly independentSubmenus = new Map<string, MutableCompoundMenuNode>();
 
+    protected readonly onDidChangeEmitter = new Emitter<void>();
+
+    get onDidChange(): Event<void> {
+        return this.onDidChangeEmitter.event;
+    }
+
+    protected isReady = false;
+
     constructor(
         @inject(ContributionProvider) @named(MenuContribution)
         protected readonly contributions: ContributionProvider<MenuContribution>,
@@ -78,6 +87,7 @@ export class MenuModelRegistry {
         for (const contrib of this.contributions.getContributions()) {
             contrib.registerMenus(this);
         }
+        this.isReady = true;
     }
 
     /**
@@ -97,7 +107,9 @@ export class MenuModelRegistry {
      */
     registerMenuNode(menuPath: MenuPath | string, menuNode: MenuNode, group?: string): Disposable {
         const parent = this.getMenuNode(menuPath, group);
-        return parent.addNode(menuNode);
+        const disposable = parent.addNode(menuNode);
+        this.fireChangeEvent();
+        return this.changeEventOnDispose(disposable);
     }
 
     getMenuNode(menuPath: MenuPath | string, group?: string): MutableCompoundMenuNode {
@@ -137,13 +149,15 @@ export class MenuModelRegistry {
         const groupPath = index === 0 ? [] : menuPath.slice(0, index);
         const parent = this.findGroup(groupPath, options);
         let groupNode = this.findSubMenu(parent, menuId, options);
+        let disposable = Disposable.NULL;
         if (!groupNode) {
             groupNode = new CompositeMenuNode(menuId, label, options, parent);
-            return parent.addNode(groupNode);
+            disposable = this.changeEventOnDispose(parent.addNode(groupNode));
         } else {
             groupNode.updateOptions({ ...options, label });
-            return Disposable.NULL;
         }
+        this.fireChangeEvent();
+        return disposable;
     }
 
     registerIndependentSubmenu(id: string, label: string, options?: SubMenuOptions): Disposable {
@@ -151,14 +165,33 @@ export class MenuModelRegistry {
             console.debug(`Independent submenu with path ${id} registered, but given ID already exists.`);
         }
         this.independentSubmenus.set(id, new CompositeMenuNode(id, label, options));
-        return { dispose: () => this.independentSubmenus.delete(id) };
+        return this.changeEventOnDispose(Disposable.create(() => this.independentSubmenus.delete(id)));
     }
 
     linkSubmenu(parentPath: MenuPath | string, childId: string | MenuPath, options?: SubMenuOptions, group?: string): Disposable {
         const child = this.getMenuNode(childId);
         const parent = this.getMenuNode(parentPath, group);
+
+        const isRecursive = (node: MenuNodeMetadata, childNode: MenuNodeMetadata): boolean => {
+            if (node.id === childNode.id) {
+                return true;
+            }
+            if (node.parent) {
+                return isRecursive(node.parent, childNode);
+            }
+            return false;
+        };
+
+        // check for menu contribution recursion
+        if (isRecursive(parent, child)) {
+            console.warn(`Recursive menu contribution detected: ${child.id} is already in hierarchy of ${parent.id}.`);
+            return Disposable.NULL;
+        }
+
         const wrapper = new CompositeMenuNodeWrapper(child, parent, options);
-        return parent.addNode(wrapper);
+        const disposable = parent.addNode(wrapper);
+        this.fireChangeEvent();
+        return this.changeEventOnDispose(disposable);
     }
 
     /**
@@ -190,6 +223,7 @@ export class MenuModelRegistry {
         if (menuPath) {
             const parent = this.findGroup(menuPath);
             parent.removeNode(id);
+            this.fireChangeEvent();
             return;
         }
 
@@ -211,6 +245,7 @@ export class MenuModelRegistry {
             });
         };
         recurse(this.root);
+        this.fireChangeEvent();
     }
 
     /**
@@ -252,6 +287,69 @@ export class MenuModelRegistry {
      */
     getMenu(menuPath: MenuPath = []): MutableCompoundMenuNode {
         return this.findGroup(menuPath);
+    }
+
+    /**
+     * Checks the given menu model whether it will show a menu with a single submenu.
+     *
+     * @param fullMenuModel the menu model to analyze
+     * @param menuPath the menu's path
+     * @returns if the menu will show a single submenu this returns a menu that will show the child elements of the submenu,
+     * otherwise the given `fullMenuModel` is return
+     */
+    removeSingleRootNode(fullMenuModel: MutableCompoundMenuNode, menuPath: MenuPath): CompoundMenuNode {
+        // check whether all children are compound menus and that there is only one child that has further children
+        if (!this.allChildrenCompound(fullMenuModel.children)) {
+            return fullMenuModel;
+        }
+        let nonEmptyNode = undefined;
+        for (const child of fullMenuModel.children) {
+            if (!this.isEmpty(child.children || [])) {
+                if (nonEmptyNode === undefined) {
+                    nonEmptyNode = child;
+                } else {
+                    return fullMenuModel;
+                }
+            }
+        }
+
+        if (CompoundMenuNode.is(nonEmptyNode) && nonEmptyNode.children.length === 1 && CompoundMenuNode.is(nonEmptyNode.children[0])) {
+            nonEmptyNode = nonEmptyNode.children[0];
+        }
+
+        return CompoundMenuNode.is(nonEmptyNode) ? nonEmptyNode : fullMenuModel;
+    }
+
+    protected allChildrenCompound(children: ReadonlyArray<MenuNode>): boolean {
+        return children.every(CompoundMenuNode.is);
+    }
+
+    protected isEmpty(children: ReadonlyArray<MenuNode>): boolean {
+        if (children.length === 0) {
+            return true;
+        }
+        if (!this.allChildrenCompound(children)) {
+            return false;
+        }
+        for (const child of children) {
+            if (!this.isEmpty(child.children || [])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    protected changeEventOnDispose(disposable: Disposable): Disposable {
+        return Disposable.create(() => {
+            disposable.dispose();
+            this.fireChangeEvent();
+        });
+    }
+
+    protected fireChangeEvent(): void {
+        if (this.isReady) {
+            this.onDidChangeEmitter.fire();
+        }
     }
 
     /**
