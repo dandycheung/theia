@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as yargs from 'yargs';
@@ -35,22 +35,26 @@ export class CliManager {
     constructor(@inject(ContributionProvider) @named(CliContribution)
     protected readonly contributionsProvider: ContributionProvider<CliContribution>) { }
 
-    async initializeCli(argv: string[]): Promise<void> {
+    async initializeCli<T>(argv: string[], postSetArguments: () => Promise<void>, defaultCommand: () => Promise<void>): Promise<void> {
         const pack = require('../../package.json');
         const version = pack.version;
-        const command = yargs.version(version);
+        const command = yargs(argv, process.cwd()).version(version);
         command.exitProcess(this.isExit());
         for (const contrib of this.contributionsProvider.getContributions()) {
             contrib.configure(command);
         }
-        const args = command
+        await command
             .detectLocale(false)
             .showHelpOnFail(false, 'Specify --help for available options')
             .help('help')
-            .parse(argv);
-        for (const contrib of this.contributionsProvider.getContributions()) {
-            await contrib.setArguments(args);
-        }
+            .middleware(async args => {
+                for (const contrib of this.contributionsProvider.getContributions()) {
+                    await contrib.setArguments(args);
+                }
+                await postSetArguments();
+            })
+            .command('$0', false, () => { }, defaultCommand)
+            .parse();
     }
 
     protected isExit(): boolean {

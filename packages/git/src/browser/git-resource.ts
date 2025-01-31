@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Git, Repository } from '../common';
@@ -34,6 +34,21 @@ export class GitResource implements Resource {
             return this.git.show(this.repository, this.uri.toString(), { commitish, encoding });
         }
         return '';
+    }
+
+    async getSize(): Promise<number> {
+        if (this.repository) {
+            const path = Repository.relativePath(this.repository, this.uri.withScheme('file'))?.toString();
+            if (path) {
+                const commitish = this.uri.query || 'index';
+                const args = commitish !== 'index' ? ['ls-tree', '--format=%(objectsize)', commitish, path] : ['ls-files', '--format=%(objectsize)', '--', path];
+                const size = (await this.git.exec(this.repository, args)).stdout.split('\n').filter(line => !!line.trim())[0];
+                if (size) {
+                    return parseInt(size);
+                }
+            }
+        }
+        return 0;
     }
 
     dispose(): void { }

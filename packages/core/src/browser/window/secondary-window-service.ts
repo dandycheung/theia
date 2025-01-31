@@ -11,8 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
+
+import { Event } from '../../common';
+import { ApplicationShell } from '../shell';
+import { ExtractableWidget } from '../widgets';
 
 export const SecondaryWindowService = Symbol('SecondaryWindowService');
 
@@ -29,7 +33,9 @@ export interface SecondaryWindowService {
      * @param onClose optional callback that is invoked when the secondary window is closed
      * @returns the created window or `undefined` if it could not be created
      */
-    createSecondaryWindow(onClose?: (win: Window) => void): Window | undefined;
+    createSecondaryWindow(widget: ExtractableWidget, shell: ApplicationShell): Window | undefined;
+    readonly onWindowOpened: Event<Window>;
+    readonly onWindowClosed: Event<Window>;
 
     /** Handles focussing the given secondary window in the browser and on Electron. */
     focus(win: Window): void;

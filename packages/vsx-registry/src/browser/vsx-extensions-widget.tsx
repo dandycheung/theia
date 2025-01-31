@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, interfaces, postConstruct, inject } from '@theia/core/shared/inversify';
-import { TreeModel, TreeNode } from '@theia/core/lib/browser';
+import { Message, TreeModel, TreeNode } from '@theia/core/lib/browser';
 import { SourceTreeWidget } from '@theia/core/lib/browser/source-tree';
 import { VSXExtensionsSource, VSXExtensionsSourceOptions } from './vsx-extensions-source';
 import { nls } from '@theia/core/lib/common/nls';
@@ -51,6 +51,9 @@ export class VSXExtensionsWidget extends SourceTreeWidget implements BadgeWidget
 
     protected _badge?: number;
     protected onDidChangeBadgeEmitter = new Emitter<void>();
+
+    protected _badgeTooltip?: string;
+    protected onDidChangeBadgeTooltipEmitter = new Emitter<void>();
 
     @inject(VSXExtensionsWidgetOptions)
     protected readonly options: VSXExtensionsWidgetOptions;
@@ -90,6 +93,19 @@ export class VSXExtensionsWidget extends SourceTreeWidget implements BadgeWidget
         this.onDidChangeBadgeEmitter.fire();
     }
 
+    get onDidChangeBadgeTooltip(): Event<void> {
+        return this.onDidChangeBadgeTooltipEmitter.event;
+    }
+
+    get badgeTooltip(): string | undefined {
+        return this._badgeTooltip;
+    }
+
+    set badgeTooltip(tooltip: string | undefined) {
+        this._badgeTooltip = tooltip;
+        this.onDidChangeBadgeTooltipEmitter.fire();
+    }
+
     protected computeTitle(): string {
         switch (this.options.id) {
             case VSXExtensionsSourceOptions.INSTALLED:
@@ -127,12 +143,23 @@ export class VSXExtensionsWidget extends SourceTreeWidget implements BadgeWidget
             const searchError = this.extensionsSource.getModel().searchError;
             if (!!searchError) {
                 const message = nls.localize('theia/vsx-registry/errorFetching', 'Error fetching extensions.');
+                const configurationHint = nls.localize('theia/vsx-registry/errorFetchingConfigurationHint', 'This could be caused by network configuration issues.');
+                const hint = searchError.includes('ENOTFOUND') ? configurationHint : '';
                 return <AlertMessage
                     type='ERROR'
-                    header={`${message} ${searchError}`}
+                    header={`${message} ${searchError} ${hint}`}
                 />;
             }
         }
         return super.renderTree(model);
+    }
+
+    protected override onAfterShow(msg: Message): void {
+        super.onAfterShow(msg);
+        if (this.options.id === VSXExtensionsSourceOptions.INSTALLED) {
+            // This is needed when an Extension was installed outside of the extension view.
+            // E.g. using explorer context menu.
+            this.doUpdateRows();
+        }
     }
 }

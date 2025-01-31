@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
@@ -24,6 +24,7 @@ import {
 } from '@theia/core/lib/browser';
 import React = require('@theia/core/shared/react');
 import { PreferenceTreeModel, PreferenceTreeNodeRow, PreferenceTreeNodeProps } from '../preference-tree-model';
+import { Preference } from '../util/preference-types';
 
 @injectable()
 export class PreferencesTreeWidget extends TreeWidget {
@@ -50,11 +51,19 @@ export class PreferencesTreeWidget extends TreeWidget {
         this.rows = new Map();
         let index = 0;
         for (const [id, nodeRow] of this.model.currentRows.entries()) {
-            if (nodeRow.visibleChildren > 0 && (ExpandableTreeNode.is(nodeRow.node) || ExpandableTreeNode.isExpanded(nodeRow.node.parent))) {
+            if (nodeRow.visibleChildren > 0 && this.isVisibleNode(nodeRow.node)) {
                 this.rows.set(id, { ...nodeRow, index: index++ });
             }
         }
         this.updateScrollToRow();
+    }
+
+    protected isVisibleNode(node: Preference.TreeNode): boolean {
+        if (Preference.TreeNode.isTopLevel(node)) {
+            return true;
+        } else {
+            return ExpandableTreeNode.isExpanded(node.parent) && Preference.TreeNode.is(node.parent) && this.isVisibleNode(node.parent);
+        }
     }
 
     protected override doRenderNodeRow({ depth, visibleChildren, node, isExpansible }: PreferenceTreeNodeRow): React.ReactNode {

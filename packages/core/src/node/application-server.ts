@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from 'inversify';
@@ -26,9 +26,9 @@ export class ApplicationServerImpl implements ApplicationServer {
     protected readonly applicationPackage: ApplicationPackage;
 
     getExtensionsInfos(): Promise<ExtensionInfo[]> {
-        const extensions = this.applicationPackage.extensionPackages;
-        const infos: ExtensionInfo[] = extensions.map(extension => ({ name: extension.name, version: extension.version }));
-        return Promise.resolve(infos);
+        // @ts-expect-error
+        const appInfo: ExtensionInfo[] = globalThis.extensionInfo;
+        return Promise.resolve(appInfo);
     }
 
     getApplicationInfo(): Promise<ApplicationInfo | undefined> {
@@ -37,9 +37,20 @@ export class ApplicationServerImpl implements ApplicationServer {
             const name = pck.name;
             const version = pck.version;
 
-            return Promise.resolve({ name, version });
+            return Promise.resolve({
+                name,
+                version
+            });
         }
         return Promise.resolve(undefined);
+    }
+
+    getApplicationRoot(): Promise<string> {
+        return Promise.resolve(this.applicationPackage.projectPath);
+    }
+
+    getApplicationPlatform(): Promise<string> {
+        return Promise.resolve(`${process.platform}-${process.arch}`);
     }
 
     async getBackendOS(): Promise<OS.Type> {

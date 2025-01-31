@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -291,7 +291,120 @@ export module '@theia/plugin' {
          * see - workspace.fs for how to read and write files and folders from an uri.
          */
         readonly logUri: Uri;
+
+        /**
+         * An object that keeps information about how this extension can use language models.
+         *
+         * @see {@link LanguageModelChat.sendRequest}
+         */
+        readonly languageModelAccessInformation: LanguageModelAccessInformation;
     }
 
+    export namespace commands {
+
+        /**
+         * Get the keybindings associated to commandId.
+         * @param commandId The ID of the command for which we are looking for keybindings.
+         */
+        export function getKeyBinding(commandId: string): Thenable<CommandKeyBinding[] | undefined>;
+    }
+
+    /**
+     * Key Binding of a command
+     */
+    export interface CommandKeyBinding {
+        /**
+         * Identifier of the command.
+         */
+        id: string;
+        /**
+         * Value of the keyBinding
+         */
+        value: string;
+    }
+
+    /**
+     * Enumeration of the supported operating systems.
+     */
+    export enum OperatingSystem {
+        Windows = 'Windows',
+        Linux = 'Linux',
+        OSX = 'OSX'
+    }
+
+    export namespace env {
+
+        /**
+         * Returns the type of the operating system on the client side (like browser'OS if using browser mode). If it is neither [Windows](isWindows) nor [OS X](isOSX), then
+         * it always return with the `Linux` OS type.
+         */
+        export function getClientOperatingSystem(): Thenable<OperatingSystem>;
+
+    }
+
+    export interface DecorationData {
+        letter?: string;
+        title?: string;
+        color?: ThemeColor;
+        priority?: number;
+        bubble?: boolean;
+        source?: string;
+    }
+
+    export interface SourceControl {
+
+        /**
+         * Whether the source control is selected.
+         */
+        readonly selected: boolean;
+
+        /**
+         * An event signaling when the selection state changes.
+         */
+        readonly onDidChangeSelection: Event<boolean>;
+    }
+
+    export interface SourceControlResourceDecorations {
+        source?: string;
+        letter?: string;
+        color?: ThemeColor;
+    }
+
+    export interface TerminalObserver {
+
+        /**
+         * A regex to match against the latest terminal output.
+         */
+        readonly outputMatcherRegex: string;
+        /**
+         * The maximum number of lines to match the regex against. Maximum is 40 lines.
+         */
+        readonly nrOfLinesToMatch: number;
+        /**
+         * Invoked when the regex matched against the terminal contents.
+         * @param groups The matched groups
+         */
+        matchOccurred(groups: string[]): void;
+    }
+
+    export namespace window {
+        export function registerTerminalObserver(observer: TerminalObserver): Disposable;
+    }
 }
 
+/**
+ * Thenable is a common denominator between ES6 promises, Q, jquery.Deferred, WinJS.Promise,
+ * and others. This API makes no assumption about what promise library is being used which
+ * enables reusing existing code without migrating to a specific promise implementation. Still,
+ * we recommend the use of native promises which are available in this editor.
+ */
+interface Thenable<T> {
+    /**
+     * Attaches callbacks for the resolution and/or rejection of the Promise.
+     * @param onfulfilled The callback to execute when the Promise is resolved.
+     * @param onrejected The callback to execute when the Promise is rejected.
+     * @returns A Promise for the completion of which ever callback is executed.
+     */
+    then<TResult>(onfulfilled?: (value: T) => TResult | Thenable<TResult>, onrejected?: (reason: any) => TResult | Thenable<TResult>): Thenable<TResult>;
+    then<TResult>(onfulfilled?: (value: T) => TResult | Thenable<TResult>, onrejected?: (reason: any) => void): Thenable<TResult>;
+}

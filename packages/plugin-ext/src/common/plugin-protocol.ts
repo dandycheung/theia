@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
-import { JsonRpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
+import { RpcServer } from '@theia/core/lib/common/messaging/proxy-factory';
 import { RPCProtocol } from './rpc-protocol';
 import { Disposable } from '@theia/core/lib/common/disposable';
 import { LogPart, KeysToAnyValues, KeysToKeysToAnyValue } from './types';
-import { CharacterPair, CommentRule, PluginAPIFactory, Plugin } from './plugin-api-rpc';
+import { CharacterPair, CommentRule, PluginAPIFactory, Plugin, ThemeIcon } from './plugin-api-rpc';
 import { ExtPluginApi } from './plugin-ext-api-contribution';
 import { IJSONSchema, IJSONSchemaSnippet } from '@theia/core/lib/common/json-schema';
 import { RecursivePartial } from '@theia/core/lib/common/types';
@@ -31,7 +31,7 @@ export { PluginIdentifiers };
 export const hostedServicePath = '/services/hostedPlugin';
 
 /**
- * Plugin engine (API) type, i.e. 'theiaPlugin', 'vscode', etc.
+ * Plugin engine (API) type, i.e. 'theiaPlugin', 'vscode', 'theiaHeadlessPlugin', etc.
  */
 export type PluginEngine = string;
 
@@ -49,6 +49,8 @@ export interface PluginPackage {
     theiaPlugin?: {
         frontend?: string;
         backend?: string;
+        /* Requires the `@theia/plugin-ext-headless` extension. */
+        headless?: string;
     };
     main?: string;
     browser?: string;
@@ -59,6 +61,7 @@ export interface PluginPackage {
     activationEvents?: string[];
     extensionDependencies?: string[];
     extensionPack?: string[];
+    l10n?: string;
     icon?: string;
     extensionKind?: Array<'ui' | 'workspace'>
 }
@@ -72,6 +75,7 @@ export namespace PluginPackage {
  * This interface describes a package.json contribution section object.
  */
 export interface PluginPackageContribution {
+    authentication?: PluginPackageAuthenticationProvider[];
     configuration?: RecursivePartial<PreferenceSchema> | RecursivePartial<PreferenceSchema>[];
     configurationDefaults?: RecursivePartial<PreferenceSchemaProperties>;
     languages?: PluginPackageLanguageContribution[];
@@ -88,6 +92,7 @@ export interface PluginPackageContribution {
     snippets?: PluginPackageSnippetsContribution[];
     themes?: PluginThemeContribution[];
     iconThemes?: PluginIconThemeContribution[];
+    icons?: PluginIconContribution[];
     colors?: PluginColorContribution[];
     taskDefinitions?: PluginTaskDefinitionContribution[];
     problemMatchers?: PluginProblemMatcherContribution[];
@@ -95,6 +100,45 @@ export interface PluginPackageContribution {
     jsonValidation?: PluginJsonValidationContribution[];
     resourceLabelFormatters?: ResourceLabelFormatter[];
     localizations?: PluginPackageLocalization[];
+    terminal?: PluginPackageTerminal;
+    notebooks?: PluginPackageNotebook[];
+    notebookRenderer?: PluginNotebookRendererContribution[];
+    notebookPreload?: PluginPackageNotebookPreload[];
+}
+
+export interface PluginPackageNotebook {
+    type: string;
+    displayName: string;
+    selector?: readonly { filenamePattern?: string; excludeFileNamePattern?: string }[];
+    priority?: string;
+}
+
+export interface PluginNotebookRendererContribution {
+    readonly id: string;
+    readonly displayName: string;
+    readonly mimeTypes: string[];
+    readonly entrypoint: string | { readonly extends: string; readonly path: string };
+    readonly requiresMessaging?: 'always' | 'optional' | 'never'
+}
+
+export interface PluginPackageNotebookPreload {
+    type: string;
+    entrypoint: string;
+}
+
+export interface PluginPackageAuthenticationProvider {
+    id: string;
+    label: string;
+}
+
+export interface PluginPackageTerminalProfile {
+    title: string;
+    id: string;
+    icon?: string;
+}
+
+export interface PluginPackageTerminal {
+    profiles: PluginPackageTerminalProfile[];
 }
 
 export interface PluginPackageLocalization {
@@ -149,11 +193,13 @@ export interface PluginPackageViewWelcome {
     view: string;
     contents: string;
     when?: string;
+    enablement?: string;
 }
 
 export interface PluginPackageCommand {
     command: string;
     title: string;
+    shortTitle?: string;
     original?: string;
     category?: string;
     icon?: string | { light: string; dark: string; };
@@ -227,6 +273,13 @@ export interface PluginIconThemeContribution {
     uiTheme?: PluginUiTheme;
 }
 
+export interface PluginIconContribution {
+    [id: string]: {
+        description: string;
+        default: { fontPath: string; fontCharacter: string } | string;
+    };
+}
+
 export interface PlatformSpecificAdapterContribution {
     program?: string;
     args?: string[];
@@ -265,6 +318,7 @@ export interface PluginPackageLanguageContribution {
     aliases?: string[];
     mimetypes?: string[];
     configuration?: string;
+    icon?: IconUrl;
 }
 
 export interface PluginPackageLanguageContributionConfiguration {
@@ -322,7 +376,7 @@ export interface PluginScanner {
      */
     getLifecycle(plugin: PluginPackage): PluginLifecycle;
 
-    getContribution(plugin: PluginPackage): PluginContribution | undefined;
+    getContribution(plugin: PluginPackage): Promise<PluginContribution | undefined>;
 
     /**
      * A mapping between a dependency as its defined in package.json
@@ -350,7 +404,7 @@ export interface PluginDeployerResolver {
 
 export const PluginDeployerDirectoryHandler = Symbol('PluginDeployerDirectoryHandler');
 export interface PluginDeployerDirectoryHandler {
-    accept(pluginDeployerEntry: PluginDeployerEntry): boolean;
+    accept(pluginDeployerEntry: PluginDeployerEntry): Promise<boolean>;
 
     handle(context: PluginDeployerDirectoryHandlerContext): Promise<void>;
 }
@@ -358,7 +412,7 @@ export interface PluginDeployerDirectoryHandler {
 export const PluginDeployerFileHandler = Symbol('PluginDeployerFileHandler');
 export interface PluginDeployerFileHandler {
 
-    accept(pluginDeployerEntry: PluginDeployerEntry): boolean;
+    accept(pluginDeployerEntry: PluginDeployerEntry): Promise<boolean>;
 
     handle(context: PluginDeployerFileHandlerContext): Promise<void>;
 }
@@ -385,7 +439,7 @@ export interface PluginDeployerStartContext {
 export const PluginDeployer = Symbol('PluginDeployer');
 export interface PluginDeployer {
 
-    start(): void;
+    start(): Promise<void>;
 
 }
 
@@ -401,7 +455,9 @@ export enum PluginDeployerEntryType {
 
     FRONTEND,
 
-    BACKEND
+    BACKEND,
+
+    HEADLESS // Deployed in the Theia Node server outside the context of a frontend/backend connection
 }
 
 /**
@@ -451,9 +507,9 @@ export interface PluginDeployerEntry {
 
     getChanges(): string[];
 
-    isFile(): boolean;
+    isFile(): Promise<boolean>;
 
-    isDirectory(): boolean;
+    isDirectory(): Promise<boolean>;
 
     /**
      * Resolved if a resolver has handle this plugin
@@ -519,6 +575,7 @@ export interface PluginModel {
      */
     packagePath: string;
     iconUrl?: string;
+    l10n?: string;
     readmeUrl?: string;
     licenseUrl?: string;
 }
@@ -526,6 +583,7 @@ export interface PluginModel {
 export interface PluginEntryPoint {
     frontend?: string;
     backend?: string;
+    headless?: string;
 }
 
 /**
@@ -533,6 +591,7 @@ export interface PluginEntryPoint {
  */
 export interface PluginContribution {
     activationEvents?: string[];
+    authentication?: AuthenticationProviderInformation[];
     configuration?: PreferenceSchema[];
     configurationDefaults?: PreferenceSchemaProperties;
     languages?: LanguageContribution[];
@@ -549,12 +608,47 @@ export interface PluginContribution {
     snippets?: SnippetContribution[];
     themes?: ThemeContribution[];
     iconThemes?: IconThemeContribution[];
+    icons?: IconContribution[];
     colors?: ColorDefinition[];
     taskDefinitions?: TaskDefinition[];
     problemMatchers?: ProblemMatcherContribution[];
     problemPatterns?: ProblemPatternContribution[];
     resourceLabelFormatters?: ResourceLabelFormatter[];
     localizations?: Localization[];
+    terminalProfiles?: TerminalProfile[];
+    notebooks?: NotebookContribution[];
+    notebookRenderer?: NotebookRendererContribution[];
+    notebookPreload?: notebookPreloadContribution[];
+}
+export interface NotebookContribution {
+    type: string;
+    displayName: string;
+    selector?: readonly { filenamePattern?: string; excludeFileNamePattern?: string }[];
+    priority?: string;
+}
+
+export interface NotebookRendererContribution {
+    readonly id: string;
+    readonly displayName: string;
+    readonly mimeTypes: string[];
+    readonly entrypoint: string | { readonly extends: string; readonly path: string };
+    readonly requiresMessaging?: 'always' | 'optional' | 'never'
+}
+
+export interface notebookPreloadContribution {
+    type: string;
+    entrypoint: string;
+}
+
+export interface AuthenticationProviderInformation {
+    id: string;
+    label: string;
+}
+
+export interface TerminalProfile {
+    title: string,
+    id: string,
+    icon?: string
 }
 
 export interface Localization {
@@ -568,8 +662,7 @@ export interface Localization {
 export interface Translation {
     id: string;
     path: string;
-    version: string;
-    contents: { [scope: string]: { [key: string]: string } }
+    cachedContents?: { [scope: string]: { [key: string]: string } };
 }
 
 export interface SnippetContribution {
@@ -594,6 +687,26 @@ export interface IconThemeContribution {
     description?: string;
     uri: string;
     uiTheme?: UiTheme;
+}
+
+export interface IconDefinition {
+    fontCharacter: string;
+    location: string;
+}
+
+export type IconDefaults = ThemeIcon | IconDefinition;
+
+export interface IconContribution {
+    id: string;
+    extensionId: string;
+    description: string | undefined;
+    defaults: IconDefaults;
+}
+
+export namespace IconContribution {
+    export function isIconDefinition(defaults: IconDefaults): defaults is IconDefinition {
+        return 'fontCharacter' in defaults;
+    }
 }
 
 export interface GrammarsContribution {
@@ -621,6 +734,15 @@ export interface LanguageContribution {
     aliases?: string[];
     mimetypes?: string[];
     configuration?: LanguageConfiguration;
+    /**
+     * @internal
+     */
+    icon?: IconUrl;
+}
+
+export interface RegExpOptions {
+    pattern: string;
+    flags?: string;
 }
 
 export interface LanguageConfiguration {
@@ -630,7 +752,7 @@ export interface LanguageConfiguration {
     autoClosingPairs?: AutoClosingPairConditional[];
     comments?: CommentRule;
     folding?: FoldingRules;
-    wordPattern?: string;
+    wordPattern?: string | RegExpOptions;
     onEnterRules?: OnEnterRule[];
 }
 
@@ -644,7 +766,9 @@ export interface DebuggerContribution extends PlatformSpecificAdapterContributio
     enableBreakpointsFor?: {
         languageIds: string[]
     },
-    configurationAttributes?: IJSONSchema[],
+    configurationAttributes?: {
+        [request: string]: IJSONSchema
+    },
     configurationSnippets?: IJSONSchemaSnippet[],
     variables?: ScopeMap,
     adapterExecutableCommand?: string
@@ -656,10 +780,10 @@ export interface DebuggerContribution extends PlatformSpecificAdapterContributio
 }
 
 export interface IndentationRules {
-    increaseIndentPattern: string;
-    decreaseIndentPattern: string;
-    unIndentedLinePattern?: string;
-    indentNextLinePattern?: string;
+    increaseIndentPattern: string | RegExpOptions;
+    decreaseIndentPattern: string | RegExpOptions;
+    unIndentedLinePattern?: string | RegExpOptions;
+    indentNextLinePattern?: string | RegExpOptions;
 }
 export interface AutoClosingPair {
     close: string;
@@ -671,8 +795,8 @@ export interface AutoClosingPairConditional extends AutoClosingPair {
 }
 
 export interface FoldingMarkers {
-    start: string;
-    end: string;
+    start: string | RegExpOptions;
+    end: string | RegExpOptions;
 }
 
 export interface FoldingRules {
@@ -681,9 +805,9 @@ export interface FoldingRules {
 }
 
 export interface OnEnterRule {
-    beforeText: string;
-    afterText?: string;
-    previousLineText?: string;
+    beforeText: string | RegExpOptions;
+    afterText?: string | RegExpOptions;
+    previousLineText?: string | RegExpOptions;
     action: EnterAction;
 }
 
@@ -730,12 +854,14 @@ export interface ViewWelcome {
     view: string;
     content: string;
     when?: string;
+    enablement?: string;
     order: number;
 }
 
 export interface PluginCommand {
     command: string;
     title: string;
+    shortTitle?: string;
     originalTitle?: string;
     category?: string;
     iconUrl?: IconUrl;
@@ -860,6 +986,7 @@ export interface PluginDeployerHandler {
     deployFrontendPlugins(frontendPlugins: PluginDeployerEntry[]): Promise<number | undefined>;
     deployBackendPlugins(backendPlugins: PluginDeployerEntry[]): Promise<number | undefined>;
 
+    getDeployedPlugins(): Promise<DeployedPlugin[]>;
     getDeployedPluginsById(pluginId: string): DeployedPlugin[];
 
     getDeployedPlugin(pluginId: PluginIdentifiers.VersionedId): DeployedPlugin | undefined;
@@ -891,7 +1018,7 @@ export interface DeployedPlugin {
 }
 
 export const HostedPluginServer = Symbol('HostedPluginServer');
-export interface HostedPluginServer extends JsonRpcServer<HostedPluginClient> {
+export interface HostedPluginServer extends RpcServer<HostedPluginClient> {
 
     getDeployedPluginIds(): Promise<PluginIdentifiers.VersionedId[]>;
 

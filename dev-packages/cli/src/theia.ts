@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as fs from 'fs';
@@ -24,7 +24,12 @@ import { ApplicationProps, DEFAULT_SUPPORTED_API_VERSION } from '@theia/applicat
 import checkDependencies from './check-dependencies';
 import downloadPlugins from './download-plugins';
 import runTest from './run-test';
+import { RateLimiter } from 'limiter';
 import { LocalizationManager, extract } from '@theia/localization-manager';
+import { NodeRequestService } from '@theia/request/lib/node-request-service';
+import { ExtensionIdMatchesFilterFactory, OVSX_RATE_LIMIT, OVSXClient, OVSXHttpClient, OVSXRouterClient, RequestContainsFilterFactory } from '@theia/ovsx-client';
+
+const { executablePath } = require('puppeteer');
 
 process.on('unhandledRejection', (reason, promise) => {
     throw reason;
@@ -43,9 +48,7 @@ theiaCli();
 function toStringArray(argv: (string | number)[]): string[];
 function toStringArray(argv?: (string | number)[]): string[] | undefined;
 function toStringArray(argv?: (string | number)[]): string[] | undefined {
-    return argv === undefined
-        ? undefined
-        : argv.map(arg => String(arg));
+    return argv?.map(arg => String(arg));
 }
 
 function rebuildCommand(command: string, target: ApplicationProps.Target): yargs.CommandModule<unknown, {
@@ -92,12 +95,12 @@ function rebuildCommand(command: string, target: ApplicationProps.Target): yargs
 }
 
 function defineCommonOptions<T>(cli: yargs.Argv<T>): yargs.Argv<T & {
-    appTarget?: 'browser' | 'electron'
+    appTarget?: 'browser' | 'electron' | 'browser-only'
 }> {
     return cli
         .option('app-target', {
             description: 'The target application type. Overrides `theia.target` in the application\'s package.json',
-            choices: ['browser', 'electron'] as const,
+            choices: ['browser', 'electron', 'browser-only'] as const,
         });
 }
 
@@ -199,6 +202,7 @@ async function theiaCli(): Promise<void> {
                     skipHoisted: false,
                     skipUniqueness: true,
                     skipSingleTheiaVersion: true,
+                    onlyTheiaExtensions: false,
                     suppress
                 });
             }
@@ -224,6 +228,33 @@ async function theiaCli(): Promise<void> {
                     skipHoisted: true,
                     skipUniqueness: false,
                     skipSingleTheiaVersion: false,
+                    onlyTheiaExtensions: false,
+                    suppress
+                });
+            }
+        })
+        .command<{
+            suppress: boolean
+        }>({
+            command: 'check:theia-extensions',
+            describe: 'Check uniqueness of Theia extension versions or whether they are hoisted',
+            builder: {
+                'suppress': {
+                    alias: 's',
+                    describe: 'Suppress exiting with failure code',
+                    boolean: true,
+                    default: false
+                }
+            },
+            handler: ({ suppress }) => {
+                checkDependencies({
+                    workspaces: undefined,
+                    include: ['**'],
+                    exclude: [],
+                    skipHoisted: true,
+                    skipUniqueness: false,
+                    skipSingleTheiaVersion: true,
+                    onlyTheiaExtensions: true,
                     suppress
                 });
             }
@@ -235,6 +266,7 @@ async function theiaCli(): Promise<void> {
             skipHoisted: boolean,
             skipUniqueness: boolean,
             skipSingleTheiaVersion: boolean,
+            onlyTheiaExtensions: boolean,
             suppress: boolean
         }>({
             command: 'check:dependencies',
@@ -278,6 +310,12 @@ async function theiaCli(): Promise<void> {
                     boolean: true,
                     default: false
                 },
+                'only-theia-extensions': {
+                    alias: 'o',
+                    describe: 'Only check dependencies which are Theia extensions',
+                    boolean: true,
+                    default: false
+                },
                 'suppress': {
                     alias: 's',
                     describe: 'Suppress exiting with failure code',
@@ -292,6 +330,7 @@ async function theiaCli(): Promise<void> {
                 skipHoisted,
                 skipUniqueness,
                 skipSingleTheiaVersion,
+                onlyTheiaExtensions,
                 suppress
             }) => {
                 checkDependencies({
@@ -301,6 +340,7 @@ async function theiaCli(): Promise<void> {
                     skipHoisted,
                     skipUniqueness,
                     skipSingleTheiaVersion,
+                    onlyTheiaExtensions,
                     suppress
                 });
             }
@@ -312,8 +352,10 @@ async function theiaCli(): Promise<void> {
             apiUrl: string
             parallel: boolean
             proxyUrl?: string
-            proxyAuthentification?: string
+            proxyAuthorization?: string
             strictSsl: boolean
+            rateLimit: number
+            ovsxRouterConfig?: string
         }>({
             command: 'download:plugins',
             describe: 'Download defined external plugins',
@@ -343,22 +385,54 @@ async function theiaCli(): Promise<void> {
                 'parallel': {
                     describe: 'Download in parallel',
                     boolean: true,
-                    default: false
+                    default: true
+                },
+                'rate-limit': {
+                    describe: 'Amount of maximum open-vsx requests per second',
+                    number: true,
+                    default: OVSX_RATE_LIMIT
                 },
                 'proxy-url': {
                     describe: 'Proxy URL'
                 },
-                'proxy-authentification': {
-                    describe: 'Proxy authentification information'
+                'proxy-authorization': {
+                    describe: 'Proxy authorization information'
                 },
                 'strict-ssl': {
                     describe: 'Whether to enable strict SSL mode',
                     boolean: true,
                     default: false
+                },
+                'ovsx-router-config': {
+                    describe: 'JSON configuration file for the OVSX router client',
+                    type: 'string'
                 }
             },
-            handler: async args => {
-                await downloadPlugins(args);
+            handler: async ({ apiUrl, proxyUrl, proxyAuthorization, strictSsl, ovsxRouterConfig, ...options }) => {
+                const requestService = new NodeRequestService();
+                await requestService.configure({
+                    proxyUrl,
+                    proxyAuthorization,
+                    strictSSL: strictSsl
+                });
+                let client: OVSXClient | undefined;
+                const rateLimiter = new RateLimiter({ tokensPerInterval: options.rateLimit, interval: 'second' });
+                if (ovsxRouterConfig) {
+                    const routerConfig = await fs.promises.readFile(ovsxRouterConfig, 'utf8').then(JSON.parse, error => {
+                        console.error(error);
+                    });
+                    if (routerConfig) {
+                        client = await OVSXRouterClient.FromConfig(
+                            routerConfig,
+                            OVSXHttpClient.createClientFactory(requestService, rateLimiter),
+                            [RequestContainsFilterFactory, ExtensionIdMatchesFilterFactory]
+                        );
+                    }
+                }
+                if (!client) {
+                    client = new OVSXHttpClient(apiUrl, requestService, rateLimiter);
+                }
+                await downloadPlugins(client, rateLimiter, requestService, options);
             },
         })
         .command<{
@@ -392,13 +466,16 @@ async function theiaCli(): Promise<void> {
                 }
             },
             handler: async ({ freeApi, deeplKey, file, sourceLanguage, languages = [] }) => {
-                await localizationManager.localize({
+                const success = await localizationManager.localize({
                     sourceFile: file,
                     freeApi: freeApi ?? true,
                     authKey: deeplKey,
                     targetLanguages: languages,
                     sourceLanguage
                 });
+                if (!success) {
+                    process.exit(1);
+                }
             }
         })
         .command<{
@@ -511,6 +588,10 @@ async function theiaCli(): Promise<void> {
                 if (!process.env.THEIA_CONFIG_DIR) {
                     process.env.THEIA_CONFIG_DIR = temp.track().mkdirSync('theia-test-config-dir');
                 }
+                const args = ['--no-sandbox'];
+                if (!testInspect) {
+                    args.push('--headless=old');
+                }
                 await runTest({
                     start: () => new Promise((resolve, reject) => {
                         const serverProcess = manager.start(toStringArray(theiaArgs));
@@ -519,8 +600,13 @@ async function theiaCli(): Promise<void> {
                         serverProcess.on('close', (code, signal) => reject(`Server process exited unexpectedly: ${code ?? signal}`));
                     }),
                     launch: {
-                        args: ['--no-sandbox'],
-                        devtools: testInspect
+                        args: args,
+                        // eslint-disable-next-line no-null/no-null
+                        defaultViewport: null, // view port can take available space instead of 800x600 default
+                        devtools: testInspect,
+                        headless: testInspect ? false : 'shell',
+                        executablePath: executablePath(),
+                        protocolTimeout: 600000
                     },
                     files: {
                         extension: testExtension,

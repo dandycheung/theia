@@ -19,24 +19,27 @@ import { PlaywrightTestConfig } from '@playwright/test';
 const config: PlaywrightTestConfig = {
     testDir: '../lib/tests',
     testMatch: ['**/*.js'],
-    workers: 2,
+    workers: 1,
+    fullyParallel: false,
     // Timeout for each test in milliseconds.
     timeout: 60 * 1000,
     use: {
         baseURL: 'http://localhost:3000',
         browserName: 'chromium',
-        screenshot: 'only-on-failure',
-        viewport: { width: 1920, height: 1080 }
-    },
-    snapshotDir: '../src/tests/snapshots',
-    expect: {
-        toMatchSnapshot: { threshold: 0.15 }
+        permissions: ['clipboard-read'],
+        screenshot: 'only-on-failure'
     },
     preserveOutput: 'failures-only',
     reporter: [
         ['list'],
         ['allure-playwright']
-    ]
+    ],
+    // Reuse Theia backend on port 3000 or start instance before executing the tests
+    webServer: {
+        command: 'npm run theia:start',
+        port: 3000,
+        reuseExistingServer: true
+    }
 };
 
 export default config;

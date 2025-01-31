@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 // This file is inspired by VSCode and partially copied from https://github.com/Microsoft/vscode/blob/1.33.1/src/vs/workbench/contrib/tasks/common/problemMatcher.ts
 // 'problemMatcher.ts' copyright:
@@ -23,14 +23,14 @@
 import * as Ajv from '@theia/core/shared/ajv';
 import debounce = require('p-debounce');
 import { postConstruct, injectable, inject } from '@theia/core/shared/inversify';
-import { JsonSchemaContribution, JsonSchemaRegisterContext } from '@theia/core/lib/browser/json-schema-store';
-import { InMemoryResources, deepClone, Emitter } from '@theia/core/lib/common';
+import { JsonSchemaContribution, JsonSchemaDataStore, JsonSchemaRegisterContext } from '@theia/core/lib/browser/json-schema-store';
+import { deepClone, Emitter } from '@theia/core/lib/common';
 import { IJSONSchema } from '@theia/core/lib/common/json-schema';
 import { inputsSchema } from '@theia/variable-resolver/lib/browser/variable-input-schema';
 import URI from '@theia/core/lib/common/uri';
 import { ProblemMatcherRegistry } from './task-problem-matcher-registry';
 import { TaskDefinitionRegistry } from './task-definition-registry';
-import { TaskServer } from '../common';
+import { TaskServer, asVariableName } from '../common';
 import { UserStorageUri } from '@theia/userstorage/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { JSONObject } from '@theia/core/shared/@phosphor/coreutils';
@@ -40,8 +40,8 @@ export const taskSchemaId = 'vscode://schemas/tasks';
 @injectable()
 export class TaskSchemaUpdater implements JsonSchemaContribution {
 
-    @inject(InMemoryResources)
-    protected readonly inmemoryResources: InMemoryResources;
+    @inject(JsonSchemaDataStore)
+    protected readonly jsonSchemaData: JsonSchemaDataStore;
 
     @inject(ProblemMatcherRegistry)
     protected readonly problemMatcherRegistry: ProblemMatcherRegistry;
@@ -62,12 +62,7 @@ export class TaskSchemaUpdater implements JsonSchemaContribution {
 
     @postConstruct()
     protected init(): void {
-        const resource = this.inmemoryResources.add(this.uri, '');
-        if (resource.onDidChangeContents) {
-            resource.onDidChangeContents(() => {
-                this.onDidChangeTaskSchemaEmitter.fire(undefined);
-            });
-        }
+        this.jsonSchemaData.setSchema(this.uri, '');
         this.updateProblemMatcherNames();
         this.updateSupportedTaskTypes();
         // update problem matcher names in the task schema every time a problem matcher is added or disposed
@@ -91,8 +86,8 @@ export class TaskSchemaUpdater implements JsonSchemaContribution {
 
         const schema = this.getTaskSchema();
         this.doValidate = new Ajv().compile(schema);
-        const schemaContent = JSON.stringify(schema);
-        this.inmemoryResources.update(this.uri, schemaContent);
+        this.jsonSchemaData.setSchema(this.uri, schema);
+        this.onDidChangeTaskSchemaEmitter.fire(undefined);
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -213,7 +208,7 @@ export class TaskSchemaUpdater implements JsonSchemaContribution {
 
     /** Gets the most up-to-date names of problem matchers from the registry and update the task schema */
     private updateProblemMatcherNames(): void {
-        const matcherNames = this.problemMatcherRegistry.getAll().map(m => m.name.startsWith('$') ? m.name : `$${m.name}`);
+        const matcherNames = this.problemMatcherRegistry.getAll().map(m => asVariableName(m.name));
         problemMatcherNames.length = 0;
         problemMatcherNames.push(...matcherNames);
         this.update();
@@ -294,7 +289,13 @@ const commandAndArgs = {
 const group: IJSONSchema = {
     oneOf: [
         {
-            type: 'string'
+            type: 'string',
+            enum: ['build', 'test', 'none'],
+            enumDescriptions: [
+                'Marks the task as a build task accessible through the \'Run Build Task\' command.',
+                'Marks the task as a test task accessible through the \'Run Test Task\' command.',
+                'Assigns the task to no group'
+            ]
         },
         {
             type: 'object',
@@ -302,7 +303,13 @@ const group: IJSONSchema = {
                 kind: {
                     type: 'string',
                     default: 'none',
-                    description: 'The task\'s execution group.'
+                    description: 'The task\'s execution group.',
+                    enum: ['build', 'test', 'none'],
+                    enumDescriptions: [
+                        'Marks the task as a build task accessible through the \'Run Build Task\' command.',
+                        'Marks the task as a test task accessible through the \'Run Test Task\' command.',
+                        'Assigns the task to no group'
+                    ]
                 },
                 isDefault: {
                     type: 'boolean',
@@ -311,20 +318,6 @@ const group: IJSONSchema = {
                 }
             }
         }
-    ],
-    enum: [
-        { kind: 'build', isDefault: true },
-        { kind: 'test', isDefault: true },
-        'build',
-        'test',
-        'none'
-    ],
-    enumDescriptions: [
-        'Marks the task as the default build task.',
-        'Marks the task as the default test task.',
-        'Marks the task as a build task accessible through the \'Run Build Task\' command.',
-        'Marks the task as a test task accessible through the \'Run Test Task\' command.',
-        'Assigns the task to no group'
     ],
     // eslint-disable-next-line max-len
     description: 'Defines to which execution group this task belongs to. It supports "build" to add it to the build group and "test" to add it to the test group.'

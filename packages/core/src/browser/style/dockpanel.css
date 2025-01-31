@@ -11,8 +11,18 @@
  * with the GNU Classpath Exception which is available at
  * https://www.gnu.org/software/classpath/license.html.
  *
- * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
  ********************************************************************************/
+
+/*
+ * phosphor.js sets the z-index of its panels to 0, which causes overlay issues
+ * See also https://github.com/eclipse-theia/theia/issues/14290
+ */
+.p-SplitPanel-child,
+.p-DockPanel,
+.p-DockPanel-widget {
+  z-index: initial;
+}
 
 .p-DockPanel.p-SplitPanel-child {
   padding: 0px;
@@ -23,26 +33,26 @@
   min-height: 100px;
 }
 
-.p-DockPanel-handle[data-orientation='vertical'] {
+.p-DockPanel-handle[data-orientation="vertical"] {
   min-height: var(--theia-border-width);
   z-index: 3;
 }
 
-.p-DockPanel-handle[data-orientation='horizontal'] {
+.p-DockPanel-handle[data-orientation="horizontal"] {
   min-width: var(--theia-border-width);
 }
 
-.p-DockPanel-handle[data-orientation='horizontal']::after {
+.p-DockPanel-handle[data-orientation="horizontal"]::after {
   min-width: var(--theia-sash-width);
   transform: translateX(0%);
-  left: calc(-1*var(--theia-sash-width)/2);
+  left: calc(-1 * var(--theia-sash-width) / 2);
 }
 
-.p-DockPanel-handle[data-orientation='vertical']::after {
+.p-DockPanel-handle[data-orientation="vertical"]::after {
   min-height: var(--theia-sash-width);
   width: 100%;
   transform: translateY(0%);
-  top: calc(-1*var(--theia-sash-width)/2);
+  top: calc(-1 * var(--theia-sash-width) / 2);
 }
 
 .p-DockPanel-handle:hover::after {
@@ -72,5 +82,5 @@
 }
 
 .p-DockPanel-overlay.p-mod-root-bottom {
-    background: var(--theia-panel-dropBackground);
+  background: var(--theia-panel-dropBackground);
 }

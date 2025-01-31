@@ -11,18 +11,19 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, named } from 'inversify';
 import { Event, Emitter } from '../../common';
 import { CorePreferences } from '../core-preferences';
 import { ContributionProvider } from '../../common/contribution-provider';
-import { FrontendApplicationContribution, FrontendApplication, OnWillStopAction } from '../frontend-application';
+import { FrontendApplicationContribution, OnWillStopAction } from '../frontend-application-contribution';
 import { WindowService } from './window-service';
 import { DEFAULT_WINDOW_HASH } from '../../common/window';
 import { confirmExit } from '../dialogs';
 import { StopReason } from '../../common/frontend-application-state';
+import { FrontendApplication } from '../frontend-application';
 
 @injectable()
 export class DefaultWindowService implements WindowService, FrontendApplicationContribution {
@@ -54,6 +55,10 @@ export class DefaultWindowService implements WindowService, FrontendApplicationC
 
     openNewDefaultWindow(): void {
         this.openNewWindow(`#${DEFAULT_WINDOW_HASH}`);
+    }
+
+    focus(): void {
+        window.focus();
     }
 
     /**

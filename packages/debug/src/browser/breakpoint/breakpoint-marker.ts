@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { UUID } from '@theia/core/shared/@phosphor/coreutils';
-import URI from '@theia/core/lib/common/uri';
 import { Marker } from '@theia/markers/lib/common/marker';
 import { DebugProtocol } from '@vscode/debugprotocol/lib/debugProtocol';
+import { isObject, isString, URI } from '@theia/core/lib/common';
 
 export const BREAKPOINT_KIND = 'breakpoint';
 
@@ -55,12 +55,14 @@ export namespace BreakpointMarker {
 
 export interface ExceptionBreakpoint {
     enabled: boolean;
+    condition?: string;
     raw: DebugProtocol.ExceptionBreakpointsFilter;
 }
 export namespace ExceptionBreakpoint {
     export function create(data: DebugProtocol.ExceptionBreakpointsFilter, origin?: ExceptionBreakpoint): ExceptionBreakpoint {
         return {
             enabled: origin ? origin.enabled : false,
+            condition: origin ? origin.condition : undefined,
             raw: {
                 ...(origin && origin.raw),
                 ...data
@@ -96,8 +98,7 @@ export namespace InstructionBreakpoint {
         };
     }
 
-    export function is(thing: BaseBreakpoint): thing is InstructionBreakpoint {
-        const candidate = thing as InstructionBreakpoint;
-        return 'instructionReference' in candidate && typeof candidate.instructionReference === 'string';
+    export function is(arg: BaseBreakpoint): arg is InstructionBreakpoint {
+        return isObject<InstructionBreakpoint>(arg) && isString(arg.instructionReference);
     }
 }

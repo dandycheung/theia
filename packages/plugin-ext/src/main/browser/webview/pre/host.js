@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
 *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -31,12 +31,12 @@
                 let sourceIsChildFrame = false;
                 for (let i = 0; i < window.frames.length; i++) {
                     const frame = window.frames[i];
-                    if (e.source === frame) {
+                    if (e.origin === frame.origin) {
                         sourceIsChildFrame = true;
                         break;
                     }
                 }
-                if (sourceIsChildFrame && e.data && (e.data.command === 'onmessage' || e.data.command === 'do-update-state')) {
+                if (sourceIsChildFrame && e.data && (e.data.command === 'onmessage' || e.data.command === 'do-update-state' || e.data.command === 'onconsole')) {
                     this.postMessage(e.data.command, e.data.data);
                 } else if (sourceIsChildFrame || sourceIsSelfOrParentFrame) {
                     const channel = e.data.channel;

@@ -11,14 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { NewWindowOptions } from '../common/window';
+import { NewWindowOptions, WindowSearchParams } from '../common/window';
 
 export const electronMainWindowServicePath = '/services/electron-window';
 export const ElectronMainWindowService = Symbol('ElectronMainWindowService');
 export interface ElectronMainWindowService {
     openNewWindow(url: string, options?: NewWindowOptions): undefined;
-    openNewDefaultWindow(): void;
+    openNewDefaultWindow(params?: WindowSearchParams): void;
 }

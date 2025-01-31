@@ -11,12 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable } from '@theia/core/shared/inversify';
 import { AbstractViewContribution } from '@theia/core/lib/browser/shell/view-contribution';
-import { FrontendApplicationContribution, FrontendApplication } from '@theia/core/lib/browser/frontend-application';
+import { FrontendApplication } from '@theia/core/lib/browser/frontend-application';
+import { FrontendApplicationContribution } from '@theia/core/lib/browser/frontend-application-contribution';
 import { Command, CommandRegistry } from '@theia/core/lib/common/command';
 import { TabBarToolbarContribution, TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { codicon, Widget } from '@theia/core/lib/browser/widgets';
@@ -32,12 +33,19 @@ export const OUTLINE_WIDGET_FACTORY_ID = 'outline-view';
  */
 export namespace OutlineViewCommands {
     /**
-     * Command which collapses all nodes
-     * from the `outline-view` tree.
+     * Command which collapses all nodes from the `outline-view` tree.
      */
     export const COLLAPSE_ALL: Command = {
         id: 'outlineView.collapse.all',
         iconClass: codicon('collapse-all')
+    };
+
+    /**
+     * Command which expands all nodes from the `outline-view` tree.
+     */
+    export const EXPAND_ALL: Command = {
+        id: 'outlineView.expand.all',
+        iconClass: codicon('expand-all')
     };
 }
 
@@ -66,18 +74,33 @@ export class OutlineViewContribution extends AbstractViewContribution<OutlineVie
     override registerCommands(commands: CommandRegistry): void {
         super.registerCommands(commands);
         commands.registerCommand(OutlineViewCommands.COLLAPSE_ALL, {
-            isEnabled: widget => this.withWidget(widget, () => true),
-            isVisible: widget => this.withWidget(widget, () => true),
+            isEnabled: w => this.withWidget(w, () => true),
+            isVisible: w => this.withWidget(w, widget => !widget.model.areNodesCollapsed()),
             execute: () => this.collapseAllItems()
+        });
+        commands.registerCommand(OutlineViewCommands.EXPAND_ALL, {
+            isEnabled: w => this.withWidget(w, () => true),
+            isVisible: w => this.withWidget(w, widget => widget.model.areNodesCollapsed()),
+            execute: () => this.expandAllItems()
         });
     }
 
-    registerToolbarItems(toolbar: TabBarToolbarRegistry): void {
+    async registerToolbarItems(toolbar: TabBarToolbarRegistry): Promise<void> {
+        const widget = await this.widget;
+        const onDidChange = widget.onDidUpdate;
         toolbar.registerItem({
             id: OutlineViewCommands.COLLAPSE_ALL.id,
             command: OutlineViewCommands.COLLAPSE_ALL.id,
             tooltip: nls.localizeByDefault('Collapse All'),
-            priority: 0
+            priority: 0,
+            onDidChange
+        });
+        toolbar.registerItem({
+            id: OutlineViewCommands.EXPAND_ALL.id,
+            command: OutlineViewCommands.EXPAND_ALL.id,
+            tooltip: nls.localizeByDefault('Expand All'),
+            priority: 0,
+            onDidChange
         });
     }
 
@@ -90,6 +113,11 @@ export class OutlineViewContribution extends AbstractViewContribution<OutlineVie
         if (CompositeTreeNode.is(root)) {
             model.collapseAll(root);
         }
+    }
+
+    protected async expandAllItems(): Promise<void> {
+        const { model } = await this.widget;
+        model.expandAll(model.root);
     }
 
     /**

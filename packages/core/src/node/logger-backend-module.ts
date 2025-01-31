@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ContainerModule, Container, interfaces } from 'inversify';
-import { ConnectionHandler, JsonRpcConnectionHandler } from '../common/messaging';
+import { ConnectionHandler, RpcConnectionHandler } from '../common/messaging';
 import { ILogger, LoggerFactory, Logger, setRootLogger, LoggerName, rootLoggerName } from '../common/logger';
 import { ILoggerServer, ILoggerClient, loggerPath, DispatchingLoggerClient } from '../common/logger-protocol';
 import { ConsoleLoggerServer } from './console-logger-server';
@@ -54,16 +54,23 @@ export function bindLogger(bind: interfaces.Bind, props?: {
  */
 export const loggerBackendModule = new ContainerModule(bind => {
     bind(BackendApplicationContribution).toDynamicValue(ctx =>
-        ({
-            initialize(): void {
-                setRootLogger(ctx.container.get<ILogger>(ILogger));
-            }
-        }));
+    ({
+        initialize(): void {
+            setRootLogger(ctx.container.get<ILogger>(ILogger));
+        }
+    }));
 
     bind(DispatchingLoggerClient).toSelf().inSingletonScope();
     bindLogger(bind, {
         onLoggerServerActivation: ({ container }, server) => {
-            server.setClient(container.get(DispatchingLoggerClient));
+            const dispatchingLoggerClient = container.get(DispatchingLoggerClient);
+            server.setClient(dispatchingLoggerClient);
+
+            // register backend logger watcher as a client
+            const loggerWatcher = container.get(LoggerWatcher);
+            dispatchingLoggerClient.clients.add(loggerWatcher.getLoggerClient());
+
+            // make sure dispatching logger client is the only client
             server.setClient = () => {
                 throw new Error('use DispatchingLoggerClient');
             };
@@ -71,7 +78,7 @@ export const loggerBackendModule = new ContainerModule(bind => {
     });
 
     bind(ConnectionHandler).toDynamicValue(({ container }) =>
-        new JsonRpcConnectionHandler<ILoggerClient>(loggerPath, client => {
+        new RpcConnectionHandler<ILoggerClient>(loggerPath, client => {
             const dispatching = container.get(DispatchingLoggerClient);
             dispatching.clients.add(client);
             client.onDidCloseConnection(() => dispatching.clients.delete(client));

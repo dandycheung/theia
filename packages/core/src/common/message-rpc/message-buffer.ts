@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /**
@@ -25,6 +25,7 @@ export interface WriteBuffer {
     writeBytes(value: Uint8Array): this
     writeNumber(value: number): this
     writeLength(value: number): this
+    writeRaw(bytes: Uint8Array): this;
     /**
      * Makes any writes to the buffer permanent, for example by sending the writes over a channel.
      * You must obtain a new write buffer after committing
@@ -68,6 +69,11 @@ export class ForwardingWriteBuffer implements WriteBuffer {
 
     writeNumber(value: number): this {
         this.underlying.writeNumber(value);
+        return this;
+    }
+
+    writeRaw(bytes: Uint8Array): this {
+        this.underlying.writeRaw(bytes);
         return this;
     }
 

@@ -11,20 +11,21 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
-import { CompositeTreeNode, TreeNode, ConfirmDialog, CompressedTreeModel } from '@theia/core/lib/browser';
+import { CompositeTreeNode, TreeNode, ConfirmDialog, CompressedTreeModel, Dialog } from '@theia/core/lib/browser';
 import { FileStatNode, DirNode, FileNode } from './file-tree';
 import { LocationService } from '../location';
 import { LabelProvider } from '@theia/core/lib/browser/label-provider';
 import { FileService } from '../file-service';
-import { FileOperationError, FileOperationResult, FileChangesEvent, FileChangeType, FileChange, FileOperation, FileOperationEvent } from '../../common/files';
+import { FileOperationError, FileOperationResult, FileChangesEvent, FileChangeType, FileChange } from '../../common/files';
 import { MessageService } from '@theia/core/lib/common/message-service';
 import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import { FileSystemUtils } from '../../common';
+import { nls } from '@theia/core';
 
 @injectable()
 export class FileTreeModel extends CompressedTreeModel implements LocationService {
@@ -44,7 +45,6 @@ export class FileTreeModel extends CompressedTreeModel implements LocationServic
     protected override init(): void {
         super.init();
         this.toDispose.push(this.fileService.onDidFilesChange(changes => this.onFilesChanged(changes)));
-        this.toDispose.push(this.fileService.onDidRunOperation(event => this.onDidMove(event)));
     }
 
     get location(): URI | undefined {
@@ -89,23 +89,6 @@ export class FileTreeModel extends CompressedTreeModel implements LocationServic
         if (node) {
             yield node;
         }
-    }
-
-    /**
-     * to workaround https://github.com/Axosoft/nsfw/issues/42
-     */
-    protected onDidMove(event: FileOperationEvent): void {
-        if (!event.isOperation(FileOperation.MOVE)) {
-            return;
-        }
-        if (event.resource.parent.toString() === event.target.resource.parent.toString()) {
-            // file rename
-            return;
-        }
-        this.refreshAffectedNodes([
-            event.resource,
-            event.target.resource
-        ]);
     }
 
     protected onFilesChanged(changes: FileChangesEvent): void {
@@ -200,10 +183,10 @@ export class FileTreeModel extends CompressedTreeModel implements LocationServic
 
     protected async shouldReplace(fileName: string): Promise<boolean> {
         const dialog = new ConfirmDialog({
-            title: 'Replace file',
-            msg: `File '${fileName}' already exists in the destination folder. Do you want to replace it?`,
-            ok: 'Yes',
-            cancel: 'No'
+            title: nls.localize('theia/filesystem/replaceTitle', 'Replace File'),
+            msg: nls.localizeByDefault('{0} already exists. Are you sure you want to overwrite it?', fileName),
+            ok: Dialog.YES,
+            cancel: Dialog.NO
         });
         return !!await dialog.open();
     }

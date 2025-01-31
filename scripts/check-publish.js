@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 // @ts-check
 
@@ -26,8 +26,8 @@ checkPublish().catch(error => {
 });
 
 async function checkPublish() {
-    const workspaces = JSON.parse(cp.execSync('yarn --silent workspaces info').toString());
-    await Promise.all(Object.values(workspaces).map(async workspace => {
+    const workspaces = JSON.parse(cp.execSync('npx lerna ls --json --loglevel=silent').toString());
+    await Promise.all(workspaces.map(async workspace => {
         const packagePath = path.resolve(workspace.location, 'package.json');
         const pck = JSON.parse(await fs.promises.readFile(packagePath, 'utf8'));
         if (!pck.private) {

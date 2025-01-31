@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, optional } from 'inversify';
@@ -41,7 +41,10 @@ export class ReactRenderer implements Disposable {
     }
 
     render(): void {
-        this.hostRoot.render(<React.Fragment>{this.doRender()}</React.Fragment>);
+        // Ignore all render calls after the host element has unmounted
+        if (!this.toDispose.disposed) {
+            this.hostRoot.render(<React.Fragment>{this.doRender()}</React.Fragment>);
+        }
     }
 
     protected doRender(): React.ReactNode {

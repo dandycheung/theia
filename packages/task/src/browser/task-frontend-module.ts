@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ContainerModule } from '@theia/core/shared/inversify';
@@ -42,6 +42,7 @@ import { TaskTemplateSelector } from './task-templates';
 import { TaskTerminalWidgetManager } from './task-terminal-widget-manager';
 import { JsonSchemaContribution } from '@theia/core/lib/browser/json-schema-store';
 import { QuickAccessContribution } from '@theia/core/lib/browser/quick-input/quick-access';
+import { TaskContextKeyService } from './task-context-key-service';
 
 export default new ContainerModule(bind => {
     bind(TaskFrontendContribution).toSelf().inSingletonScope();
@@ -80,6 +81,7 @@ export default new ContainerModule(bind => {
     bind(TaskSourceResolver).toSelf().inSingletonScope();
     bind(TaskTemplateSelector).toSelf().inSingletonScope();
     bind(TaskTerminalWidgetManager).toSelf().inSingletonScope();
+    bind(TaskContextKeyService).toSelf().inSingletonScope();
 
     bindProcessTaskModule(bind);
     bindTaskPreferences(bind);

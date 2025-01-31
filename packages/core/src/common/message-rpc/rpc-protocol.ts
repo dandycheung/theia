@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { CancellationToken, CancellationTokenSource } from '../cancellation';
-import { Disposable, DisposableCollection } from '../disposable';
+import { DisposableWrapper, Disposable, DisposableCollection } from '../disposable';
 import { Emitter, Event } from '../event';
 import { Deferred } from '../promise-util';
 import { Channel } from './channel';
@@ -57,6 +57,7 @@ export class RpcProtocol {
     static readonly CANCELLATION_TOKEN_KEY = 'add.cancellation.token';
 
     protected readonly pendingRequests: Map<number, Deferred<any>> = new Map();
+    protected readonly pendingRequestCancellationEventListeners: Map<number, DisposableWrapper> = new Map();
 
     protected nextMessageId: number = 0;
 
@@ -77,7 +78,13 @@ export class RpcProtocol {
         this.encoder = options.encoder ?? new MsgPackMessageEncoder();
         this.decoder = options.decoder ?? new MsgPackMessageDecoder();
         this.toDispose.push(this.onNotificationEmitter);
-        channel.onClose(() => this.toDispose.dispose());
+        channel.onClose(event => {
+            this.pendingRequests.forEach(pending => pending.reject(new Error(event.reason)));
+            this.pendingRequests.clear();
+            this.pendingRequestCancellationEventListeners.forEach(disposable => disposable.dispose());
+            this.pendingRequestCancellationEventListeners.clear();
+            this.toDispose.dispose();
+        });
         this.toDispose.push(channel.onMessage(readBuffer => this.handleMessage(this.decoder.parse(readBuffer()))));
         this.mode = options.mode ?? 'default';
 
@@ -98,7 +105,7 @@ export class RpcProtocol {
                     return;
                 }
                 case RpcMessageType.Notification: {
-                    this.handleNotify(message.id, message.method, message.args);
+                    this.handleNotify(message.method, message.args, message.id);
                     return;
                 }
             }
@@ -127,19 +134,25 @@ export class RpcProtocol {
         } else {
             throw new Error(`No reply handler for reply with id: ${id}`);
         }
+        this.disposeCancellationEventListener(id);
     }
 
     protected handleReplyErr(id: number, error: any): void {
-        try {
-            const replyHandler = this.pendingRequests.get(id);
-            if (replyHandler) {
-                this.pendingRequests.delete(id);
-                replyHandler.reject(error);
-            } else {
-                throw new Error(`No reply handler for error reply with id: ${id}`);
-            }
-        } catch (err) {
-            throw err;
+        const replyHandler = this.pendingRequests.get(id);
+        if (replyHandler) {
+            this.pendingRequests.delete(id);
+            replyHandler.reject(error);
+        } else {
+            throw new Error(`No reply handler for error reply with id: ${id}`);
+        }
+        this.disposeCancellationEventListener(id);
+    }
+
+    protected disposeCancellationEventListener(id: number): void {
+        const toDispose = this.pendingRequestCancellationEventListeners.get(id);
+        if (toDispose) {
+            this.pendingRequestCancellationEventListeners.delete(id);
+            toDispose.dispose();
         }
     }
 
@@ -157,6 +170,10 @@ export class RpcProtocol {
 
         this.pendingRequests.set(id, reply);
 
+        // register disposable before output.commit() even when not available yet
+        const disposableWrapper = new DisposableWrapper();
+        this.pendingRequestCancellationEventListeners.set(id, disposableWrapper);
+
         const output = this.channel.getWriteBuffer();
         this.encoder.request(output, id, method, args);
         output.commit();
@@ -164,7 +181,10 @@ export class RpcProtocol {
         if (cancellationToken?.isCancellationRequested) {
             this.sendCancel(id);
         } else {
-            cancellationToken?.onCancellationRequested(() => this.sendCancel(id));
+            const disposable = cancellationToken?.onCancellationRequested(() => this.sendCancel(id));
+            if (disposable) {
+                disposableWrapper.set(disposable);
+            }
         }
 
         return reply.promise;
@@ -179,7 +199,7 @@ export class RpcProtocol {
         }
 
         const output = this.channel.getWriteBuffer();
-        this.encoder.notification(output, this.nextMessageId++, method, args);
+        this.encoder.notification(output, method, args, this.nextMessageId++);
         output.commit();
     }
 
@@ -226,7 +246,7 @@ export class RpcProtocol {
         }
     }
 
-    protected async handleNotify(id: number, method: string, args: any[]): Promise<void> {
+    protected async handleNotify(method: string, args: any[], id?: number): Promise<void> {
         if (this.toDispose.disposed) {
             return;
         }

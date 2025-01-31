@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, named } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
-import { ContributionProvider, MaybePromise, Prioritizeable } from '@theia/core';
+import { ContributionProvider, isObject, MaybePromise, Prioritizeable } from '@theia/core';
 
 export const PreviewHandler = Symbol('PreviewHandler');
 
@@ -36,7 +36,7 @@ export interface RenderContentParams {
 
 export namespace RenderContentParams {
     export function is(params: unknown): params is RenderContentParams {
-        return !!params && typeof params === 'object' && 'content' in params && 'originUri' in params;
+        return isObject(params) && 'content' in params && 'originUri' in params;
     }
 }
 

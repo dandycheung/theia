@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as Ajv from 'ajv';
@@ -26,13 +26,15 @@ import { FrontendApplicationConfigProvider } from '../frontend-application-confi
 import { FrontendApplicationConfig } from '@theia/application-package/lib/application-props';
 import { bindPreferenceConfigurations, PreferenceConfigurations } from './preference-configurations';
 export { PreferenceSchema, PreferenceSchemaProperties, PreferenceDataSchema, PreferenceItem, PreferenceSchemaProperty, PreferenceDataProperty };
-import { Mutable } from '../../common/types';
+import { isObject, Mutable } from '../../common/types';
 import { PreferenceLanguageOverrideService } from './preference-language-override-service';
 import { JSONValue } from '@phosphor/coreutils';
 
 /* eslint-disable guard-for-in, @typescript-eslint/no-explicit-any */
 
 export const PreferenceContribution = Symbol('PreferenceContribution');
+
+export const DefaultOverridesPreferenceSchemaId = 'defaultOverrides';
 
 /**
  * A {@link PreferenceContribution} allows adding additional custom preferences.
@@ -80,7 +82,7 @@ export interface FrontendApplicationPreferenceConfig extends FrontendApplication
 }
 export namespace FrontendApplicationPreferenceConfig {
     export function is(config: FrontendApplicationConfig): config is FrontendApplicationPreferenceConfig {
-        return 'preferences' in config && typeof config['preferences'] === 'object';
+        return isObject(config.preferences);
     }
 }
 
@@ -202,34 +204,44 @@ export class PreferenceSchemaProvider extends PreferenceProvider {
         const defaultScope = PreferenceSchema.getDefaultScope(schema);
         const overridable = schema.overridable || false;
         for (const [preferenceName, rawSchemaProps] of Object.entries(schema.properties)) {
-            if (this.combinedSchema.properties[preferenceName]) {
+            if (this.combinedSchema.properties[preferenceName] && DefaultOverridesPreferenceSchemaId !== schema.id) {
                 console.error('Preference name collision detected in the schema for property: ' + preferenceName);
-            } else if (!rawSchemaProps.hasOwnProperty('included') || rawSchemaProps.included) {
-                const schemaProps = PreferenceDataProperty.fromPreferenceSchemaProperty(rawSchemaProps, defaultScope);
-                if (typeof schemaProps.overridable !== 'boolean' && overridable) {
-                    schemaProps.overridable = true;
-                }
-                if (schemaProps.overridable) {
-                    this.overridePatternProperties.properties[preferenceName] = schemaProps;
-                }
-                this.updateSchemaProps(preferenceName, schemaProps);
-
-                const schemaDefault = this.getDefaultValue(schemaProps);
-                const configuredDefault = this.getConfiguredDefault(preferenceName);
-                if (this.preferenceOverrideService.testOverrideValue(preferenceName, schemaDefault)) {
-                    schemaProps.defaultValue = PreferenceSchemaProperties.is(configuredDefault)
-                        ? PreferenceProvider.merge(schemaDefault, configuredDefault)
-                        : schemaDefault;
-                    if (schemaProps.defaultValue && PreferenceSchemaProperties.is(schemaProps.defaultValue)) {
-                        for (const overriddenPreferenceName in schemaProps.defaultValue) {
-                            const overrideValue = schemaDefault[overriddenPreferenceName];
-                            const overridePreferenceName = `${preferenceName}.${overriddenPreferenceName}`;
-                            changes.push(this.doSetPreferenceValue(overridePreferenceName, overrideValue, { scope, domain }));
-                        }
+            } else {
+                let schemaProps;
+                if (this.combinedSchema.properties[preferenceName] && DefaultOverridesPreferenceSchemaId === schema.id) {
+                    // update existing default value in schema
+                    schemaProps = PreferenceDataProperty.fromPreferenceSchemaProperty(rawSchemaProps, defaultScope);
+                    this.updateSchemaPropsDefault(preferenceName, schemaProps);
+                } else if (!rawSchemaProps.hasOwnProperty('included') || rawSchemaProps.included) {
+                    // add overrides for languages
+                    schemaProps = PreferenceDataProperty.fromPreferenceSchemaProperty(rawSchemaProps, defaultScope);
+                    if (typeof schemaProps.overridable !== 'boolean' && overridable) {
+                        schemaProps.overridable = true;
                     }
-                } else {
-                    schemaProps.defaultValue = configuredDefault === undefined ? schemaDefault : configuredDefault;
-                    changes.push(this.doSetPreferenceValue(preferenceName, schemaProps.defaultValue, { scope, domain }));
+                    if (schemaProps.overridable) {
+                        this.overridePatternProperties.properties[preferenceName] = schemaProps;
+                    }
+                    this.updateSchemaProps(preferenceName, schemaProps);
+                }
+
+                if (schemaProps !== undefined) {
+                    const schemaDefault = this.getDefaultValue(schemaProps);
+                    const configuredDefault = this.getConfiguredDefault(preferenceName);
+                    if (this.preferenceOverrideService.testOverrideValue(preferenceName, schemaDefault)) {
+                        schemaProps.defaultValue = PreferenceSchemaProperties.is(configuredDefault)
+                            ? PreferenceProvider.merge(schemaDefault, configuredDefault)
+                            : schemaDefault;
+                        if (schemaProps.defaultValue && PreferenceSchemaProperties.is(schemaProps.defaultValue)) {
+                            for (const overriddenPreferenceName in schemaProps.defaultValue) {
+                                const overrideValue = schemaDefault[overriddenPreferenceName];
+                                const overridePreferenceName = `${preferenceName}.${overriddenPreferenceName}`;
+                                changes.push(this.doSetPreferenceValue(overridePreferenceName, overrideValue, { scope, domain }));
+                            }
+                        }
+                    } else {
+                        schemaProps.defaultValue = configuredDefault === undefined ? schemaDefault : configuredDefault;
+                        changes.push(this.doSetPreferenceValue(preferenceName, schemaProps.defaultValue, { scope, domain }));
+                    }
                 }
             }
         }
@@ -360,6 +372,10 @@ export class PreferenceSchemaProvider extends PreferenceProvider {
         return this.combinedSchema.properties[key];
     }
 
+    /**
+     * {@link property} will be assigned to field {@link key} in the schema.
+     * Pass a new object to invalidate old schema.
+     */
     updateSchemaProperty(key: string, property: PreferenceDataProperty): void {
         this.updateSchemaProps(key, property);
         this.fireDidPreferenceSchemaChanged();
@@ -376,6 +392,19 @@ export class PreferenceSchemaProvider extends PreferenceProvider {
             case PreferenceScope.Workspace:
                 this.workspaceSchema.properties[key] = property;
                 break;
+        }
+    }
+
+    protected updateSchemaPropsDefault(key: string, property: PreferenceDataProperty): void {
+        this.combinedSchema.properties[key].default = property.default;
+        this.combinedSchema.properties[key].defaultValue = property.defaultValue;
+        if (this.workspaceSchema.properties[key]) {
+            this.workspaceSchema.properties[key].default = property.default;
+            this.workspaceSchema.properties[key].defaultValue = property.defaultValue;
+        }
+        if (this.folderSchema.properties[key]) {
+            this.folderSchema.properties[key].default = property.default;
+            this.folderSchema.properties[key].defaultValue = property.defaultValue;
         }
     }
 

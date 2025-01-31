@@ -33,6 +33,9 @@
       "path": "../editor"
     },
     {
+      "path": "../editor-preview"
+    },
+    {
       "path": "../file-search"
     },
     {
@@ -49,6 +52,9 @@
     },
     {
       "path": "../navigator"
+    },
+    {
+      "path": "../notebook"
     },
     {
       "path": "../output"
@@ -70,6 +76,9 @@
     },
     {
       "path": "../terminal"
+    },
+    {
+      "path": "../test"
     },
     {
       "path": "../timeline"

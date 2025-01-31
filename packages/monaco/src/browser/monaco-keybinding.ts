@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
@@ -45,14 +45,14 @@ export class MonacoKeybindingContribution implements KeybindingContribution {
     registerKeybindings(registry: KeybindingRegistry): void {
         const defaultKeybindings = KeybindingsRegistry.getDefaultKeybindings();
         for (const item of defaultKeybindings) {
-            const command = this.commands.validate(item.command);
-            if (command) {
+            const command = this.commands.validate(item.command || undefined);
+            if (command && item.keybinding) {
                 const when = (item.when && item.when.serialize()) ?? undefined;
                 let keybinding;
                 if (item.command === MonacoCommands.GO_TO_DEFINITION && !environment.electron.is()) {
                     keybinding = 'ctrlcmd+f11';
                 } else {
-                    keybinding = MonacoResolvedKeybinding.toKeybinding(item.keybinding);
+                    keybinding = MonacoResolvedKeybinding.toKeybinding(item.keybinding.chords);
                 }
                 registry.registerKeybinding({ command, keybinding, when });
             }

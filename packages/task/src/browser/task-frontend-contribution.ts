@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, named, postConstruct } from '@theia/core/shared/inversify';
@@ -19,7 +19,7 @@ import { ILogger, ContributionProvider, CommandContribution, Command, CommandReg
 import { QuickOpenTask, TaskTerminateQuickOpen, TaskRunningQuickOpen, TaskRestartRunningQuickOpen } from './quick-open-task';
 import {
     FrontendApplication, FrontendApplicationContribution, QuickAccessContribution,
-    KeybindingRegistry, KeybindingContribution, StorageService, StatusBar, StatusBarAlignment
+    KeybindingRegistry, KeybindingContribution, StorageService, StatusBar, StatusBarAlignment, CommonMenus
 } from '@theia/core/lib/browser';
 import { WidgetManager } from '@theia/core/lib/browser/widget-manager';
 import { TaskContribution, TaskResolverRegistry, TaskProviderRegistry } from './task-contribution';
@@ -167,7 +167,7 @@ export class TaskFrontendContribution implements CommandContribution, MenuContri
     protected readonly workspaceService: WorkspaceService;
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
         this.taskWatcher.onTaskCreated(() => this.updateRunningTasksItem());
         this.taskWatcher.onTaskExit(() => this.updateRunningTasksItem());
     }
@@ -379,6 +379,12 @@ export class TaskFrontendContribution implements CommandContribution, MenuContri
         menus.registerMenuAction(TerminalMenus.TERMINAL_TASKS_CONFIG, {
             commandId: TaskCommands.TASK_CONFIGURE.id,
             order: '0'
+        });
+
+        menus.registerMenuAction(CommonMenus.MANAGE_SETTINGS, {
+            commandId: TaskCommands.TASK_OPEN_USER.id,
+            label: nls.localizeByDefault('User Tasks'),
+            order: 'a40'
         });
     }
 

@@ -11,27 +11,26 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
+import { injectable } from '@theia/core/shared/inversify';
 import { EnvExtImpl } from '../../../plugin/env';
-import { RPCProtocol } from '../../../common/rpc-protocol';
 
 /**
  * Worker specific implementation not returning any FileSystem details
  * Extending the common class
  */
+@injectable()
 export class WorkerEnvExtImpl extends EnvExtImpl {
 
-    constructor(rpc: RPCProtocol) {
-        super(rpc);
+    constructor() {
+        super();
     }
 
-    /**
-     * Throw error for app-root as there is no filesystem in worker context
-     */
-    get appRoot(): string {
-        throw new Error('There is no app root in worker context');
+    override get appRoot(): string {
+        // The documentation indicates that this should be an empty string
+        return '';
     }
 
     get isNewAppInstall(): boolean {

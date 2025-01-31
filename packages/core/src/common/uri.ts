@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { URI as Uri } from 'vscode-uri';
@@ -19,8 +19,14 @@ import { Path } from './path';
 
 export class URI {
 
-    public static fromComponents(components: UriComponents): URI {
-        return new URI(Uri.revive(components));
+    public static fromComponents(components: UriComponents): URI;
+    public static fromComponents(components: undefined): undefined;
+    public static fromComponents(components: UriComponents | undefined): URI | undefined {
+        return components ? new URI(Uri.revive(components)) : undefined;
+    }
+
+    public static fromFilePath(path: string): URI {
+        return new URI(Uri.file(path));
     }
 
     private readonly codeUri: Uri;

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
@@ -45,12 +45,22 @@ export class NavigatorContextKeyService {
         return this._explorerResourceIsFolder;
     }
 
+    protected _isFileSystemResource: ContextKey<boolean>;
+
+    /**
+     * True when the Explorer or editor file is a file system resource that can be handled from a file system provider.
+     */
+    get isFileSystemResource(): ContextKey<boolean> {
+        return this._isFileSystemResource;
+    }
+
     @postConstruct()
     protected init(): void {
         this._explorerViewletVisible = this.contextKeyService.createKey<boolean>('explorerViewletVisible', false);
         this._explorerViewletFocus = this.contextKeyService.createKey<boolean>('explorerViewletFocus', false);
         this._filesExplorerFocus = this.contextKeyService.createKey<boolean>('filesExplorerFocus', false);
         this._explorerResourceIsFolder = this.contextKeyService.createKey<boolean>('explorerResourceIsFolder', false);
+        this._isFileSystemResource = this.contextKeyService.createKey<boolean>('isFileSystemResource', false);
     }
 
 }

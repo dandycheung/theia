@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from 'inversify';
@@ -50,6 +50,15 @@ export const FilterContribution = Symbol('FilterContribution');
 export interface FilterContribution {
     /**
      * Use the registry to register your contribution filters.
+     * * Note that filtering contributions based on their class (constructor) name is discouraged.
+     * Class names are minified in production builds and therefore not reliable.
+     * Use instance of checks or direct constructor comparison instead:
+     *
+     * ```ts
+     * registry.addFilters('*', [
+     *     contrib => !(contrib instanceof SampleFilteredCommandContribution)
+     * ]);
+     * ```
      */
     registerContributionFilters(registry: ContributionFilterRegistry): void;
 }

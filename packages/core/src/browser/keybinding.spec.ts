@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { enableJSDOM } from './test/jsdom';
@@ -90,7 +90,8 @@ before(async () => {
         bind(StatusBar).toConstantValue({} as StatusBar);
         bind(MarkdownRendererImpl).toSelf().inSingletonScope();
         bind(MarkdownRenderer).toService(MarkdownRendererImpl);
-        bind(MarkdownRendererFactory).toFactory(({ container }) => container.get(MarkdownRenderer));
+        bind(MarkdownRendererFactory).toFactory(({ container }) => () => container.get(MarkdownRenderer));
+
         bind(CommandService).toService(CommandRegistry);
         bind(LabelParser).toSelf().inSingletonScope();
         bind(ContextKeyService).to(ContextKeyServiceDummyImpl).inSingletonScope();

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from 'react';
@@ -38,7 +38,9 @@ export abstract class ReactWidget extends BaseWidget {
 
     protected override onUpdateRequest(msg: Message): void {
         super.onUpdateRequest(msg);
-        this.nodeRoot.render(<React.Fragment>{this.render()}</React.Fragment>);
+        if (!this.isDisposed) {
+            this.nodeRoot.render(<React.Fragment>{this.render()}</React.Fragment>);
+        }
     }
 
     /**

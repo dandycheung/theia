@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /*---------------------------------------------------------------------------------------------
@@ -35,20 +35,27 @@ import { Splice } from '../common/arrays';
 import { UriComponents } from '../common/uri-components';
 import { Command } from '../common/plugin-api-rpc-model';
 import { RPCProtocol } from '../common/rpc-protocol';
-import { URI } from './types-impl';
+import { URI, ThemeIcon } from './types-impl';
 import { ScmCommandArg } from '../common/plugin-api-rpc';
 import { sep } from '@theia/core/lib/common/paths';
+import { PluginIconPath } from './plugin-icon-path';
+import { createAPIObject } from './plugin-context';
 type ProviderHandle = number;
 type GroupHandle = number;
 type ResourceStateHandle = number;
 
-function getIconResource(decorations?: theia.SourceControlResourceThemableDecorations): theia.Uri | undefined {
-    if (!decorations) {
+function getIconResource(decorations?: theia.SourceControlResourceThemableDecorations): UriComponents | ThemeIcon | undefined {
+    if (!decorations || !decorations.iconPath) {
         return undefined;
     } else if (typeof decorations.iconPath === 'string') {
         return URI.file(decorations.iconPath);
-    } else {
+    } else if (URI.isUri(decorations.iconPath)) {
         return decorations.iconPath;
+    } else if (ThemeIcon.is(decorations.iconPath)) {
+        return decorations.iconPath;
+    } else {
+        console.warn(`Unexpected Value ${decorations.iconPath} in Source Control Resource Themable Decoration. URI, ThemeIcon or string expected.`);
+        return undefined;
     }
 }
 
@@ -111,8 +118,8 @@ function compareResourceThemableDecorations(a: theia.SourceControlResourceThemab
         return 1;
     }
 
-    const aPath = typeof a.iconPath === 'string' ? a.iconPath : a.iconPath.fsPath;
-    const bPath = typeof b.iconPath === 'string' ? b.iconPath : b.iconPath.fsPath;
+    const aPath = typeof a.iconPath === 'string' ? a.iconPath : URI.isUri(a.iconPath) ? a.iconPath.fsPath : (a.iconPath as ThemeIcon).id;
+    const bPath = typeof b.iconPath === 'string' ? b.iconPath : URI.isUri(b.iconPath) ? b.iconPath.fsPath : (b.iconPath as ThemeIcon).id;
     return comparePaths(aPath, bPath);
 }
 
@@ -284,6 +291,7 @@ interface ValidateInput {
 export class ScmInputBoxImpl implements theia.SourceControlInputBox {
 
     private _value: string = '';
+    apiObject: theia.SourceControlInputBox;
 
     get value(): string {
         return this._value;
@@ -322,6 +330,17 @@ export class ScmInputBoxImpl implements theia.SourceControlInputBox {
         this._visible = visible;
     }
 
+    private _enabled: boolean;
+
+    get enabled(): boolean {
+        return this._enabled;
+    }
+
+    set enabled(enabled: boolean) {
+        this.proxy.$setInputBoxEnabled(this.sourceControlHandle, enabled);
+        this._enabled = enabled;
+    }
+
     private _validateInput: ValidateInput | undefined;
 
     get validateInput(): ValidateInput | undefined {
@@ -337,7 +356,7 @@ export class ScmInputBoxImpl implements theia.SourceControlInputBox {
     }
 
     constructor(private plugin: Plugin, private proxy: ScmMain, private sourceControlHandle: number) {
-        // noop
+        this.apiObject = createAPIObject(this);
     }
 
     onInputBoxValueChange(value: string): void {
@@ -350,7 +369,7 @@ export class ScmInputBoxImpl implements theia.SourceControlInputBox {
     }
 }
 
-class SsmResourceGroupImpl implements theia.SourceControlResourceGroup {
+class ScmResourceGroupImpl implements theia.SourceControlResourceGroup {
 
     private static handlePool: number = 0;
     private resourceHandlePool: number = 0;
@@ -398,12 +417,13 @@ class SsmResourceGroupImpl implements theia.SourceControlResourceGroup {
         this.onDidUpdateResourceStatesEmitter.fire();
     }
 
-    readonly handle = SsmResourceGroupImpl.handlePool++;
+    readonly handle = ScmResourceGroupImpl.handlePool++;
 
     constructor(
         private proxy: ScmMain,
         private commands: CommandRegistryImpl,
         private sourceControlHandle: number,
+        private plugin: Plugin,
         private _id: string,
         private _label: string,
     ) { }
@@ -432,10 +452,11 @@ class SsmResourceGroupImpl implements theia.SourceControlResourceGroup {
                 this.resourceStatesMap.set(handle, r);
 
                 const sourceUri = r.resourceUri;
-                const iconUri = getIconResource(r.decorations);
-                const lightIconUri = r.decorations && getIconResource(r.decorations.light) || iconUri;
-                const darkIconUri = r.decorations && getIconResource(r.decorations.dark) || iconUri;
-                const icons: UriComponents[] = [];
+
+                const icon = getIconResource(r.decorations);
+                const lightIcon = r.decorations && getIconResource(r.decorations.light) || icon;
+                const darkIcon = r.decorations && getIconResource(r.decorations.dark) || icon;
+                const icons = [this.getThemableIcon(lightIcon), this.getThemableIcon(darkIcon)];
                 let command: Command | undefined;
 
                 if (r.command) {
@@ -446,14 +467,6 @@ class SsmResourceGroupImpl implements theia.SourceControlResourceGroup {
                     } else {
                         this.resourceStatesCommandsMap.set(handle, r.command);
                     }
-                }
-
-                if (lightIconUri) {
-                    icons.push(lightIconUri);
-                }
-
-                if (darkIconUri && (darkIconUri.toString() !== lightIconUri?.toString())) {
-                    icons.push(darkIconUri);
                 }
 
                 const tooltip = (r.decorations && r.decorations.tooltip) || '';
@@ -500,6 +513,15 @@ class SsmResourceGroupImpl implements theia.SourceControlResourceGroup {
         return rawResourceSplices;
     }
 
+    private getThemableIcon(icon: UriComponents | ThemeIcon | undefined): string | ThemeIcon | undefined {
+        if (!icon) {
+            return undefined;
+        } else if (ThemeIcon.is(icon)) {
+            return icon;
+        }
+        return PluginIconPath.asString(URI.revive(icon), this.plugin);
+    }
+
     dispose(): void {
         this._disposed = true;
         this.onDidDisposeEmitter.fire();
@@ -509,7 +531,7 @@ class SsmResourceGroupImpl implements theia.SourceControlResourceGroup {
 class SourceControlImpl implements theia.SourceControl {
 
     private static handlePool: number = 0;
-    private groups: Map<GroupHandle, SsmResourceGroupImpl> = new Map<GroupHandle, SsmResourceGroupImpl>();
+    private groups: Map<GroupHandle, ScmResourceGroupImpl> = new Map<GroupHandle, ScmResourceGroupImpl>();
 
     get id(): string {
         return this._id;
@@ -523,8 +545,7 @@ class SourceControlImpl implements theia.SourceControl {
         return this._rootUri;
     }
 
-    private _inputBox: ScmInputBoxImpl;
-    get inputBox(): ScmInputBoxImpl { return this._inputBox; }
+    readonly inputBox: ScmInputBoxImpl;
 
     private _count: number | undefined = undefined;
 
@@ -615,22 +636,22 @@ class SourceControlImpl implements theia.SourceControl {
     private handle: number = SourceControlImpl.handlePool++;
 
     constructor(
-        plugin: Plugin,
+        private plugin: Plugin,
         private proxy: ScmMain,
         private commands: CommandRegistryImpl,
         private _id: string,
         private _label: string,
         private _rootUri?: theia.Uri
     ) {
-        this._inputBox = new ScmInputBoxImpl(plugin, this.proxy, this.handle);
+        this.inputBox = new ScmInputBoxImpl(plugin, this.proxy, this.handle);
         this.proxy.$registerSourceControl(this.handle, _id, _label, _rootUri);
     }
 
-    private createdResourceGroups = new Map<SsmResourceGroupImpl, Disposable>();
-    private updatedResourceGroups = new Set<SsmResourceGroupImpl>();
+    private createdResourceGroups = new Map<ScmResourceGroupImpl, Disposable>();
+    private updatedResourceGroups = new Set<ScmResourceGroupImpl>();
 
-    createResourceGroup(id: string, label: string): SsmResourceGroupImpl {
-        const group = new SsmResourceGroupImpl(this.proxy, this.commands, this.handle, id, label);
+    createResourceGroup(id: string, label: string): ScmResourceGroupImpl {
+        const group = new ScmResourceGroupImpl(this.proxy, this.commands, this.handle, this.plugin, id, label);
         const disposable = group.onDidDispose(() => this.createdResourceGroups.delete(group));
         this.createdResourceGroups.set(group, disposable);
         this.eventuallyAddResourceGroups();
@@ -692,7 +713,7 @@ class SourceControlImpl implements theia.SourceControl {
         this.updatedResourceGroups.clear();
     }
 
-    getResourceGroup(handle: GroupHandle): SsmResourceGroupImpl | undefined {
+    getResourceGroup(handle: GroupHandle): ScmResourceGroupImpl | undefined {
         return this.groups.get(handle);
     }
 

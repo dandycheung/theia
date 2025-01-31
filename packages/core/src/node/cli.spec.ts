@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as yargs from 'yargs';
@@ -44,7 +44,7 @@ describe('CliManager', () => {
                 value.resolve(args['foo'] as string);
             }
         });
-        await manager.initializeCli(['-f', 'bla']);
+        await manager.initializeCli(['-f', 'bla'], () => Promise.resolve(), () => Promise.resolve());
         chai.assert.equal(await value.promise, 'bla');
     });
 
@@ -59,14 +59,14 @@ describe('CliManager', () => {
                 value.resolve(args['bar'] as string);
             }
         });
-        await manager.initializeCli(['--foo']);
+        await manager.initializeCli(['--foo'], () => Promise.resolve(), () => Promise.resolve());
         chai.assert.equal(await value.promise, 'my-default');
     });
 
     it('prints help and exits', async () =>
         assertExits(async () => {
             const manager = new TestCliManager();
-            await manager.initializeCli(['--help']);
+            await manager.initializeCli(['--help'], () => Promise.resolve(), () => Promise.resolve());
         })
     );
 });

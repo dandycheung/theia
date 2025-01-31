@@ -11,9 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
+import * as dns from 'dns';
 import * as path from 'path';
 import * as http from 'http';
 import * as https from 'https';
@@ -26,8 +27,15 @@ import { CliContribution } from './cli';
 import { Deferred } from '../common/promise-util';
 import { environment } from '../common/index';
 import { AddressInfo } from 'net';
-import { ApplicationPackage } from '@theia/application-package';
 import { ProcessUtils } from './process-utils';
+
+/**
+ * The path to the application project directory. This is the directory where the application code is located.
+ * Mostly contains the `package.json` file and the `lib` directory.
+ */
+export const BackendApplicationPath = process.env.THEIA_APP_PROJECT_PATH || process.cwd();
+
+export type DnsResultOrder = 'ipv4first' | 'verbatim' | 'nodeDefault';
 
 const APP_PROJECT_PATH = 'app-project-path';
 
@@ -36,6 +44,7 @@ const TIMER_WARNING_THRESHOLD = 50;
 const DEFAULT_PORT = environment.electron.is() ? 0 : 3000;
 const DEFAULT_HOST = 'localhost';
 const DEFAULT_SSL = false;
+const DEFAULT_DNS_DEFAULT_RESULT_ORDER: DnsResultOrder = 'ipv4first';
 
 export const BackendApplicationServer = Symbol('BackendApplicationServer');
 /**
@@ -47,7 +56,12 @@ export interface BackendApplicationServer extends BackendApplicationContribution
 
 export const BackendApplicationContribution = Symbol('BackendApplicationContribution');
 /**
- * Contribution for hooking into the backend lifecycle.
+ * Contribution for hooking into the backend lifecycle:
+ *
+ * - `initialize()`
+ * - `configure(expressApp)`
+ * - `onStart(httpServer)`
+ * - `onStop()`
  */
 export interface BackendApplicationContribution {
     /**
@@ -102,10 +116,12 @@ export class BackendApplicationCliContribution implements CliContribution {
 
     port: number;
     hostname: string | undefined;
+    dnsDefaultResultOrder: DnsResultOrder = DEFAULT_DNS_DEFAULT_RESULT_ORDER;
     ssl: boolean | undefined;
     cert: string | undefined;
     certkey: string | undefined;
-    projectPath: string;
+    /** @deprecated Use the `BackendApplicationPath` constant or `process.env.THEIA_APP_PROJECT_PATH` environment variable instead */
+    projectPath = BackendApplicationPath;
 
     configure(conf: yargs.Argv): void {
         conf.option('port', { alias: 'p', description: 'The port the backend server listens on.', type: 'number', default: DEFAULT_PORT });
@@ -113,7 +129,13 @@ export class BackendApplicationCliContribution implements CliContribution {
         conf.option('ssl', { description: 'Use SSL (HTTPS), cert and certkey must also be set', type: 'boolean', default: DEFAULT_SSL });
         conf.option('cert', { description: 'Path to SSL certificate.', type: 'string' });
         conf.option('certkey', { description: 'Path to SSL certificate key.', type: 'string' });
-        conf.option(APP_PROJECT_PATH, { description: 'Sets the application project directory', default: this.appProjectPath() });
+        conf.option(APP_PROJECT_PATH, { description: 'Sets the application project directory', deprecated: true });
+        conf.option('dnsDefaultResultOrder', {
+            type: 'string',
+            description: 'Configure Node\'s DNS resolver default behavior, see https://nodejs.org/docs/latest-v18.x/api/dns.html#dnssetdefaultresultorderorder',
+            choices: ['ipv4first', 'verbatim', 'nodeDefault'],
+            default: DEFAULT_DNS_DEFAULT_RESULT_ORDER
+        });
     }
 
     setArguments(args: yargs.Arguments): void {
@@ -122,19 +144,8 @@ export class BackendApplicationCliContribution implements CliContribution {
         this.ssl = args.ssl as boolean;
         this.cert = args.cert as string;
         this.certkey = args.certkey as string;
-        this.projectPath = args[APP_PROJECT_PATH] as string;
+        this.dnsDefaultResultOrder = args.dnsDefaultResultOrder as DnsResultOrder;
     }
-
-    protected appProjectPath(): string {
-        if (environment.electron.is()) {
-            if (process.env.THEIA_APP_PROJECT_PATH) {
-                return process.env.THEIA_APP_PROJECT_PATH;
-            }
-            throw new Error('The \'THEIA_APP_PROJECT_PATH\' environment variable must be set when running in electron.');
-        }
-        return process.cwd();
-    }
-
 }
 
 /**
@@ -145,26 +156,20 @@ export class BackendApplication {
 
     protected readonly app: express.Application = express();
 
-    @inject(ApplicationPackage)
-    protected readonly applicationPackage: ApplicationPackage;
-
     @inject(ProcessUtils)
     protected readonly processUtils: ProcessUtils;
 
     @inject(Stopwatch)
     protected readonly stopwatch: Stopwatch;
 
+    private _configured: Promise<void>;
+
     constructor(
         @inject(ContributionProvider) @named(BackendApplicationContribution)
         protected readonly contributionsProvider: ContributionProvider<BackendApplicationContribution>,
         @inject(BackendApplicationCliContribution) protected readonly cliParams: BackendApplicationCliContribution) {
         process.on('uncaughtException', error => {
-            if (error) {
-                console.error('Uncaught Exception: ', error.toString());
-                if (error.stack) {
-                    console.error(error.stack);
-                }
-            }
+            this.handleUncaughtError(error);
         });
 
         // Workaround for Electron not installing a handler to ignore SIGPIPE error
@@ -187,7 +192,7 @@ export class BackendApplication {
     }
 
     protected async initialize(): Promise<void> {
-        for (const contribution of this.contributionsProvider.getContributions()) {
+        await Promise.all(this.contributionsProvider.getContributions().map(async contribution => {
             if (contribution.initialize) {
                 try {
                     await this.measure(contribution.constructor.name + '.initialize',
@@ -197,14 +202,20 @@ export class BackendApplication {
                     console.error('Could not initialize contribution', error);
                 }
             }
-        }
+        }));
+    }
+
+    get configured(): Promise<void> {
+        return this._configured;
     }
 
     @postConstruct()
+    protected init(): void {
+        this._configured = this.configure();
+    }
+
     protected async configure(): Promise<void> {
-        // Do not await the initialization because contributions are expected to handle
-        // concurrent initialize/configure in undefined order if they provide both
-        this.initialize();
+        await this.initialize();
 
         this.app.get('*.js', this.serveGzipped.bind(this, 'text/javascript'));
         this.app.get('*.js.map', this.serveGzipped.bind(this, 'application/json'));
@@ -213,27 +224,34 @@ export class BackendApplication {
         this.app.get('*.gif', this.serveGzipped.bind(this, 'image/gif'));
         this.app.get('*.png', this.serveGzipped.bind(this, 'image/png'));
         this.app.get('*.svg', this.serveGzipped.bind(this, 'image/svg+xml'));
+        this.app.get('*.eot', this.serveGzipped.bind(this, 'application/vnd.ms-fontobject'));
+        this.app.get('*.ttf', this.serveGzipped.bind(this, 'font/ttf'));
+        this.app.get('*.woff', this.serveGzipped.bind(this, 'font/woff'));
+        this.app.get('*.woff2', this.serveGzipped.bind(this, 'font/woff2'));
 
-        for (const contribution of this.contributionsProvider.getContributions()) {
+        await Promise.all(this.contributionsProvider.getContributions().map(async contribution => {
             if (contribution.configure) {
                 try {
-                    await this.measure(contribution.constructor.name + '.configure',
-                        () => contribution.configure!(this.app)
-                    );
+                    await contribution.configure!(this.app);
                 } catch (error) {
                     console.error('Could not configure contribution', error);
                 }
             }
-        }
+        }));
+        console.info('configured all backend app contributions');
     }
 
     use(...handlers: express.Handler[]): void {
         this.app.use(...handlers);
     }
 
-    async start(aPort?: number, aHostname?: string): Promise<http.Server | https.Server> {
-        const hostname = aHostname !== undefined ? aHostname : this.cliParams.hostname;
-        const port = aPort !== undefined ? aPort : this.cliParams.port;
+    async start(port?: number, hostname?: string): Promise<http.Server | https.Server> {
+        hostname ??= this.cliParams.hostname;
+        port ??= this.cliParams.port;
+
+        if (this.cliParams.dnsDefaultResultOrder !== 'nodeDefault') {
+            dns.setDefaultResultOrder(this.cliParams.dnsDefaultResultOrder);
+        }
 
         const deferred = new Deferred<http.Server | https.Server>();
         let server: http.Server | https.Server;
@@ -276,8 +294,10 @@ export class BackendApplication {
         });
 
         server.listen(port, hostname, () => {
-            const scheme = this.cliParams.ssl ? 'https' : 'http';
-            console.info(`Theia app listening on ${scheme}://${hostname || 'localhost'}:${(server.address() as AddressInfo).port}.`);
+            // address should be defined at this point
+            const address = server.address()!;
+            const url = typeof address === 'string' ? address : this.getHttpUrl(address, this.cliParams.ssl);
+            console.info(`Theia app listening on ${url}.`);
             deferred.resolve(server);
         });
 
@@ -296,6 +316,13 @@ export class BackendApplication {
             }
         }
         return this.stopwatch.startAsync('server', 'Finished starting backend application', () => deferred.promise);
+    }
+
+    protected getHttpUrl({ address, port, family }: AddressInfo, ssl?: boolean): string {
+        const scheme = ssl ? 'https' : 'http';
+        return family.toLowerCase() === 'ipv6'
+            ? `${scheme}://[${address}]:${port}`
+            : `${scheme}://${address}:${port}`;
     }
 
     protected onStop(): void {
@@ -317,7 +344,7 @@ export class BackendApplication {
         const acceptedEncodings = req.acceptsEncodings();
 
         const gzUrl = `${req.url}.gz`;
-        const gzPath = path.join(this.applicationPackage.projectPath, 'lib', gzUrl);
+        const gzPath = path.join(BackendApplicationPath, 'lib', 'frontend', gzUrl);
         if (acceptedEncodings.indexOf('gzip') === -1 || !(await fs.pathExists(gzPath))) {
             next();
             return;
@@ -333,6 +360,15 @@ export class BackendApplication {
 
     protected async measure<T>(name: string, fn: () => MaybePromise<T>): Promise<T> {
         return this.stopwatch.startAsync(name, `Backend ${name}`, fn, { thresholdMillis: TIMER_WARNING_THRESHOLD });
+    }
+
+    protected handleUncaughtError(error: Error): void {
+        if (error) {
+            console.error('Uncaught Exception: ', error.toString());
+            if (error.stack) {
+                console.error(error.stack);
+            }
+        }
     }
 
 }

@@ -11,9 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { injectable } from 'inversify';
+import { isObject, isString } from '../common';
 
 export interface LabelIcon {
     name: string;
@@ -21,8 +22,8 @@ export interface LabelIcon {
 }
 
 export namespace LabelIcon {
-    export function is(val: object): val is LabelIcon {
-        return 'name' in val;
+    export function is(val: unknown): val is LabelIcon {
+        return isObject<LabelIcon>(val) && isString(val.name);
     }
 }
 
@@ -87,6 +88,21 @@ export class LabelParser {
         }
 
         return parserArray;
+    }
+
+    /**
+     * Strips icon specifiers from the given `text`, leaving only a
+     * space-separated concatenation of the non-icon segments.
+     *
+     * @param text text to be stripped of icon specifiers
+     * @returns the `text` with icon specifiers stripped out
+     */
+    stripIcons(text: string): string {
+        return this.parse(text)
+            .filter(item => !LabelIcon.is(item))
+            .map(s => (s as string).trim())
+            .filter(s => s.length)
+            .join(' ');
     }
 
 }

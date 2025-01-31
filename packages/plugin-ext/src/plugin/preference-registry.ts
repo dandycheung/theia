@@ -11,20 +11,21 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { Emitter, Event } from '@theia/core/lib/common/event';
 import { isOSX, isWindows } from '@theia/core/lib/common/os';
 import { URI } from '@theia/core/shared/vscode-uri';
 import { ResourceMap } from '@theia/monaco-editor-core/esm/vs/base/common/map';
-import { IConfigurationOverrides, IOverrides } from '@theia/monaco-editor-core/esm/vs/platform/configuration/common/configuration';
-import { Configuration, ConfigurationModel } from '@theia/monaco-editor-core/esm/vs/platform/configuration/common/configurationModels';
+import { IConfigurationOverrides } from '@theia/monaco-editor-core/esm/vs/platform/configuration/common/configuration';
+import { Configuration, ConfigurationModel, ConfigurationModelParser } from '@theia/monaco-editor-core/esm/vs/platform/configuration/common/configurationModels';
 import { Workspace, WorkspaceFolder } from '@theia/monaco-editor-core/esm/vs/platform/workspace/common/workspace';
 import * as theia from '@theia/plugin';
-import { v4 } from 'uuid';
+import { generateUuid } from '@theia/core/lib/common/uuid';
 import {
     PLUGIN_RPC_CONTEXT, PreferenceChangeExt, PreferenceData, PreferenceRegistryExt,
     PreferenceRegistryMain
@@ -33,6 +34,7 @@ import { RPCProtocol } from '../common/rpc-protocol';
 import { isObject, mixin } from '../common/types';
 import { WorkspaceExtImpl } from './workspace';
 import cloneDeep = require('lodash.clonedeep');
+import { ILogService, LogLevel } from '@theia/monaco-editor-core/esm/vs/platform/log/common/log';
 
 const injectionRe = /\b__proto__\b|\bconstructor\.prototype\b/;
 
@@ -74,31 +76,64 @@ function lookUp(tree: any, key: string): any {
 export class TheiaWorkspace extends Workspace {
     constructor(ext: WorkspaceExtImpl) {
         const folders = (ext.workspaceFolders ?? []).map(folder => new WorkspaceFolder(folder));
-        super(v4(), folders, false, ext.workspaceFile ?? null, () => isOSX || isWindows);
+        super(generateUuid(), folders, false, ext.workspaceFile ?? null, () => isOSX || isWindows);
     }
 }
 
+const logService: ILogService = {
+    _serviceBrand: undefined,
+    onDidChangeLogLevel: new Emitter<LogLevel>().event,
+    getLevel: function (): LogLevel {
+        return LogLevel.Info;
+    },
+    setLevel: function (level: LogLevel): void {
+    },
+    trace: function (message: string, ...args: any[]): void {
+    },
+    debug: function (message: string, ...args: any[]): void {
+    },
+    info: function (message: string, ...args: any[]): void {
+    },
+    warn: function (message: string, ...args: any[]): void {
+    },
+    error: function (message: string | Error, ...args: any[]): void {
+    },
+    flush: function (): void {
+    },
+    dispose: function (): void {
+    }
+};
+
+@injectable()
 export class PreferenceRegistryExtImpl implements PreferenceRegistryExt {
+    @inject(RPCProtocol)
+    protected rpc: RPCProtocol;
+
+    @inject(WorkspaceExtImpl)
+    protected readonly workspace: WorkspaceExtImpl;
+
     private proxy: PreferenceRegistryMain;
     private _preferences: Configuration;
     private readonly _onDidChangeConfiguration = new Emitter<theia.ConfigurationChangeEvent>();
 
     readonly onDidChangeConfiguration: Event<theia.ConfigurationChangeEvent> = this._onDidChangeConfiguration.event;
 
-    constructor(
-        rpc: RPCProtocol,
-        private readonly workspace: WorkspaceExtImpl
-    ) {
-        this.proxy = rpc.getProxy(PLUGIN_RPC_CONTEXT.PREFERENCE_REGISTRY_MAIN);
+    @postConstruct()
+    initialize(): void {
+        this.proxy = this.rpc.getProxy(PLUGIN_RPC_CONTEXT.PREFERENCE_REGISTRY_MAIN);
     }
 
     init(data: PreferenceData): void {
-        this._preferences = this.parse(data);
+        this.preferencesChanged(data);
     }
 
     $acceptConfigurationChanged(data: PreferenceData, eventData: PreferenceChangeExt[]): void {
-        this.init(data);
-        this._onDidChangeConfiguration.fire(this.toConfigurationChangeEvent(eventData));
+        this.preferencesChanged(data, eventData);
+    }
+
+    private preferencesChanged(data: PreferenceData, eventData?: PreferenceChangeExt[]): void {
+        this._preferences = this.parse(data);
+        this._onDidChangeConfiguration.fire(this.toConfigurationChangeEvent(eventData ?? []));
     }
 
     getConfiguration(rawSection?: string, rawScope?: theia.ConfigurationScope | null, extensionId?: string): theia.WorkspaceConfiguration {
@@ -170,7 +205,9 @@ export class PreferenceRegistryExtImpl implements PreferenceRegistryExt {
             },
             update: (key: string, value: any, targetScope?: ConfigurationTarget | boolean, withLanguageOverride?: boolean): PromiseLike<void> => {
                 const resourceStr = overrides.resource?.toString();
-                const fullPath = `${overrides.overrideIdentifier ? `[${overrides.overrideIdentifier}].` : ''}${rawSection}.${key}`;
+                const overrideSegment = overrides.overrideIdentifier ? `[${overrides.overrideIdentifier}].` : '';
+                const preferenceKey = rawSection ? `${rawSection}.${key}` : key;
+                const fullPath = overrideSegment + preferenceKey;
                 if (typeof value !== 'undefined') {
                     return this.proxy.$updateConfigurationOption(targetScope, fullPath, value, resourceStr, withLanguageOverride);
                 } else {
@@ -178,7 +215,7 @@ export class PreferenceRegistryExtImpl implements PreferenceRegistryExt {
                 }
             },
             inspect: <T>(key: string): ConfigurationInspect<T> | undefined => {
-                const path = `${rawSection}.${key}`;
+                const path = rawSection ? `${rawSection}.${key}` : key;
                 const result = this._preferences.inspect<T>(path, overrides, new TheiaWorkspace(this.workspace));
 
                 if (!result) {
@@ -186,10 +223,10 @@ export class PreferenceRegistryExtImpl implements PreferenceRegistryExt {
                 }
 
                 const configInspect: ConfigurationInspect<T> = { key };
-                configInspect.defaultValue = result.default?.value;
-                configInspect.globalValue = result.user?.value;
-                configInspect.workspaceValue = result.workspace?.value;
-                configInspect.workspaceFolderValue = result.workspaceFolder?.value;
+                configInspect.defaultValue = cloneDeep(result.default?.value);
+                configInspect.globalValue = cloneDeep(result.user?.value);
+                configInspect.workspaceValue = cloneDeep(result.workspace?.value);
+                configInspect.workspaceFolderValue = cloneDeep(result.workspaceFolder?.value);
                 return configInspect;
             }
         };
@@ -232,70 +269,66 @@ export class PreferenceRegistryExtImpl implements PreferenceRegistryExt {
     }
 
     private parse(data: PreferenceData): Configuration {
-        const defaultConfiguration = this.getConfigurationModel(data[PreferenceScope.Default]);
-        const userConfiguration = this.getConfigurationModel(data[PreferenceScope.User]);
-        const workspaceConfiguration = this.getConfigurationModel(data[PreferenceScope.Workspace]);
+        const defaultConfiguration = this.getConfigurationModel('Default', data[PreferenceScope.Default]);
+        const userConfiguration = this.getConfigurationModel('User', data[PreferenceScope.User]);
+        const workspaceConfiguration = this.getConfigurationModel('Workspace', data[PreferenceScope.Workspace]);
         const folderConfigurations = new ResourceMap<ConfigurationModel>();
         Object.keys(data[PreferenceScope.Folder]).forEach(resource => {
-            folderConfigurations.set(URI.parse(resource), this.getConfigurationModel(data[PreferenceScope.Folder][resource]));
+            folderConfigurations.set(URI.parse(resource), this.getConfigurationModel(`Folder: ${resource}`, data[PreferenceScope.Folder][resource]));
         });
+
+        function createEmptyModel(): ConfigurationModel {
+            return new ConfigurationModel({}, [], [], undefined, logService);
+        }
+
         return new Configuration(
             defaultConfiguration,
-            new ConfigurationModel(), /** policy configuration. */
-            new ConfigurationModel(), /** application configuration. */
+            createEmptyModel(), /** policy configuration. */
+            createEmptyModel(), /** application configuration. */
             userConfiguration,
-            new ConfigurationModel(), /** remote configuration. */
+            createEmptyModel(), /** remote configuration. */
             workspaceConfiguration,
-            folderConfigurations
+            folderConfigurations,
+            ConfigurationModel.createEmptyModel(logService),
+            new ResourceMap<ConfigurationModel>(),
+            logService
         );
     }
 
-    private getConfigurationModel(data: { [key: string]: any }): ConfigurationModel {
-        if (!data) {
-            return new ConfigurationModel();
-        }
-        const configData = this.parseConfigurationData(data);
-        return new ConfigurationModel(configData.contents, configData.keys, configData.overrides);
+    private getConfigurationModel(label: string, data: { [key: string]: any }): ConfigurationModel {
+        const parser = new ConfigurationModelParser(label, logService);
+        const sanitized = this.sanitize(data);
+        parser.parseRaw(sanitized);
+        return parser.configurationModel;
     }
 
-    private readonly OVERRIDE_PROPERTY = '^\\[(.*)\\]$';
-    private readonly OVERRIDE_PROPERTY_PATTERN = new RegExp(this.OVERRIDE_PROPERTY);
-    private readonly OVERRIDE_KEY_TEST = /^\[([^\]]+)\]\./;
-
-    private parseConfigurationData(data: { [key: string]: any }): Omit<IOverrides, 'identifiers'> & { overrides: IOverrides[] } {
-        const keys = new Array<string>();
-        const overrides: Record<string, IOverrides> = Object.create(null);
-        const contents = Object.keys(data).reduce((result: any, key: string) => {
-            if (injectionRe.test(key)) {
-                return result;
-            }
-            const parts = key.split('.');
-            let branch = result;
-            const isOverride = this.OVERRIDE_KEY_TEST.test(key);
-            if (!isOverride) {
-                keys.push(key);
-            }
-            for (let i = 0; i < parts.length; i++) {
-                if (i === 0 && isOverride) {
-                    const identifier = this.OVERRIDE_PROPERTY_PATTERN.exec(parts[i])![1];
-                    if (!overrides[identifier]) {
-                        overrides[identifier] = { keys: [], identifiers: [identifier], contents: Object.create(null) };
+    /**
+     * Creates a new object and assigns those keys of raw to it that are not likely to cause prototype pollution.
+     * Also preprocesses override identifiers so that they take the form [identifier]: {...contents}.
+     */
+    private sanitize<T = unknown>(raw: T): T {
+        if (!isObject(raw)) { return raw; }
+        const asObject = raw as Record<string, unknown>;
+        const sanitized = Object.create(null);
+        for (const key of Object.keys(asObject)) {
+            if (!injectionRe.test(key)) {
+                const override = this.OVERRIDE_KEY_TEST.exec(key);
+                if (override) {
+                    const overrideKey = `[${override[1]}]`;
+                    const remainder = key.slice(override[0].length);
+                    if (!isObject(sanitized[overrideKey])) {
+                        sanitized[overrideKey] = Object.create(null);
                     }
-                    branch = overrides[identifier].contents;
-                    overrides[identifier].keys.push(key.slice(parts[i].length + 1));
-                } else if (i === parts.length - 1) {
-                    branch[parts[i]] = data[key];
+                    sanitized[overrideKey][remainder] = this.sanitize(asObject[key]);
                 } else {
-                    if (!branch[parts[i]]) {
-                        branch[parts[i]] = Object.create(null);
-                    }
-                    branch = branch[parts[i]];
+                    sanitized[key] = this.sanitize(asObject[key]);
                 }
             }
-            return result;
-        }, Object.create(null));
-        return { contents, keys, overrides: Object.values(overrides) };
+        }
+        return sanitized;
     }
+
+    private readonly OVERRIDE_KEY_TEST = /^\[([^\]]+)\]\./;
 
     private toConfigurationChangeEvent(eventData: PreferenceChangeExt[]): theia.ConfigurationChangeEvent {
         return Object.freeze({
