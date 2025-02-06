@@ -11,13 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Command, ContributionProvider, Emitter, MaybePromise, MessageService } from '@theia/core';
 import { Widget } from '@theia/core/lib/browser';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
-import { TabBarToolbarItem } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import { injectable, inject, postConstruct, named } from '@theia/core/shared/inversify';
 import { ToolbarDefaultsFactory } from './toolbar-defaults';
@@ -76,7 +75,7 @@ export class ToolbarController {
                         if (contribution) {
                             newGroup.push(contribution);
                         }
-                    } else if (TabBarToolbarItem.is(item)) {
+                    } else {
                         newGroup.push({ ...item });
                     }
                 }
@@ -93,7 +92,11 @@ export class ToolbarController {
     }
 
     @postConstruct()
-    async init(): Promise<void> {
+    protected init(): void {
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         await this.appState.reachedState('ready');
         await this.storageProvider.ready;
         this.toolbarItems = await this.resolveToolbarItems();
@@ -126,11 +129,10 @@ export class ToolbarController {
         newPosition: ToolbarItemPosition,
         direction: 'location-left' | 'location-right',
     ): Promise<boolean> {
-        await this.openOrCreateJSONFile(false);
-        this.toolbarProviderBusyEmitter.fire(true);
-        const success = this.storageProvider.swapValues(oldPosition, newPosition, direction);
-        this.toolbarProviderBusyEmitter.fire(false);
-        return success;
+        return this.withBusy<boolean>(async () => {
+            await this.openOrCreateJSONFile(false);
+            return this.storageProvider.swapValues(oldPosition, newPosition, direction);
+        });
     }
 
     async clearAll(): Promise<boolean> {

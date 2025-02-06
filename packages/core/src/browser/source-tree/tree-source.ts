@@ -11,16 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { ReactNode } from 'react';
 import { injectable, unmanaged } from 'inversify';
-import { Emitter, Event } from '../../common/event';
-import { MaybePromise } from '../../common/types';
-import { Disposable, DisposableCollection } from '../../common/disposable';
+import { Disposable, DisposableCollection, Emitter, Event, isObject, MaybePromise } from '../../common';
 import { TreeWidget } from '../tree';
 
 export interface TreeElement {
@@ -39,7 +37,7 @@ export interface CompositeTreeElement extends TreeElement {
 }
 export namespace CompositeTreeElement {
     export function is(element: unknown): element is CompositeTreeElement {
-        return !!element && typeof element === 'object' && 'getElements' in element;
+        return isObject(element) && 'getElements' in element;
     }
     export function hasElements(element: unknown): element is CompositeTreeElement {
         return is(element) && element.hasElements !== false;

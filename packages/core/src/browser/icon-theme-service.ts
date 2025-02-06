@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from 'inversify';
@@ -31,6 +31,7 @@ export interface IconThemeDefinition {
     readonly hasFileIcons?: boolean;
     readonly hasFolderIcons?: boolean;
     readonly hidesExplorerArrows?: boolean;
+    readonly showLanguageModeIcons?: boolean;
 }
 
 export interface IconTheme extends IconThemeDefinition {
@@ -168,9 +169,9 @@ export class IconThemeService {
      */
     setCurrent(newCurrent: IconTheme, persistSetting = true): void {
         if (newCurrent !== this.getCurrent()) {
+            this.activeTheme = newCurrent;
             this.toDeactivate.dispose();
             this.toDeactivate.push(newCurrent.activate());
-            this.activeTheme = newCurrent;
             this.onDidChangeCurrentEmitter.fire(newCurrent.id);
         }
         if (persistSetting) {
@@ -198,9 +199,11 @@ export class IconThemeService {
         const preference = this.schemaProvider.getSchemaProperty(ICON_THEME_PREFERENCE_KEY);
         if (preference) {
             const sortedThemes = Array.from(this.definitions).sort((a, b) => a.label.localeCompare(b.label));
-            preference.enum = sortedThemes.map(e => e.id);
-            preference.enumItemLabels = sortedThemes.map(e => e.label);
-            this.schemaProvider.updateSchemaProperty(ICON_THEME_PREFERENCE_KEY, preference);
+            this.schemaProvider.updateSchemaProperty(ICON_THEME_PREFERENCE_KEY, {
+                ...preference,
+                enum: sortedThemes.map(e => e.id),
+                enumItemLabels: sortedThemes.map(e => e.label)
+            });
         }
     }
 

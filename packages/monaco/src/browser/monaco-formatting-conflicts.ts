@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
@@ -22,6 +22,7 @@ import * as monaco from '@theia/monaco-editor-core';
 import { FormattingConflicts, FormattingMode } from '@theia/monaco-editor-core/esm/vs/editor/contrib/format/browser/format';
 import { DocumentFormattingEditProvider, DocumentRangeFormattingEditProvider } from '@theia/monaco-editor-core/esm/vs/editor/common/languages';
 import { ITextModel } from '@theia/monaco-editor-core/esm/vs/editor/common/model';
+import { nls } from '@theia/core/lib/common/nls';
 
 type FormattingEditProvider = DocumentFormattingEditProvider | DocumentRangeFormattingEditProvider;
 
@@ -58,13 +59,13 @@ export class MonacoFormattingConflictsContribution implements FrontendApplicatio
         await this.preferenceService.set(name, formatter);
     }
 
-    private getDefaultFormatter(language: string): string | undefined {
+    private getDefaultFormatter(language: string, resourceURI: string): string | undefined {
         const name = this.preferenceSchema.overridePreferenceName({
             preferenceName: PREFERENCE_NAME,
             overrideIdentifier: language
         });
 
-        return this.preferenceService.get<string>(name);
+        return this.preferenceService.get<string>(name, undefined, resourceURI);
     }
 
     private async selectFormatter<T extends FormattingEditProvider>(
@@ -84,7 +85,7 @@ export class MonacoFormattingConflictsContribution implements FrontendApplicatio
         }
 
         const languageId = currentEditor.editor.document.languageId;
-        const defaultFormatterId = this.getDefaultFormatter(languageId);
+        const defaultFormatterId = this.getDefaultFormatter(languageId, document.uri.toString());
 
         if (defaultFormatterId) {
             const formatter = formatters.find(f => f.extensionId && f.extensionId.value === defaultFormatterId);
@@ -103,7 +104,7 @@ export class MonacoFormattingConflictsContribution implements FrontendApplicatio
                 }))
                 .sort((a, b) => a.label!.localeCompare(b.label!));
 
-            const selectedFormatter = await this.monacoQuickInputService.showQuickPick(items, { placeholder: 'Select formatter for the current document' });
+            const selectedFormatter = await this.monacoQuickInputService.showQuickPick(items, { placeholder: nls.localizeByDefault('Format Document With...') });
             if (selectedFormatter) {
                 this.setDefaultFormatter(languageId, selectedFormatter.detail ? selectedFormatter.detail : '');
                 resolve(selectedFormatter.value);

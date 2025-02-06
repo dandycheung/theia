@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Emitter, Event } from '../common/event';
@@ -91,9 +91,11 @@ export class ThemeService {
         const preference = this.schemaProvider.getSchemaProperty(COLOR_THEME_PREFERENCE_KEY);
         if (preference) {
             const sortedThemes = this.getThemes().sort((a, b) => a.label.localeCompare(b.label));
-            preference.enum = sortedThemes.map(e => e.id);
-            preference.enumItemLabels = sortedThemes.map(e => e.label);
-            this.schemaProvider.updateSchemaProperty(COLOR_THEME_PREFERENCE_KEY, preference);
+            this.schemaProvider.updateSchemaProperty(COLOR_THEME_PREFERENCE_KEY, {
+                ...preference,
+                enum: sortedThemes.map(e => e.id),
+                enumItemLabels: sortedThemes.map(e => e.label)
+            });
         }
     }
 

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Disposable } from '../disposable';
@@ -63,11 +63,11 @@ export class CompositeMenuNode implements MutableCompoundMenuNode {
 
     updateOptions(options?: SubMenuOptions): void {
         if (options) {
-            this.iconClass ??= options.icon ?? options.iconClass;
-            this.label ??= options.label;
-            this.order ??= options.order;
-            this._role ??= options.role;
-            this._when ??= options.when;
+            this.iconClass = options.icon ?? options.iconClass ?? this.iconClass;
+            this.label = options.label ?? this.label;
+            this.order = options.order ?? this.order;
+            this._role = options.role ?? this._role;
+            this._when = options.when ?? this._when;
         }
     }
 

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -19,16 +19,22 @@
 import { JSONValue } from '@phosphor/coreutils';
 import { IJSONSchema } from '../json-schema';
 import { PreferenceScope } from './preference-scope';
+import { isObject, isString } from '../types';
 
 export interface PreferenceSchema {
     [name: string]: any,
     scope?: 'application' | 'window' | 'resource' | PreferenceScope,
     overridable?: boolean;
+    /**
+     * The title of the preference schema.
+     * It is used in the preference UI to associate a localized group of preferences.
+     */
+    title?: string;
     properties: PreferenceSchemaProperties
 }
 export namespace PreferenceSchema {
     export function is(obj: unknown): obj is PreferenceSchema {
-        return !!obj && typeof obj === 'object' && ('properties' in obj) && PreferenceSchemaProperties.is((obj as PreferenceSchema).properties);
+        return isObject<PreferenceSchema>(obj) && PreferenceSchemaProperties.is(obj.properties);
     }
     export function getDefaultScope(schema: PreferenceSchema): PreferenceScope {
         let defaultScope: PreferenceScope = PreferenceScope.Workspace;
@@ -46,7 +52,7 @@ export interface PreferenceSchemaProperties {
 }
 export namespace PreferenceSchemaProperties {
     export function is(obj: unknown): obj is PreferenceSchemaProperties {
-        return !!obj && typeof obj === 'object';
+        return isObject(obj);
     }
 }
 
@@ -74,6 +80,7 @@ export interface PreferenceSchemaProperty extends PreferenceItem {
     description?: string;
     markdownDescription?: string;
     scope?: 'application' | 'machine' | 'window' | 'resource' | 'language-overridable' | 'machine-overridable' | PreferenceScope;
+    tags?: string[];
 }
 
 export interface PreferenceDataProperty extends PreferenceItem {
@@ -86,7 +93,7 @@ export namespace PreferenceDataProperty {
     export function fromPreferenceSchemaProperty(schemaProps: PreferenceSchemaProperty, defaultScope: PreferenceScope = PreferenceScope.Workspace): PreferenceDataProperty {
         if (!schemaProps.scope) {
             schemaProps.scope = defaultScope;
-        } else if (typeof schemaProps.scope === 'string') {
+        } else if (isString(schemaProps.scope)) {
             return Object.assign(schemaProps, { scope: PreferenceScope.fromString(schemaProps.scope) || defaultScope });
         }
         return <PreferenceDataProperty>schemaProps;

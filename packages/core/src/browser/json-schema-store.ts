@@ -11,16 +11,15 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, named } from 'inversify';
 import { ContributionProvider } from '../common/contribution-provider';
-import { FrontendApplicationContribution } from './frontend-application';
-import { MaybePromise } from '../common';
-import { Endpoint } from './endpoint';
+import { FrontendApplicationContribution } from './frontend-application-contribution';
+import { Emitter, MaybePromise, URI } from '../common';
 import { timeout, Deferred } from '../common/promise-util';
-import { RequestContext, RequestService } from '@theia/request';
+import { IJSONSchema } from '../common/json-schema';
 
 export interface JsonSchemaConfiguration {
     fileMatch: string | string[];
@@ -94,16 +93,43 @@ export class JsonSchemaStore implements FrontendApplicationContribution {
 }
 
 @injectable()
+export class JsonSchemaDataStore {
+
+    protected readonly _schemas = new Map<string, string>();
+
+    protected readonly onDidSchemaUpdateEmitter = new Emitter<URI>();
+    readonly onDidSchemaUpdate = this.onDidSchemaUpdateEmitter.event;
+
+    hasSchema(uri: URI): boolean {
+        return this._schemas.has(uri.toString());
+    }
+
+    getSchema(uri: URI): string | undefined {
+        return this._schemas.get(uri.toString());
+    }
+
+    setSchema(uri: URI, schema: IJSONSchema | string): void {
+        this._schemas.set(uri.toString(), typeof schema === 'string' ? schema : JSON.stringify(schema));
+        this.notifySchemaUpdate(uri);
+    }
+
+    deleteSchema(uri: URI): void {
+        if (this._schemas.delete(uri.toString())) {
+            this.notifySchemaUpdate(uri);
+        }
+    }
+
+    notifySchemaUpdate(uri: URI): void {
+        this.onDidSchemaUpdateEmitter.fire(uri);
+    }
+
+}
+
+@injectable()
 export class DefaultJsonSchemaContribution implements JsonSchemaContribution {
-
-    @inject(RequestService)
-    protected readonly requestService: RequestService;
-
     async registerSchemas(context: JsonSchemaRegisterContext): Promise<void> {
-        const url = `${new Endpoint().httpScheme}//schemastore.azurewebsites.net/api/json/catalog.json`;
-        const response = await this.requestService.request({ url });
-        const schemas = RequestContext.asJson<{ schemas: DefaultJsonSchemaContribution.SchemaData[] }>(response).schemas;
-        for (const s of schemas) {
+        const catalog = require('./catalog.json') as { schemas: DefaultJsonSchemaContribution.SchemaData[] };
+        for (const s of catalog.schemas) {
             if (s.fileMatch) {
                 context.registerSchema({
                     fileMatch: s.fileMatch,

@@ -11,11 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ScmCommit } from '@theia/scm/lib/browser/scm-provider';
 import URI from '@theia/core/lib/common/uri';
+import { isObject } from '@theia/core/lib/common';
 
 export interface ScmFileChangeNode {
     readonly fileChange: ScmFileChange;
@@ -24,7 +25,7 @@ export interface ScmFileChangeNode {
 }
 export namespace ScmFileChangeNode {
     export function is(node: unknown): node is ScmFileChangeNode {
-        return !!node && typeof node === 'object' && 'fileChange' in node && 'commitId' in node;
+        return isObject(node) && 'fileChange' in node && 'commitId' in node;
     }
 }
 

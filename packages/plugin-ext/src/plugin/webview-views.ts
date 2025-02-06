@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
 *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -27,6 +27,7 @@ import { WebviewImpl, WebviewsExtImpl } from './webviews';
 import { WebviewViewProvider } from '@theia/plugin';
 import { Emitter, Event } from '@theia/core/lib/common/event';
 import * as theia from '@theia/plugin';
+import { hashValue } from '@theia/core/lib/common/uuid';
 
 export class WebviewViewsExtImpl implements WebviewViewsExt {
 
@@ -82,7 +83,7 @@ export class WebviewViewsExtImpl implements WebviewViewsExt {
 
         const { provider, plugin } = entry;
 
-        const webviewNoPanel = this.webviewsExt.createNewWebview({}, plugin, handle);
+        const webviewNoPanel = this.webviewsExt.createNewWebview({}, plugin, handle, hashValue(viewType));
         const revivedView = new WebviewViewExtImpl(handle, this.proxy, viewType, title, webviewNoPanel, true);
         this.webviewViews.set(handle, revivedView);
         await provider.resolveWebviewView(revivedView, { state }, cancellation);
@@ -133,6 +134,7 @@ export class WebviewViewExtImpl implements theia.WebviewView {
     _isVisible: boolean;
     _title: string | undefined;
     _description: string | undefined;
+    _badge: theia.ViewBadge | undefined;
 
     constructor(
         handle: string,
@@ -140,7 +142,7 @@ export class WebviewViewExtImpl implements theia.WebviewView {
         viewType: string,
         title: string | undefined,
         webview: WebviewImpl,
-        isVisible: boolean,
+        isVisible: boolean
     ) {
         this._viewType = viewType;
         this._title = title;
@@ -167,8 +169,8 @@ export class WebviewViewExtImpl implements theia.WebviewView {
 
     set title(value: string | undefined) {
         this.assertNotDisposed();
-        if (this.title !== value) {
-            this.title = value;
+        if (this._title !== value) {
+            this._title = value;
             this.proxy.$setWebviewViewTitle(this.handle, value);
         }
     }
@@ -183,6 +185,19 @@ export class WebviewViewExtImpl implements theia.WebviewView {
         if (this._description !== value) {
             this._description = value;
             this.proxy.$setWebviewViewDescription(this.handle, value);
+        }
+    }
+
+    get badge(): theia.ViewBadge | undefined {
+        this.assertNotDisposed();
+        return this._badge;
+    }
+
+    set badge(badge: theia.ViewBadge | undefined) {
+        this.assertNotDisposed();
+        if (this._badge !== badge) {
+            this._badge = badge;
+            this.proxy.$setBadge(this.handle, badge ? { value: badge.value, tooltip: badge.tooltip } : undefined);
         }
     }
 

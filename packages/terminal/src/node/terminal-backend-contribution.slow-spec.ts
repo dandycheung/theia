@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { createTerminalTestContainer } from './test/terminal-test-container';
@@ -32,7 +32,7 @@ describe('Terminal Backend Contribution', function (): void {
         const container = createTerminalTestContainer();
         const application = container.get(BackendApplication);
         shellTerminalServer = container.get(IShellTerminalServer);
-        server = await application.start();
+        server = await application.start(3000, 'localhost');
     });
 
     afterEach(() => {
@@ -46,16 +46,16 @@ describe('Terminal Backend Contribution', function (): void {
         const terminalId = await shellTerminalServer.create({});
         await new Promise<void>((resolve, reject) => {
             const path = `${terminalsPath}/${terminalId}`;
-            const { channel, multiplexer } = new TestWebSocketChannelSetup({ server, path });
-            channel.onError(reject);
-            channel.onClose(event => reject(new Error(`channel is closed with '${event.code}' code and '${event.reason}' reason}`)));
+            const { connectionProvider } = new TestWebSocketChannelSetup({ server, path });
 
-            multiplexer.onDidOpenChannel(event => {
-                if (event.id === path) {
+            connectionProvider.listen(path, (path2, channel) => {
+                channel.onError(reject);
+                channel.onClose(event => reject(new Error(`channel is closed with '${event.code}' code and '${event.reason}' reason}`)));
+                if (path2 === path) {
                     resolve();
                     channel.close();
                 }
-            });
+            }, false);
 
         });
     });

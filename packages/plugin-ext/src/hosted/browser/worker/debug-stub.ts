@@ -11,16 +11,17 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 // eslint-disable-next-line @theia/runtime-import-check
+import { interfaces } from '@theia/core/shared/inversify';
 import { DebugExtImpl } from '../../../plugin/debug/debug-ext';
-import { RPCProtocol } from '../../../common/rpc-protocol';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export function createDebugExtStub(rpc: RPCProtocol): DebugExtImpl {
-    return new Proxy(new DebugExtImpl(rpc), {
+export function createDebugExtStub(container: interfaces.Container): DebugExtImpl {
+    const delegate = container.get(DebugExtImpl);
+    return new Proxy(delegate, {
         apply: function (target, that, args): void {
             console.error('Debug API works only in plugin container');
         }

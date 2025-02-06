@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as yargs from 'yargs';
@@ -19,7 +19,7 @@ import { injectable } from 'inversify';
 import { LogLevel } from '../common/logger';
 import { CliContribution } from './cli';
 import * as fs from 'fs-extra';
-import * as nsfw from 'nsfw';
+import { subscribe } from '@parcel/watcher';
 import { Event, Emitter } from '../common/event';
 import * as path from 'path';
 
@@ -89,13 +89,17 @@ export class LogLevelCliContribution implements CliContribution {
         }
     }
 
-    protected watchLogConfigFile(filename: string): Promise<void> {
-        return nsfw(filename, async (events: nsfw.FileChangeEvent[]) => {
+    protected async watchLogConfigFile(filename: string): Promise<void> {
+        await subscribe(filename, async (err, events) => {
+            if (err) {
+                console.log(`Error during log file watching ${filename}: ${err}`);
+                return;
+            }
             try {
                 for (const event of events) {
-                    switch (event.action) {
-                        case nsfw.actions.CREATED:
-                        case nsfw.actions.MODIFIED:
+                    switch (event.type) {
+                        case 'create':
+                        case 'update':
                             await this.slurpLogConfigFile(filename);
                             this.logConfigChangedEvent.fire(undefined);
                             break;
@@ -104,8 +108,6 @@ export class LogLevelCliContribution implements CliContribution {
             } catch (e) {
                 console.error(`Error reading log config file ${filename}: ${e}`);
             }
-        }).then((watcher: nsfw.NSFW) => {
-            watcher.start();
         });
     }
 

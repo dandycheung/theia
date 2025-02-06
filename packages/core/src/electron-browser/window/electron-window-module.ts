@@ -11,22 +11,27 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ContainerModule } from 'inversify';
-import { WindowService } from '../../browser/window/window-service';
-import { ElectronWindowService } from './electron-window-service';
-import { FrontendApplicationContribution } from '../../browser/frontend-application';
-import { ElectronClipboardService } from '../electron-clipboard-service';
+import { OpenHandler } from '../../browser';
 import { ClipboardService } from '../../browser/clipboard-service';
-import { ElectronMainWindowService, electronMainWindowServicePath } from '../../electron-common/electron-main-window-service';
-import { ElectronIpcConnectionProvider } from '../messaging/electron-ipc-connection-provider';
-import { bindWindowPreferences } from './electron-window-preferences';
+import { FrontendApplicationContribution } from '../../browser/frontend-application-contribution';
 import { FrontendApplicationStateService } from '../../browser/frontend-application-state';
+import { SecondaryWindowService } from '../../browser/window/secondary-window-service';
+import { WindowService } from '../../browser/window/window-service';
+import { ElectronMainWindowService, electronMainWindowServicePath } from '../../electron-common/electron-main-window-service';
+import { ElectronClipboardService } from '../electron-clipboard-service';
+import { ElectronIpcConnectionProvider } from '../messaging/electron-ipc-connection-source';
 import { ElectronFrontendApplicationStateService } from './electron-frontend-application-state';
 import { ElectronSecondaryWindowService } from './electron-secondary-window-service';
-import { SecondaryWindowService } from '../../browser/window/secondary-window-service';
+import { bindWindowPreferences } from './electron-window-preferences';
+import { ElectronWindowService } from './electron-window-service';
+import { ExternalAppOpenHandler } from './external-app-open-handler';
+import { ElectronUriHandlerContribution } from '../electron-uri-handler';
+import { bindContributionProvider } from '../../common';
+import { WindowTitleContribution } from '../../browser/window/window-title-service';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(ElectronMainWindowService).toDynamicValue(context =>
@@ -35,7 +40,12 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bindWindowPreferences(bind);
     bind(WindowService).to(ElectronWindowService).inSingletonScope();
     bind(FrontendApplicationContribution).toService(WindowService);
+    bind(ElectronUriHandlerContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(ElectronUriHandlerContribution);
     bind(ClipboardService).to(ElectronClipboardService).inSingletonScope();
     rebind(FrontendApplicationStateService).to(ElectronFrontendApplicationStateService).inSingletonScope();
     bind(SecondaryWindowService).to(ElectronSecondaryWindowService).inSingletonScope();
+    bind(ExternalAppOpenHandler).toSelf().inSingletonScope();
+    bind(OpenHandler).toService(ExternalAppOpenHandler);
+    bindContributionProvider(bind, WindowTitleContribution);
 });

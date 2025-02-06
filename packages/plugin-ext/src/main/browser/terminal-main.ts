@@ -11,22 +11,33 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from '@theia/core/shared/inversify';
-import { ApplicationShell, WidgetOpenerOptions } from '@theia/core/lib/browser';
-import { TerminalOptions } from '@theia/plugin';
-import { CancellationToken } from '@theia/core/shared/vscode-languageserver-protocol';
-import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
+import { ApplicationShell, WidgetOpenerOptions, codicon } from '@theia/core/lib/browser';
+import { TerminalEditorLocationOptions } from '@theia/plugin';
+import { TerminalLocation, TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
+import { TerminalProfileService } from '@theia/terminal/lib/browser/terminal-profile-service';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
-import { TerminalServiceMain, TerminalServiceExt, MAIN_RPC_CONTEXT } from '../../common/plugin-api-rpc';
+import { TerminalServiceMain, TerminalServiceExt, MAIN_RPC_CONTEXT, TerminalOptions } from '../../common/plugin-api-rpc';
 import { RPCProtocol } from '../../common/rpc-protocol';
 import { Disposable, DisposableCollection } from '@theia/core/lib/common/disposable';
-import { SerializableEnvironmentVariableCollection } from '@theia/terminal/lib/common/base-terminal-protocol';
-import { ShellTerminalServerProxy } from '@theia/terminal/lib/common/shell-terminal-protocol';
+import { SerializableEnvironmentVariableCollection, ShellTerminalServerProxy } from '@theia/terminal/lib/common/shell-terminal-protocol';
 import { TerminalLink, TerminalLinkProvider } from '@theia/terminal/lib/browser/terminal-link-provider';
 import { URI } from '@theia/core/lib/common/uri';
+import { PluginTerminalRegistry } from './plugin-terminal-registry';
+import { CancellationToken, isObject } from '@theia/core';
+import { HostedPluginSupport } from '../../hosted/browser/hosted-plugin';
+import { PluginSharedStyle } from './plugin-shared-style';
+import { ThemeIcon } from '@theia/core/lib/common/theme';
+import debounce = require('@theia/core/shared/lodash.debounce');
+
+interface TerminalObserverData {
+    nrOfLinesToMatch: number;
+    outputMatcherRegex: RegExp
+    disposables: DisposableCollection;
+}
 
 /**
  * Plugin api service allows working with terminal emulator.
@@ -34,15 +45,24 @@ import { URI } from '@theia/core/lib/common/uri';
 export class TerminalServiceMainImpl implements TerminalServiceMain, TerminalLinkProvider, Disposable {
 
     private readonly terminals: TerminalService;
+    private readonly terminalProfileService: TerminalProfileService;
+    private readonly pluginTerminalRegistry: PluginTerminalRegistry;
+    private readonly hostedPluginSupport: HostedPluginSupport;
     private readonly shell: ApplicationShell;
     private readonly extProxy: TerminalServiceExt;
+    private readonly sharedStyle: PluginSharedStyle;
     private readonly shellTerminalServer: ShellTerminalServerProxy;
     private readonly terminalLinkProviders: string[] = [];
 
     private readonly toDispose = new DisposableCollection();
+    private readonly observers = new Map<string, TerminalObserverData>();
 
     constructor(rpc: RPCProtocol, container: interfaces.Container) {
         this.terminals = container.get(TerminalService);
+        this.terminalProfileService = container.get(TerminalProfileService);
+        this.pluginTerminalRegistry = container.get(PluginTerminalRegistry);
+        this.hostedPluginSupport = container.get(HostedPluginSupport);
+        this.sharedStyle = container.get(PluginSharedStyle);
         this.shell = container.get(ApplicationShell);
         this.shellTerminalServer = container.get(ShellTerminalServerProxy);
         this.extProxy = rpc.getProxy(MAIN_RPC_CONTEXT.TERMINAL_EXT);
@@ -52,18 +72,26 @@ export class TerminalServiceMainImpl implements TerminalServiceMain, TerminalLin
         }
         this.toDispose.push(this.terminals.onDidChangeCurrentTerminal(() => this.updateCurrentTerminal()));
         this.updateCurrentTerminal();
-        if (this.shellTerminalServer.collections.size > 0) {
-            const collectionAsArray = [...this.shellTerminalServer.collections.entries()];
-            const serializedCollections: [string, SerializableEnvironmentVariableCollection][] = collectionAsArray.map(e => [e[0], [...e[1].map.entries()]]);
-            this.extProxy.$initEnvironmentVariableCollections(serializedCollections);
-        }
+
+        this.shellTerminalServer.getEnvVarCollections().then(collections => this.extProxy.$initEnvironmentVariableCollections(collections));
+
+        this.pluginTerminalRegistry.startCallback = id => this.startProfile(id);
 
         container.bind(TerminalLinkProvider).toDynamicValue(() => this);
+
+        this.toDispose.push(this.terminalProfileService.onDidChangeDefaultShell(shell => {
+            this.extProxy.$setShell(shell);
+        }));
     }
 
-    $setEnvironmentVariableCollection(extensionIdentifier: string, persistent: boolean, collection: SerializableEnvironmentVariableCollection | undefined): void {
+    async startProfile(id: string): Promise<string> {
+        await this.hostedPluginSupport.activateByTerminalProfile(id);
+        return this.extProxy.$startProfile(id, CancellationToken.None);
+    }
+
+    $setEnvironmentVariableCollection(persistent: boolean, extensionIdentifier: string, rootUri: string, collection: SerializableEnvironmentVariableCollection): void {
         if (collection) {
-            this.shellTerminalServer.setCollection(extensionIdentifier, persistent, collection);
+            this.shellTerminalServer.setCollection(extensionIdentifier, rootUri, persistent, collection, collection.description);
         } else {
             this.shellTerminalServer.deleteCollection(extensionIdentifier);
         }
@@ -104,6 +132,8 @@ export class TerminalServiceMainImpl implements TerminalServiceMain, TerminalLin
             this.extProxy.$terminalOnInput(terminal.id, data);
             this.extProxy.$terminalStateChanged(terminal.id);
         }));
+
+        this.observers.forEach((observer, id) => this.observeTerminal(id, terminal, observer));
     }
 
     $write(id: string, data: string): void {
@@ -122,37 +152,53 @@ export class TerminalServiceMainImpl implements TerminalServiceMain, TerminalLin
         terminal.resize(cols, rows);
     }
 
-    async $createTerminal(id: string, options: TerminalOptions, isPseudoTerminal?: boolean): Promise<string> {
-        try {
-            const terminal = await this.terminals.newTerminal({
-                id,
-                title: options.name,
-                shellPath: options.shellPath,
-                shellArgs: options.shellArgs,
-                cwd: options.cwd ? new URI(options.cwd) : undefined,
-                env: options.env,
-                strictEnv: options.strictEnv,
-                destroyTermOnClose: true,
-                useServerTitle: false,
-                attributes: options.attributes,
-                hideFromUser: options.hideFromUser,
-                isPseudoTerminal
-            });
-            if (options.message) {
-                terminal.writeLine(options.message);
-            }
-            terminal.start();
-            return terminal.id;
-        } catch (error) {
-            throw new Error('Failed to create terminal. Cause: ' + error);
+    async $createTerminal(id: string, options: TerminalOptions, parentId?: string, isPseudoTerminal?: boolean): Promise<string> {
+        const terminal = await this.terminals.newTerminal({
+            id,
+            title: options.name,
+            iconClass: this.toIconClass(options),
+            shellPath: options.shellPath,
+            shellArgs: options.shellArgs,
+            cwd: options.cwd ? new URI(options.cwd) : undefined,
+            env: options.env,
+            strictEnv: options.strictEnv,
+            destroyTermOnClose: true,
+            useServerTitle: false,
+            attributes: options.attributes,
+            hideFromUser: options.hideFromUser,
+            location: this.getTerminalLocation(options, parentId),
+            isPseudoTerminal,
+            isTransient: options.isTransient
+        });
+        if (options.message) {
+            terminal.writeLine(options.message);
         }
+        terminal.start();
+        return terminal.id;
     }
 
-    $sendText(id: string, text: string, addNewLine?: boolean): void {
+    protected getTerminalLocation(options: TerminalOptions, parentId?: string): TerminalLocation | TerminalEditorLocationOptions | { parentTerminal: string; } | undefined {
+        if (typeof options.location === 'number' && Object.values(TerminalLocation).includes(options.location)) {
+            return options.location;
+        } else if (options.location && typeof options.location === 'object') {
+            if ('parentTerminal' in options.location) {
+                if (!parentId) {
+                    throw new Error('parentTerminal is set but no parentId is provided');
+                }
+                return { 'parentTerminal': parentId };
+            } else {
+                return options.location;
+            }
+        }
+
+        return undefined;
+    }
+
+    $sendText(id: string, text: string, shouldExecute?: boolean): void {
         const terminal = this.terminals.getById(id);
         if (terminal) {
             text = text.replace(/\r?\n/g, '\r');
-            if (addNewLine && text.charAt(text.length - 1) !== '\r') {
+            if (shouldExecute && text.charAt(text.length - 1) !== '\r') {
                 text += '\r';
             }
             terminal.sendText(text);
@@ -260,11 +306,64 @@ export class TerminalServiceMainImpl implements TerminalServiceMain, TerminalLin
         }
     }
 
-    async provideLinks(line: string, terminal: TerminalWidget, cancelationToken?: CancellationToken | undefined): Promise<TerminalLink[]> {
+    $registerTerminalObserver(id: string, nrOfLinesToMatch: number, outputMatcherRegex: string): void {
+        const observerData = {
+            nrOfLinesToMatch: nrOfLinesToMatch,
+            outputMatcherRegex: new RegExp(outputMatcherRegex, 'm'),
+            disposables: new DisposableCollection()
+        };
+        this.observers.set(id, observerData);
+        this.terminals.all.forEach(terminal => {
+            this.observeTerminal(id, terminal, observerData);
+        });
+    }
+
+    protected observeTerminal(observerId: string, terminal: TerminalWidget, observerData: TerminalObserverData): void {
+        const doMatch = debounce(() => {
+            const lineCount = Math.min(observerData.nrOfLinesToMatch, terminal.buffer.length);
+            const lines = terminal.buffer.getLines(terminal.buffer.length - lineCount, lineCount);
+            const result = lines.join('\n').match(observerData.outputMatcherRegex);
+            if (result) {
+                this.extProxy.$reportOutputMatch(observerId, result.map(value => value));
+            }
+        });
+        observerData.disposables.push(terminal.onOutput(output => {
+            doMatch();
+        }));
+    }
+
+    protected toIconClass(options: TerminalOptions): string | ThemeIcon | undefined {
+        const iconColor = isObject<{ id: string }>(options.color) && typeof options.color.id === 'string' ? options.color.id : undefined;
+        let iconClass: string;
+        if (options.iconUrl) {
+            if (typeof options.iconUrl === 'object' && 'id' in options.iconUrl) {
+                iconClass = codicon(options.iconUrl.id);
+            } else {
+                const iconReference = this.sharedStyle.toIconClass(options.iconUrl);
+                this.toDispose.push(iconReference);
+                iconClass = iconReference.object.iconClass;
+            }
+        } else {
+            iconClass = codicon('terminal');
+        }
+        return iconColor ? { id: iconClass, color: { id: iconColor } } : iconClass;
+    }
+
+    $unregisterTerminalObserver(id: string): void {
+        const observer = this.observers.get(id);
+        if (observer) {
+            observer.disposables.dispose();
+            this.observers.delete(id);
+        } else {
+            throw new Error(`Unregistering unknown terminal observer: ${id}`);
+        }
+    }
+
+    async provideLinks(line: string, terminal: TerminalWidget, cancellationToken?: CancellationToken | undefined): Promise<TerminalLink[]> {
         if (this.terminalLinkProviders.length < 1) {
             return [];
         }
-        const links = await this.extProxy.$provideTerminalLinks(line, terminal.id, cancelationToken ?? CancellationToken.None);
+        const links = await this.extProxy.$provideTerminalLinks(line, terminal.id, cancellationToken ?? CancellationToken.None);
         return links.map(link => ({ ...link, handle: () => this.extProxy.$handleTerminalLink(link) }));
     }
 

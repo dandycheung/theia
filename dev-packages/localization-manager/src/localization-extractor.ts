@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as fs from 'fs-extra';
@@ -52,6 +52,14 @@ class SingleFileServiceHost implements ts.LanguageServiceHost {
     getScriptSnapshot = (name: string) => name === this.filename ? this.file : this.lib;
     getCurrentDirectory = () => '';
     getDefaultLibFileName = () => 'lib.d.ts';
+    readFile(file: string, encoding?: string | undefined): string | undefined {
+        if (file === this.filename) {
+            return this.file.getText(0, this.file.getLength());
+        }
+    }
+    fileExists(file: string): boolean {
+        return this.filename === file;
+    }
 }
 
 class TypeScriptError extends Error {
@@ -81,8 +89,9 @@ export async function extract(options: ExtractionOptions): Promise<void> {
     const errors: string[] = [];
     for (const file of files) {
         const filePath = path.resolve(cwd, file);
+        const fileName = path.relative(cwd, file).split(path.sep).join('/');
         const content = await fs.readFile(filePath, 'utf8');
-        const fileLocalization = await extractFromFile(file, content, errors, options);
+        const fileLocalization = await extractFromFile(fileName, content, errors, options);
         localization = deepmerge(localization, fileLocalization);
     }
     if (errors.length > 0 && options.logs) {

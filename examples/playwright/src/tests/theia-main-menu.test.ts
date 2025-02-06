@@ -11,22 +11,29 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { expect } from '@playwright/test';
-import { OSUtil } from '../util';
+import { expect, test } from '@playwright/test';
 import { TheiaApp } from '../theia-app';
+import { TheiaAppLoader } from '../theia-app-loader';
+import { TheiaAboutDialog } from '../theia-about-dialog';
 import { TheiaMenuBar } from '../theia-main-menu';
-import test, { page } from './fixtures/theia-fixture';
-
-let menuBar: TheiaMenuBar;
+import { OSUtil } from '../util';
+import { TheiaExplorerView } from '../theia-explorer-view';
 
 test.describe('Theia Main Menu', () => {
 
-    test.beforeAll(async () => {
-        const app = await TheiaApp.load(page);
+    let app: TheiaApp;
+    let menuBar: TheiaMenuBar;
+
+    test.beforeAll(async ({ playwright, browser }) => {
+        app = await TheiaAppLoader.load({ playwright, browser });
         menuBar = app.menuBar;
+    });
+
+    test.afterAll(async () => {
+        await app.page.close();
     });
 
     test('should show the main menu bar', async () => {
@@ -41,23 +48,23 @@ test.describe('Theia Main Menu', () => {
         expect(await mainMenu.isOpen()).toBe(true);
     });
 
-    test("should show the menu items 'New File' and 'New Folder'", async () => {
+    test("should show the menu items 'New Text File' and 'New Folder'", async () => {
         const mainMenu = await menuBar.openMenu('File');
         const menuItems = await mainMenu.visibleMenuItems();
-        expect(menuItems).toContain('New File');
-        expect(menuItems).toContain('New Folder');
+        expect(menuItems).toContain('New Text File');
+        expect(menuItems).toContain('New Folder...');
     });
 
-    test("should return menu item by name 'New File'", async () => {
+    test("should return menu item by name 'New Text File'", async () => {
         const mainMenu = await menuBar.openMenu('File');
-        const menuItem = await mainMenu.menuItemByName('New File');
+        const menuItem = await mainMenu.menuItemByName('New Text File');
         expect(menuItem).toBeDefined();
 
         const label = await menuItem?.label();
-        expect(label).toBe('New File');
+        expect(label).toBe('New Text File');
 
         const shortCut = await menuItem?.shortCut();
-        expect(shortCut).toBe(OSUtil.isMacOS ? '⌥ N' : 'Alt+N');
+        expect(shortCut).toBe(OSUtil.isMacOS ? '⌥ N' : app.isElectron ? 'Ctrl+N' : 'Alt+N');
 
         const hasSubmenu = await menuItem?.hasSubmenu();
         expect(hasSubmenu).toBe(false);
@@ -65,7 +72,7 @@ test.describe('Theia Main Menu', () => {
 
     test('should detect whether menu item has submenu', async () => {
         const mainMenu = await menuBar.openMenu('File');
-        const newFileItem = await mainMenu.menuItemByName('New File');
+        const newFileItem = await mainMenu.menuItemByName('New Text File');
         const settingsItem = await mainMenu.menuItemByName('Preferences');
 
         expect(await newFileItem?.hasSubmenu()).toBe(false);
@@ -74,10 +81,10 @@ test.describe('Theia Main Menu', () => {
 
     test('should be able to show menu item in submenu by path', async () => {
         const mainMenu = await menuBar.openMenu('File');
-        const openPreferencesItem = await mainMenu.menuItemByNamePath('Preferences', 'Open Settings (UI)');
+        const openPreferencesItem = await mainMenu.menuItemByNamePath('Preferences', 'Settings');
 
         const label = await openPreferencesItem?.label();
-        expect(label).toBe('Open Settings (UI)');
+        expect(label).toBe('Settings');
     });
 
     test('should close main menu', async () => {
@@ -86,4 +93,40 @@ test.describe('Theia Main Menu', () => {
         expect(await mainMenu.isOpen()).toBe(false);
     });
 
+    test('open about dialog using menu', async () => {
+        await (await menuBar.openMenu('Help')).clickMenuItem('About');
+        const aboutDialog = new TheiaAboutDialog(app);
+        expect(await aboutDialog.isVisible()).toBe(true);
+        await aboutDialog.page.locator('#theia-dialog-shell').getByRole('button', { name: 'OK' }).click();
+        expect(await aboutDialog.isVisible()).toBe(false);
+    });
+
+    test('open file via file menu and cancel', async () => {
+        const openFileEntry = app.isElectron ? 'Open File...' : 'Open...';
+        await (await menuBar.openMenu('File')).clickMenuItem(openFileEntry);
+        const fileDialog = await app.page.waitForSelector('div[class="dialogBlock"]');
+        expect(await fileDialog.isVisible()).toBe(true);
+        await app.page.locator('#theia-dialog-shell').getByRole('button', { name: 'Cancel' }).click();
+        expect(await fileDialog.isVisible()).toBe(false);
+    });
+
+    test('Create file via New File menu and accept', async () => {
+        await (await menuBar.openMenu('File')).clickMenuItem('New File...');
+        const quickPick = app.page.getByPlaceholder('Select File Type or Enter');
+        // type file name and press enter
+        await quickPick.fill('test.txt');
+        await quickPick.press('Enter');
+
+        // check file dialog is opened and accept with ENTER
+        const fileDialog = await app.page.waitForSelector('div[class="dialogBlock"]');
+        expect(await fileDialog.isVisible()).toBe(true);
+        await app.page.locator('#theia-dialog-shell').press('Enter');
+        expect(await fileDialog.isVisible()).toBe(false);
+
+        // check file in workspace exists
+        const explorer = await app.openView(TheiaExplorerView);
+        await explorer.refresh();
+        await explorer.waitForVisibleFileNodes();
+        expect(await explorer.existsFileNode('test.txt')).toBe(true);
+    });
 });

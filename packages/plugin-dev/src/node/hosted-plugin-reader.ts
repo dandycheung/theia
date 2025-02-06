@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable } from '@theia/core/shared/inversify';
@@ -42,7 +42,7 @@ export class HostedPluginReader implements BackendApplicationContribution {
             const hostedPlugin = new PluginDeployerEntryImpl('Hosted Plugin', pluginPath!, pluginPath);
             hostedPlugin.storeValue('isUnderDevelopment', true);
             const hostedMetadata = await this.hostedPlugin.promise;
-            if (hostedMetadata!.model.entryPoint && hostedMetadata!.model.entryPoint.backend) {
+            if (hostedMetadata!.model.entryPoint && (hostedMetadata!.model.entryPoint.backend || hostedMetadata!.model.entryPoint.headless)) {
                 this.deployerHandler.deployBackendPlugins([hostedPlugin]);
             }
 

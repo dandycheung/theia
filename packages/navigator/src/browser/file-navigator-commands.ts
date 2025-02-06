@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { codicon, CommonCommands } from '@theia/core/lib/browser';
@@ -52,11 +52,12 @@ export namespace FileNavigatorCommands {
         category: CommonCommands.FILE_CATEGORY,
         label: 'Focus on Files Explorer'
     });
-    export const OPEN = Command.toDefaultLocalizedCommand({
+    export const OPEN: Command = {
         id: 'navigator.open',
-        category: CommonCommands.FILE_CATEGORY,
-        label: 'Open'
-    });
+    };
+    export const OPEN_WITH: Command = {
+        id: 'navigator.openWith',
+    };
     export const NEW_FILE_TOOLBAR: Command = {
         id: `${WorkspaceCommands.NEW_FILE.id}.toolbar`,
         iconClass: codicon('new-file')

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -218,3 +218,14 @@ export function compareSubstringIgnoreCase(a: string, b: string, aStart: number 
 
     return 0;
 }
+
+// Copied from https://github.com/microsoft/vscode/blob/1.72.2/src/vs/base/common/strings.ts
+
+export function regExpFlags(regexp: RegExp): string {
+    return (regexp.global ? 'g' : '')
+        + (regexp.ignoreCase ? 'i' : '')
+        + (regexp.multiline ? 'm' : '')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        + ((regexp as any /* standalone editor compilation */).unicode ? 'u' : '');
+}
+

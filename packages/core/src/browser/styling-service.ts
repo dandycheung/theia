@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, named } from 'inversify';
@@ -19,8 +19,9 @@ import { ContributionProvider } from '../common/contribution-provider';
 import { Theme, ThemeType } from '../common/theme';
 import { ColorRegistry } from './color-registry';
 import { DecorationStyle } from './decoration-style';
-import { FrontendApplicationContribution } from './frontend-application';
+import { FrontendApplicationContribution } from './frontend-application-contribution';
 import { ThemeService } from './theming';
+import { SecondaryWindowHandler } from './secondary-window-handler';
 
 export const StylingParticipant = Symbol('StylingParticipant');
 
@@ -40,8 +41,7 @@ export interface CssStyleCollector {
 
 @injectable()
 export class StylingService implements FrontendApplicationContribution {
-
-    protected cssElement = DecorationStyle.createStyleElement('contributedColorTheme');
+    protected cssElements = new Map<Window, HTMLStyleElement>();
 
     @inject(ThemeService)
     protected readonly themeService: ThemeService;
@@ -52,12 +52,32 @@ export class StylingService implements FrontendApplicationContribution {
     @inject(ContributionProvider) @named(StylingParticipant)
     protected readonly themingParticipants: ContributionProvider<StylingParticipant>;
 
+    @inject(SecondaryWindowHandler)
+    protected readonly secondaryWindowHandler: SecondaryWindowHandler;
+
     onStart(): void {
-        this.applyStyling(this.themeService.getCurrentTheme());
-        this.themeService.onDidColorThemeChange(e => this.applyStyling(e.newTheme));
+        this.registerWindow(window);
+        this.secondaryWindowHandler.onWillAddWidget(([widget, window]) => {
+            this.registerWindow(window);
+        });
+        this.secondaryWindowHandler.onWillRemoveWidget(([widget, window]) => {
+            this.cssElements.delete(window);
+        });
+
+        this.themeService.onDidColorThemeChange(e => this.applyStylingToWindows(e.newTheme));
     }
 
-    protected applyStyling(theme: Theme): void {
+    registerWindow(win: Window): void {
+        const cssElement = DecorationStyle.createStyleElement('contributedColorTheme', win.document.head);
+        this.cssElements.set(win, cssElement);
+        this.applyStyling(this.themeService.getCurrentTheme(), cssElement);
+    }
+
+    protected applyStylingToWindows(theme: Theme): void {
+        this.cssElements.forEach(cssElement => this.applyStyling(theme, cssElement));
+    }
+
+    protected applyStyling(theme: Theme, cssElement: HTMLStyleElement): void {
         const rules: string[] = [];
         const colorTheme: ColorTheme = {
             type: theme.type,
@@ -71,6 +91,6 @@ export class StylingService implements FrontendApplicationContribution {
             themingParticipant.registerThemeStyle(colorTheme, styleCollector);
         }
         const fullCss = rules.join('\n');
-        this.cssElement.innerText = fullCss;
+        cssElement.innerText = fullCss;
     }
 }

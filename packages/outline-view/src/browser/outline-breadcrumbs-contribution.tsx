@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
@@ -30,10 +30,14 @@ export interface BreadcrumbPopupOutlineViewFactory {
 export class BreadcrumbPopupOutlineView extends OutlineViewWidget {
     @inject(OpenerService) protected readonly openerService: OpenerService;
 
+    @inject(OutlineViewService)
+    protected readonly outlineViewService: OutlineViewService;
+
     protected override tapNode(node?: TreeNode): void {
         if (UriSelection.is(node) && OutlineSymbolInformationNode.hasRange(node)) {
             open(this.openerService, node.uri, { selection: node.range });
         } else {
+            this.outlineViewService.didTapNode(node as OutlineSymbolInformationNode);
             super.tapNode(node);
         }
     }

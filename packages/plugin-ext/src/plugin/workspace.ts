@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -21,6 +21,7 @@
 
 import * as paths from 'path';
 import * as theia from '@theia/plugin';
+import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
 import { Event, Emitter } from '@theia/core/lib/common/event';
 import { CancellationToken } from '@theia/core/lib/common/cancellation';
 import {
@@ -34,7 +35,7 @@ import { Path } from '@theia/core/lib/common/path';
 import { RPCProtocol } from '../common/rpc-protocol';
 import { WorkspaceRootsChangeEvent, SearchInWorkspaceResult, Range } from '../common/plugin-api-rpc-model';
 import { EditorsAndDocumentsExtImpl } from './editors-and-documents';
-import { URI } from './types-impl';
+import { Disposable, URI } from './types-impl';
 import { normalize } from '@theia/core/lib/common/paths';
 import { relative } from '../common/paths-util';
 import { Schemes } from '../common/uri-components';
@@ -42,8 +43,19 @@ import { toWorkspaceFolder } from './type-converters';
 import { MessageRegistryExt } from './message-registry';
 import * as Converter from './type-converters';
 import { FileStat } from '@theia/filesystem/lib/common/files';
+import { isUndefinedOrNull, isUndefined } from '../common/types';
 
+@injectable()
 export class WorkspaceExtImpl implements WorkspaceExt {
+
+    @inject(RPCProtocol)
+    protected readonly rpc: RPCProtocol;
+
+    @inject(EditorsAndDocumentsExtImpl)
+    protected editorsAndDocuments: EditorsAndDocumentsExtImpl;
+
+    @inject(MessageRegistryExt)
+    protected messageService: MessageRegistryExt;
 
     private proxy: WorkspaceMain;
 
@@ -60,10 +72,11 @@ export class WorkspaceExtImpl implements WorkspaceExt {
     private didGrantWorkspaceTrustEmitter = new Emitter<void>();
     public readonly onDidGrantWorkspaceTrust: Event<void> = this.didGrantWorkspaceTrustEmitter.event;
 
-    constructor(rpc: RPCProtocol,
-        private editorsAndDocuments: EditorsAndDocumentsExtImpl,
-        private messageService: MessageRegistryExt) {
-        this.proxy = rpc.getProxy(Ext.WORKSPACE_MAIN);
+    private canonicalUriProviders = new Map<string, theia.CanonicalUriProvider>();
+
+    @postConstruct()
+    initialize(): void {
+        this.proxy = this.rpc.getProxy(Ext.WORKSPACE_MAIN);
     }
 
     get rootPath(): string | undefined {
@@ -88,6 +101,10 @@ export class WorkspaceExtImpl implements WorkspaceExt {
         }
 
         return undefined;
+    }
+
+    resolveProxy(url: string): Promise<string | undefined> {
+        return this.proxy.$resolveProxy(url);
     }
 
     $onWorkspaceFoldersChanged(event: WorkspaceRootsChangeEvent): void {
@@ -171,8 +188,7 @@ export class WorkspaceExtImpl implements WorkspaceExt {
         });
     }
 
-    findFiles(include: theia.GlobPattern, exclude?: theia.GlobPattern | null, maxResults?: number,
-        token: CancellationToken = CancellationToken.None): PromiseLike<URI[]> {
+    findFiles(include: theia.GlobPattern, exclude?: theia.GlobPattern | null, maxResults?: number, token: CancellationToken = CancellationToken.None): PromiseLike<URI[]> {
         let includePattern: string;
         let includeFolderUri: string | undefined;
         if (include) {
@@ -186,25 +202,29 @@ export class WorkspaceExtImpl implements WorkspaceExt {
             includePattern = '';
         }
 
-        let excludePatternOrDisregardExcludes: string | false;
-        if (exclude === undefined) {
-            excludePatternOrDisregardExcludes = ''; // default excludes
-        } else if (exclude) {
+        let excludeString: string = '';
+        let useFileExcludes = true;
+        if (exclude === null) {
+            useFileExcludes = false;
+        } else if (exclude !== undefined) {
             if (typeof exclude === 'string') {
-                excludePatternOrDisregardExcludes = exclude;
+                excludeString = exclude;
             } else {
-                excludePatternOrDisregardExcludes = exclude.pattern;
+                excludeString = exclude.pattern;
             }
-        } else {
-            excludePatternOrDisregardExcludes = false; // no excludes
         }
 
         if (token && token.isCancellationRequested) {
             return Promise.resolve([]);
         }
 
-        return this.proxy.$startFileSearch(includePattern, includeFolderUri, excludePatternOrDisregardExcludes, maxResults, token)
-            .then(data => Array.isArray(data) ? data.map(uri => URI.revive(uri)) : []);
+        return this.proxy.$startFileSearch(includePattern, includeFolderUri, {
+            maxResults,
+            exclude: excludeString,
+            useDefaultExcludes: useFileExcludes,
+            useDefaultSearchExcludes: false,
+            useIgnoreFiles: false
+        }, token).then(data => Array.isArray(data) ? data.map(uri => URI.revive(uri)) : []);
     }
 
     findTextInFiles(query: theia.TextSearchQuery, optionsOrCallback: theia.FindTextInFilesOptions | ((result: theia.TextSearchResult) => void),
@@ -445,4 +465,44 @@ export class WorkspaceExtImpl implements WorkspaceExt {
         }
     }
 
+    registerCanonicalUriProvider(scheme: string, provider: theia.CanonicalUriProvider): theia.Disposable {
+        if (this.canonicalUriProviders.has(scheme)) {
+            throw new Error(`Canonical URI provider for scheme: '${scheme}' already exists locally`);
+        }
+
+        this.canonicalUriProviders.set(scheme, provider);
+        this.proxy.$registerCanonicalUriProvider(scheme).catch(e => {
+            console.error(`Canonical URI provider for scheme: '${scheme}' already exists globally`);
+            this.canonicalUriProviders.delete(scheme);
+        });
+        const result = Disposable.create(() => { this.proxy.$unregisterCanonicalUriProvider(scheme); });
+        return result;
+    }
+
+    $disposeCanonicalUriProvider(scheme: string): void {
+        if (!this.canonicalUriProviders.delete(scheme)) {
+            console.warn(`No canonical uri provider registered for '${scheme}'`);
+        }
+    }
+
+    async getCanonicalUri(uri: theia.Uri, options: theia.CanonicalUriRequestOptions, token: theia.CancellationToken): Promise<theia.Uri | undefined> {
+        const canonicalUri = await this.proxy.$getCanonicalUri(uri.toString(), options.targetScheme, token);
+        return isUndefined(canonicalUri) ? undefined : URI.parse(canonicalUri);
+    }
+
+    async $provideCanonicalUri(uri: string, targetScheme: string, token: CancellationToken): Promise<string | undefined> {
+        const parsed = URI.parse(uri);
+        const provider = this.canonicalUriProviders.get(parsed.scheme);
+        if (!provider) {
+            console.warn(`No canonical uri provider registered for '${parsed.scheme}'`);
+            return undefined;
+        }
+        const result = await provider.provideCanonicalUri(parsed, { targetScheme: targetScheme }, token);
+        return isUndefinedOrNull(result) ? undefined : result.toString();
+    }
+
+    /** @stubbed */
+    $registerEditSessionIdentityProvider(scheme: string, provider: theia.EditSessionIdentityProvider): theia.Disposable {
+        return Disposable.NULL;
+    }
 }

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -28,6 +28,7 @@ import { CancellationToken } from '@theia/core/lib/common/cancellation';
 import { WebviewsMainImpl } from '../webviews-main';
 import { Widget, WidgetManager } from '@theia/core/lib/browser';
 import { PluginViewRegistry } from '../view/plugin-view-registry';
+import { ViewBadge } from '@theia/plugin';
 
 export class WebviewViewsMainImpl implements WebviewViewsMain, Disposable {
 
@@ -82,7 +83,10 @@ export class WebviewViewsMainImpl implements WebviewViewsMain, Disposable {
                     webviewView.webview.options = options;
                 }
 
-                webviewView.onDidChangeVisibility(visible => {
+                webviewView.onDidChangeVisibility(async visible => {
+                    if (visible) {
+                        await webviewView.resolve();
+                    }
                     this.proxy.$onDidChangeWebviewViewVisibility(handle, visible);
                 });
 
@@ -92,7 +96,7 @@ export class WebviewViewsMainImpl implements WebviewViewsMain, Disposable {
                 });
 
                 try {
-                    this.proxy.$resolveWebviewView(handle, viewType, webviewView.title, state, cancellation);
+                    await this.proxy.$resolveWebviewView(handle, viewType, webviewView.title, state, cancellation);
                 } catch (error) {
                     this.logger.error(`Error resolving webview view '${viewType}': ${error}`);
                     webviewView.webview.setHTML('failed to load plugin webview view');
@@ -124,6 +128,14 @@ export class WebviewViewsMainImpl implements WebviewViewsMain, Disposable {
     $setWebviewViewDescription(handle: string, value: string | undefined): void {
         const webviewView = this.getWebviewView(handle);
         webviewView.description = value;
+    }
+
+    async $setBadge(handle: string, badge: ViewBadge | undefined): Promise<void> {
+        const webviewView = this.getWebviewView(handle);
+        if (webviewView) {
+            webviewView.badge = badge?.value;
+            webviewView.badgeTooltip = badge?.tooltip;
+        }
     }
 
     $show(handle: string, preserveFocus: boolean): void {

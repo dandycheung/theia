@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -21,40 +21,38 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import debounce = require('@theia/core/shared/lodash.debounce');
-import { UUID } from '@theia/core/shared/@phosphor/coreutils';
-import { injectable, inject, interfaces, named, postConstruct } from '@theia/core/shared/inversify';
+import { generateUuid } from '@theia/core/lib/common/uuid';
+import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { PluginWorker } from './plugin-worker';
-import { PluginMetadata, getPluginId, HostedPluginServer, DeployedPlugin, PluginServer, PluginIdentifiers } from '../../common/plugin-protocol';
+import { getPluginId, DeployedPlugin, HostedPluginServer } from '../../common/plugin-protocol';
 import { HostedPluginWatcher } from './hosted-plugin-watcher';
-import { MAIN_RPC_CONTEXT, PluginManagerExt, ConfigStorage, UIKind } from '../../common/plugin-api-rpc';
+import { ExtensionKind, MAIN_RPC_CONTEXT, PluginManagerExt, UIKind } from '../../common/plugin-api-rpc';
 import { setUpPluginApi } from '../../main/browser/main-context';
 import { RPCProtocol, RPCProtocolImpl } from '../../common/rpc-protocol';
 import {
-    Disposable, DisposableCollection, Emitter, isCancelled,
-    ILogger, ContributionProvider, CommandRegistry, WillExecuteCommandEvent,
-    CancellationTokenSource, JsonRpcProxy, ProgressService, nls
+    Disposable, DisposableCollection, isCancelled,
+    CommandRegistry, WillExecuteCommandEvent,
+    CancellationTokenSource, ProgressService, nls,
+    RpcProxy
 } from '@theia/core';
 import { PreferenceServiceImpl, PreferenceProviderProvider } from '@theia/core/lib/browser/preferences';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { PluginContributionHandler } from '../../main/browser/plugin-contribution-handler';
 import { getQueryParameters } from '../../main/browser/env-main';
-import { MainPluginApiProvider } from '../../common/plugin-ext-api-contribution';
-import { PluginPathsService } from '../../main/common/plugin-paths-protocol';
 import { getPreferences } from '../../main/browser/preference-registry-main';
-import { Deferred } from '@theia/core/lib/common/promise-util';
+import { Deferred, waitForEvent } from '@theia/core/lib/common/promise-util';
 import { DebugSessionManager } from '@theia/debug/lib/browser/debug-session-manager';
 import { DebugConfigurationManager } from '@theia/debug/lib/browser/debug-configuration-manager';
-import { WaitUntilEvent } from '@theia/core/lib/common/event';
+import { Event, WaitUntilEvent } from '@theia/core/lib/common/event';
 import { FileSearchService } from '@theia/file-search/lib/common/file-search-service';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
 import { PluginViewRegistry } from '../../main/browser/view/plugin-view-registry';
-import { TaskProviderRegistry, TaskResolverRegistry } from '@theia/task/lib/browser/task-contribution';
+import { WillResolveTaskProvider, TaskProviderRegistry, TaskResolverRegistry } from '@theia/task/lib/browser/task-contribution';
+import { TaskDefinitionRegistry } from '@theia/task/lib/browser/task-definition-registry';
 import { WebviewEnvironment } from '../../main/browser/webview/webview-environment';
 import { WebviewWidget } from '../../main/browser/webview/webview';
 import { WidgetManager } from '@theia/core/lib/browser/widget-manager';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
-import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import URI from '@theia/core/lib/common/uri';
 import { FrontendApplicationConfigProvider } from '@theia/core/lib/browser/frontend-application-config-provider';
 import { environment } from '@theia/core/shared/@theia/application-package/lib/environment';
@@ -65,27 +63,46 @@ import { CustomEditorWidget } from '../../main/browser/custom-editors/custom-edi
 import { StandaloneServices } from '@theia/monaco-editor-core/esm/vs/editor/standalone/browser/standaloneServices';
 import { ILanguageService } from '@theia/monaco-editor-core/esm/vs/editor/common/languages/language';
 import { LanguageService } from '@theia/monaco-editor-core/esm/vs/editor/common/services/languageService';
-import { Measurement, Stopwatch } from '@theia/core/lib/common';
 import { Uint8ArrayReadBuffer, Uint8ArrayWriteBuffer } from '@theia/core/lib/common/message-rpc/uint8-array-message-buffer';
 import { BasicChannel } from '@theia/core/lib/common/message-rpc/channel';
+import { NotebookTypeRegistry, NotebookService, NotebookRendererMessagingService } from '@theia/notebook/lib/browser';
+import { ApplicationServer } from '@theia/core/lib/common/application-protocol';
+import {
+    AbstractHostedPluginSupport, PluginContributions, PluginHost,
+    ALL_ACTIVATION_EVENT, isConnectionScopedBackendPlugin
+} from '../common/hosted-plugin';
+import { isRemote } from '@theia/core/lib/browser/browser';
 
-export type PluginHost = 'frontend' | string;
 export type DebugActivationEvent = 'onDebugResolve' | 'onDebugInitialConfigurations' | 'onDebugAdapterProtocolTracker' | 'onDebugDynamicConfigurations';
 
 export const PluginProgressLocation = 'plugin';
 
 @injectable()
-export class HostedPluginSupport {
+export class HostedPluginSupport extends AbstractHostedPluginSupport<PluginManagerExt, RpcProxy<HostedPluginServer>> {
 
-    protected readonly clientId = UUID.uuid4();
-
-    protected container: interfaces.Container;
-
-    @inject(ILogger)
-    protected readonly logger: ILogger;
-
-    @inject(HostedPluginServer)
-    protected readonly server: JsonRpcProxy<HostedPluginServer>;
+    protected static ADDITIONAL_ACTIVATION_EVENTS_ENV = 'ADDITIONAL_ACTIVATION_EVENTS';
+    protected static BUILTIN_ACTIVATION_EVENTS = [
+        '*',
+        'onLanguage',
+        'onCommand',
+        'onDebug',
+        'onDebugInitialConfigurations',
+        'onDebugResolve',
+        'onDebugAdapterProtocolTracker',
+        'onDebugDynamicConfigurations',
+        'onTaskType',
+        'workspaceContains',
+        'onView',
+        'onUri',
+        'onTerminalProfile',
+        'onWebviewPanel',
+        'onFileSystem',
+        'onCustomEditor',
+        'onStartupFinished',
+        'onAuthenticationRequest',
+        'onNotebook',
+        'onNotebookSerializer'
+    ];
 
     @inject(HostedPluginWatcher)
     protected readonly watcher: HostedPluginWatcher;
@@ -93,24 +110,20 @@ export class HostedPluginSupport {
     @inject(PluginContributionHandler)
     protected readonly contributionHandler: PluginContributionHandler;
 
-    @inject(ContributionProvider)
-    @named(MainPluginApiProvider)
-    protected readonly mainPluginApiProviders: ContributionProvider<MainPluginApiProvider>;
-
-    @inject(PluginServer)
-    protected readonly pluginServer: PluginServer;
-
     @inject(PreferenceProviderProvider)
     protected readonly preferenceProviderProvider: PreferenceProviderProvider;
 
     @inject(PreferenceServiceImpl)
     protected readonly preferenceServiceImpl: PreferenceServiceImpl;
 
-    @inject(PluginPathsService)
-    protected readonly pluginPathsService: PluginPathsService;
-
     @inject(WorkspaceService)
     protected readonly workspaceService: WorkspaceService;
+
+    @inject(NotebookService)
+    protected readonly notebookService: NotebookService;
+
+    @inject(NotebookRendererMessagingService)
+    protected readonly notebookRendererMessagingService: NotebookRendererMessagingService;
 
     @inject(CommandRegistry)
     protected readonly commands: CommandRegistry;
@@ -130,6 +143,9 @@ export class HostedPluginSupport {
     @inject(FrontendApplicationStateService)
     protected readonly appState: FrontendApplicationStateService;
 
+    @inject(NotebookTypeRegistry)
+    protected readonly notebookTypeRegistry: NotebookTypeRegistry;
+
     @inject(PluginViewRegistry)
     protected readonly viewRegistry: PluginViewRegistry;
 
@@ -138,6 +154,9 @@ export class HostedPluginSupport {
 
     @inject(TaskResolverRegistry)
     protected readonly taskResolverRegistry: TaskResolverRegistry;
+
+    @inject(TaskDefinitionRegistry)
+    protected readonly taskDefinitionRegistry: TaskDefinitionRegistry;
 
     @inject(ProgressService)
     protected readonly progressService: ProgressService;
@@ -151,69 +170,47 @@ export class HostedPluginSupport {
     @inject(TerminalService)
     protected readonly terminalService: TerminalService;
 
-    @inject(EnvVariablesServer)
-    protected readonly envServer: EnvVariablesServer;
-
     @inject(JsonSchemaStore)
     protected readonly jsonSchemaStore: JsonSchemaStore;
 
     @inject(PluginCustomEditorRegistry)
     protected readonly customEditorRegistry: PluginCustomEditorRegistry;
 
-    @inject(Stopwatch)
-    protected readonly stopwatch: Stopwatch;
+    @inject(ApplicationServer)
+    protected readonly applicationServer: ApplicationServer;
 
-    protected theiaReadyPromise: Promise<any>;
-
-    protected readonly managers = new Map<string, PluginManagerExt>();
-
-    protected readonly contributions = new Map<PluginIdentifiers.UnversionedId, PluginContributions>();
-
-    protected readonly activationEvents = new Set<string>();
-
-    protected readonly onDidChangePluginsEmitter = new Emitter<void>();
-    readonly onDidChangePlugins = this.onDidChangePluginsEmitter.event;
-
-    protected readonly deferredWillStart = new Deferred<void>();
-    /**
-     * Resolves when the initial plugins are loaded and about to be started.
-     */
-    get willStart(): Promise<void> {
-        return this.deferredWillStart.promise;
-    }
-
-    protected readonly deferredDidStart = new Deferred<void>();
-    /**
-     * Resolves when the initial plugins are started.
-     */
-    get didStart(): Promise<void> {
-        return this.deferredDidStart.promise;
+    constructor() {
+        super(generateUuid());
     }
 
     @postConstruct()
-    protected init(): void {
-        this.theiaReadyPromise = Promise.all([this.preferenceServiceImpl.ready, this.workspaceService.roots]);
+    protected override init(): void {
+        super.init();
+
         this.workspaceService.onWorkspaceChanged(() => this.updateStoragePath());
 
         const languageService = (StandaloneServices.get(ILanguageService) as LanguageService);
-        for (const language of languageService['_encounteredLanguages'] as Set<string>) {
+        for (const language of languageService['_requestedBasicLanguages'] as Set<string>) {
             this.activateByLanguage(language);
         }
-        languageService.onDidEncounterLanguage(language => this.activateByLanguage(language));
+        languageService.onDidRequestBasicLanguageFeatures(language => this.activateByLanguage(language));
         this.commands.onWillExecuteCommand(event => this.ensureCommandHandlerRegistration(event));
         this.debugSessionManager.onWillStartDebugSession(event => this.ensureDebugActivation(event));
         this.debugSessionManager.onWillResolveDebugConfiguration(event => this.ensureDebugActivation(event, 'onDebugResolve', event.debugType));
         this.debugConfigurationManager.onWillProvideDebugConfiguration(event => this.ensureDebugActivation(event, 'onDebugInitialConfigurations'));
         // Activate all providers of dynamic configurations, i.e. Let the user pick a configuration from all the available ones.
-        this.debugConfigurationManager.onWillProvideDynamicDebugConfiguration(event => this.ensureDebugActivation(event, 'onDebugDynamicConfigurations', '*'));
+        this.debugConfigurationManager.onWillProvideDynamicDebugConfiguration(event => this.ensureDebugActivation(event, 'onDebugDynamicConfigurations', ALL_ACTIVATION_EVENT));
         this.viewRegistry.onDidExpandView(id => this.activateByView(id));
         this.taskProviderRegistry.onWillProvideTaskProvider(event => this.ensureTaskActivation(event));
         this.taskResolverRegistry.onWillProvideTaskResolver(event => this.ensureTaskActivation(event));
         this.fileService.onWillActivateFileSystemProvider(event => this.ensureFileSystemActivation(event));
         this.customEditorRegistry.onWillOpenCustomEditor(event => this.activateByCustomEditor(event));
+        this.notebookService.onWillOpenNotebook(async event => this.activateByNotebook(event));
+        this.notebookRendererMessagingService.onWillActivateRenderer(rendererId => this.activateByNotebookRenderer(rendererId));
 
         this.widgets.onDidCreateWidget(({ factoryId, widget }) => {
-            if ((factoryId === WebviewWidget.FACTORY_ID || factoryId === CustomEditorWidget.FACTORY_ID) && widget instanceof WebviewWidget) {
+            // note: state restoration of custom editors is handled in `PluginCustomEditorRegistry.init`
+            if (factoryId === WebviewWidget.FACTORY_ID && widget instanceof WebviewWidget) {
                 const storeState = widget.storeState.bind(widget);
                 const restoreState = widget.restoreState.bind(widget);
 
@@ -236,242 +233,50 @@ export class HostedPluginSupport {
         });
     }
 
-    get plugins(): PluginMetadata[] {
-        const plugins: PluginMetadata[] = [];
-        this.contributions.forEach(contributions => plugins.push(contributions.plugin.metadata));
-        return plugins;
+    protected createTheiaReadyPromise(): Promise<unknown> {
+        return Promise.all([this.preferenceServiceImpl.ready, this.workspaceService.roots]);
     }
 
-    getPlugin(id: PluginIdentifiers.UnversionedId): DeployedPlugin | undefined {
-        const contributions = this.contributions.get(id);
-        return contributions && contributions.plugin;
+    protected override runOperation(operation: () => Promise<void>): Promise<void> {
+        return this.progressService.withProgress('', PluginProgressLocation, () => this.doLoad());
     }
 
-    /** do not call it, except from the plugin frontend contribution */
-    onStart(container: interfaces.Container): void {
-        this.container = container;
-        this.load();
+    protected override afterStart(): void {
         this.watcher.onDidDeploy(() => this.load());
         this.server.onDidOpenConnection(() => this.load());
     }
 
-    protected loadQueue: Promise<void> = Promise.resolve(undefined);
-    load = debounce(() => this.loadQueue = this.loadQueue.then(async () => {
-        try {
-            await this.progressService.withProgress('', PluginProgressLocation, () => this.doLoad());
-        } catch (e) {
-            console.error('Failed to load plugins:', e);
-        }
-    }), 50, { leading: true });
+    // Only load connection-scoped plugins
+    protected acceptPlugin(plugin: DeployedPlugin): boolean {
+        return isConnectionScopedBackendPlugin(plugin);
+    }
 
-    protected async doLoad(): Promise<void> {
-        const toDisconnect = new DisposableCollection(Disposable.create(() => { /* mark as connected */ }));
+    protected override async beforeSyncPlugins(toDisconnect: DisposableCollection): Promise<void> {
+        await super.beforeSyncPlugins(toDisconnect);
+
         toDisconnect.push(Disposable.create(() => this.preserveWebviews()));
         this.server.onDidCloseConnection(() => toDisconnect.dispose());
+    }
 
-        // process empty plugins as well in order to properly remove stale plugin widgets
-        await this.syncPlugins();
-
-        // it has to be resolved before awaiting layout is initialized
-        // otherwise clients can hang forever in the initialization phase
-        this.deferredWillStart.resolve();
-
+    protected override async beforeLoadContributions(toDisconnect: DisposableCollection): Promise<void> {
         // make sure that the previous state, including plugin widgets, is restored
         // and core layout is initialized, i.e. explorer, scm, debug views are already added to the shell
         // but shell is not yet revealed
         await this.appState.reachedState('initialized_layout');
+    }
 
-        if (toDisconnect.disposed) {
-            // if disconnected then don't try to load plugin contributions
-            return;
-        }
-        const contributionsByHost = this.loadContributions(toDisconnect);
-
+    protected override async afterLoadContributions(toDisconnect: DisposableCollection): Promise<void> {
         await this.viewRegistry.initWidgets();
         // remove restored plugin widgets which were not registered by contributions
         this.viewRegistry.removeStaleWidgets();
-        await this.theiaReadyPromise;
-
-        if (toDisconnect.disposed) {
-            // if disconnected then don't try to init plugin code and dynamic contributions
-            return;
-        }
-        await this.startPlugins(contributionsByHost, toDisconnect);
-
-        this.deferredDidStart.resolve();
-
-        this.restoreWebviews();
     }
 
-    /**
-     * Sync loaded and deployed plugins:
-     * - undeployed plugins are unloaded
-     * - newly deployed plugins are initialized
-     */
-    protected async syncPlugins(): Promise<void> {
-        let initialized = 0;
-        const waitPluginsMeasurement = this.measure('waitForDeployment');
-        let syncPluginsMeasurement: Measurement | undefined;
-
-        const toUnload = new Set(this.contributions.keys());
-        let didChangeInstallationStatus = false;
-        try {
-            const newPluginIds: PluginIdentifiers.VersionedId[] = [];
-            const [deployedPluginIds, uninstalledPluginIds] = await Promise.all([this.server.getDeployedPluginIds(), this.server.getUninstalledPluginIds()]);
-            waitPluginsMeasurement.log('Waiting for backend deployment');
-            syncPluginsMeasurement = this.measure('syncPlugins');
-            for (const versionedId of deployedPluginIds) {
-                const unversionedId = PluginIdentifiers.unversionedFromVersioned(versionedId);
-                toUnload.delete(unversionedId);
-                if (!this.contributions.has(unversionedId)) {
-                    newPluginIds.push(versionedId);
-                }
-            }
-            for (const pluginId of toUnload) {
-                this.contributions.get(pluginId)?.dispose();
-            }
-            for (const versionedId of uninstalledPluginIds) {
-                const plugin = this.getPlugin(PluginIdentifiers.unversionedFromVersioned(versionedId));
-                if (plugin && PluginIdentifiers.componentsToVersionedId(plugin.metadata.model) === versionedId && !plugin.metadata.outOfSync) {
-                    plugin.metadata.outOfSync = didChangeInstallationStatus = true;
-                }
-            }
-            for (const contribution of this.contributions.values()) {
-                if (contribution.plugin.metadata.outOfSync && !uninstalledPluginIds.includes(PluginIdentifiers.componentsToVersionedId(contribution.plugin.metadata.model))) {
-                    contribution.plugin.metadata.outOfSync = false;
-                    didChangeInstallationStatus = true;
-                }
-            }
-            if (newPluginIds.length) {
-                const plugins = await this.server.getDeployedPlugins({ pluginIds: newPluginIds });
-                for (const plugin of plugins) {
-                    const pluginId = PluginIdentifiers.componentsToUnversionedId(plugin.metadata.model);
-                    const contributions = new PluginContributions(plugin);
-                    this.contributions.set(pluginId, contributions);
-                    contributions.push(Disposable.create(() => this.contributions.delete(pluginId)));
-                    initialized++;
-                }
-            }
-        } finally {
-            if (initialized || toUnload.size || didChangeInstallationStatus) {
-                this.onDidChangePluginsEmitter.fire(undefined);
-            }
-
-            if (!syncPluginsMeasurement) {
-                // await didn't complete normally
-                waitPluginsMeasurement.error('Backend deployment failed.');
-            }
-        }
-
-        syncPluginsMeasurement?.log(`Sync of ${this.getPluginCount(initialized)}`);
+    protected handleContributions(plugin: DeployedPlugin): Disposable {
+        return this.contributionHandler.handleContributions(this.clientId, plugin);
     }
 
-    /**
-     * Always synchronous in order to simplify handling disconnections.
-     * @throws never
-     */
-    protected loadContributions(toDisconnect: DisposableCollection): Map<PluginHost, PluginContributions[]> {
-        let loaded = 0;
-        const loadPluginsMeasurement = this.measure('loadPlugins');
-
-        const hostContributions = new Map<PluginHost, PluginContributions[]>();
-        for (const contributions of this.contributions.values()) {
-            const plugin = contributions.plugin.metadata;
-            const pluginId = plugin.model.id;
-
-            if (contributions.state === PluginContributions.State.INITIALIZING) {
-                contributions.state = PluginContributions.State.LOADING;
-                contributions.push(Disposable.create(() => console.log(`[${pluginId}]: Unloaded plugin.`)));
-                contributions.push(this.contributionHandler.handleContributions(this.clientId, contributions.plugin));
-                contributions.state = PluginContributions.State.LOADED;
-                console.log(`[${this.clientId}][${pluginId}]: Loaded contributions.`);
-                loaded++;
-            }
-
-            if (contributions.state === PluginContributions.State.LOADED) {
-                contributions.state = PluginContributions.State.STARTING;
-                const host = plugin.model.entryPoint.frontend ? 'frontend' : plugin.host;
-                const dynamicContributions = hostContributions.get(host) || [];
-                dynamicContributions.push(contributions);
-                hostContributions.set(host, dynamicContributions);
-                toDisconnect.push(Disposable.create(() => {
-                    contributions!.state = PluginContributions.State.LOADED;
-                    console.log(`[${this.clientId}][${pluginId}]: Disconnected.`);
-                }));
-            }
-        }
-
-        loadPluginsMeasurement.log(`Load contributions of ${this.getPluginCount(loaded)}`);
-
-        return hostContributions;
-    }
-
-    protected async startPlugins(contributionsByHost: Map<PluginHost, PluginContributions[]>, toDisconnect: DisposableCollection): Promise<void> {
-        let started = 0;
-        const startPluginsMeasurement = this.measure('startPlugins');
-
-        const [hostLogPath, hostStoragePath, hostGlobalStoragePath] = await Promise.all([
-            this.pluginPathsService.getHostLogPath(),
-            this.getStoragePath(),
-            this.getHostGlobalStoragePath()
-        ]);
-
-        if (toDisconnect.disposed) {
-            return;
-        }
-
-        const thenable: Promise<void>[] = [];
-        const configStorage: ConfigStorage = {
-            hostLogPath,
-            hostStoragePath,
-            hostGlobalStoragePath
-        };
-
-        for (const [host, hostContributions] of contributionsByHost) {
-            // do not start plugins for electron browser
-            if (host === 'frontend' && environment.electron.is()) {
-                continue;
-            }
-
-            const manager = await this.obtainManager(host, hostContributions, toDisconnect);
-            if (!manager) {
-                continue;
-            }
-
-            const plugins = hostContributions.map(contributions => contributions.plugin.metadata);
-            thenable.push((async () => {
-                try {
-                    const activationEvents = [...this.activationEvents];
-                    await manager.$start({ plugins, configStorage, activationEvents });
-                    if (toDisconnect.disposed) {
-                        return;
-                    }
-                    for (const contributions of hostContributions) {
-                        started++;
-                        const plugin = contributions.plugin;
-                        const id = plugin.metadata.model.id;
-                        contributions.state = PluginContributions.State.STARTED;
-                        console.log(`[${this.clientId}][${id}]: Started plugin.`);
-                        toDisconnect.push(contributions.push(Disposable.create(() => {
-                            console.log(`[${this.clientId}][${id}]: Stopped plugin.`);
-                            manager.$stop(id);
-                        })));
-
-                        this.activateByWorkspaceContains(manager, plugin);
-                    }
-                } catch (e) {
-                    console.error(`Failed to start plugins for '${host}' host`, e);
-                }
-            })());
-        }
-
-        await Promise.all(thenable);
-        await this.activateByEvent('onStartupFinished');
-        if (toDisconnect.disposed) {
-            return;
-        }
-
-        startPluginsMeasurement.log(`Start of ${this.getPluginCount(started)}`);
+    protected override handlePluginStarted(manager: PluginManagerExt, plugin: DeployedPlugin): void {
+        this.activateByWorkspaceContains(manager, plugin);
     }
 
     protected async obtainManager(host: string, hostContributions: PluginContributions[], toDisconnect: DisposableCollection): Promise<PluginManagerExt | undefined> {
@@ -502,28 +307,43 @@ export class HostedPluginSupport {
             }
 
             const isElectron = environment.electron.is();
+
+            const supportedActivationEvents = [...HostedPluginSupport.BUILTIN_ACTIVATION_EVENTS];
+            const [additionalActivationEvents, appRoot] = await Promise.all([
+                this.envServer.getValue(HostedPluginSupport.ADDITIONAL_ACTIVATION_EVENTS_ENV),
+                this.applicationServer.getApplicationRoot()
+            ]);
+            if (additionalActivationEvents && additionalActivationEvents.value) {
+                additionalActivationEvents.value.split(',').forEach(event => supportedActivationEvents.push(event));
+            }
+
             await manager.$init({
                 preferences: getPreferences(this.preferenceProviderProvider, this.workspaceService.tryGetRoots()),
                 globalState,
                 workspaceState,
                 env: {
                     queryParams: getQueryParameters(),
-                    language: nls.locale || 'en',
+                    language: nls.locale || nls.defaultLocale,
                     shell: defaultShell,
                     uiKind: isElectron ? UIKind.Desktop : UIKind.Web,
                     appName: FrontendApplicationConfigProvider.get().applicationName,
-                    appHost: isElectron ? 'desktop' : 'web' // TODO: 'web' could be the embedder's name, e.g. 'github.dev'
+                    appHost: isElectron ? 'desktop' : 'web', // TODO: 'web' could be the embedder's name, e.g. 'github.dev'
+                    appRoot,
+                    appUriScheme: FrontendApplicationConfigProvider.get().electron.uriScheme
                 },
                 extApi,
                 webview: {
                     webviewResourceRoot,
                     webviewCspSource
                 },
-                jsonValidation
+                jsonValidation,
+                pluginKind: isRemote ? ExtensionKind.Workspace : ExtensionKind.UI,
+                supportedActivationEvents
             });
             if (toDisconnect.disposed) {
                 return undefined;
             }
+            this.activationEvents.forEach(event => manager!.$activateByEvent(event));
         }
         return manager;
     }
@@ -584,14 +404,6 @@ export class HostedPluginSupport {
         return globalStorageFolderFsPath;
     }
 
-    async activateByEvent(activationEvent: string): Promise<void> {
-        if (this.activationEvents.has(activationEvent)) {
-            return;
-        }
-        this.activationEvents.add(activationEvent);
-        await Promise.all(Array.from(this.managers.values(), manager => manager.$activateByEvent(activationEvent)));
-    }
-
     async activateByViewContainer(viewContainerId: string): Promise<void> {
         await Promise.all(this.viewRegistry.getContainerViews(viewContainerId).map(viewId => this.activateByView(viewId)));
     }
@@ -601,23 +413,53 @@ export class HostedPluginSupport {
     }
 
     async activateByLanguage(languageId: string): Promise<void> {
+        await this.activateByEvent('onLanguage');
         await this.activateByEvent(`onLanguage:${languageId}`);
+    }
+
+    async activateByUri(scheme: string, authority: string): Promise<void> {
+        await this.activateByEvent(`onUri:${scheme}://${authority}`);
     }
 
     async activateByCommand(commandId: string): Promise<void> {
         await this.activateByEvent(`onCommand:${commandId}`);
     }
 
+    async activateByTaskType(taskType: string): Promise<void> {
+        await this.activateByEvent(`onTaskType:${taskType}`);
+    }
+
     async activateByCustomEditor(viewType: string): Promise<void> {
         await this.activateByEvent(`onCustomEditor:${viewType}`);
+    }
+
+    async activateByNotebook(viewType: string): Promise<void> {
+        await this.activateByEvent(`onNotebook:${viewType}`);
+    }
+
+    async activateByNotebookSerializer(viewType: string): Promise<void> {
+        await this.activateByEvent(`onNotebookSerializer:${viewType}`);
+    }
+
+    async activateByNotebookRenderer(rendererId: string): Promise<void> {
+        await this.activateByEvent(`onRenderer:${rendererId}`);
     }
 
     activateByFileSystem(event: FileSystemProviderActivationEvent): Promise<void> {
         return this.activateByEvent(`onFileSystem:${event.scheme}`);
     }
 
+    activateByTerminalProfile(profileId: string): Promise<void> {
+        return this.activateByEvent(`onTerminalProfile:${profileId}`);
+    }
+
     protected ensureFileSystemActivation(event: FileSystemProviderActivationEvent): void {
-        event.waitUntil(this.activateByFileSystem(event));
+        event.waitUntil(this.activateByFileSystem(event).then(() => {
+            if (!this.fileService.hasProvider(event.scheme)) {
+                return waitForEvent(Event.filter(this.fileService.onDidChangeFileSystemProviderRegistrations,
+                    ({ added, scheme }) => added && scheme === event.scheme), 3000);
+            }
+        }));
     }
 
     protected ensureCommandHandlerRegistration(event: WillExecuteCommandEvent): void {
@@ -642,8 +484,20 @@ export class HostedPluginSupport {
         event.waitUntil(p);
     }
 
-    protected ensureTaskActivation(event: WaitUntilEvent): void {
-        event.waitUntil(this.activateByCommand('workbench.action.tasks.runTask'));
+    protected ensureTaskActivation(event: WillResolveTaskProvider): void {
+        const promises = [this.activateByCommand('workbench.action.tasks.runTask')];
+        const taskType = event.taskType;
+        if (taskType) {
+            if (taskType === ALL_ACTIVATION_EVENT) {
+                for (const taskDefinition of this.taskDefinitionRegistry.getAll()) {
+                    promises.push(this.activateByTaskType(taskDefinition.taskType));
+                }
+            } else {
+                promises.push(this.activateByTaskType(taskType));
+            }
+        }
+
+        event.waitUntil(Promise.all(promises));
     }
 
     protected ensureDebugActivation(event: WaitUntilEvent, activationEvent?: DebugActivationEvent, debugType?: string): void {
@@ -671,8 +525,8 @@ export class HostedPluginSupport {
         // should be aligned with https://github.com/microsoft/vscode/blob/da5fb7d5b865aa522abc7e82c10b746834b98639/src/vs/workbench/api/node/extHostExtensionService.ts#L460-L469
         for (const activationEvent of activationEvents) {
             if (/^workspaceContains:/.test(activationEvent)) {
-                const fileNameOrGlob = activationEvent.substr('workspaceContains:'.length);
-                if (fileNameOrGlob.indexOf('*') >= 0 || fileNameOrGlob.indexOf('?') >= 0) {
+                const fileNameOrGlob = activationEvent.substring('workspaceContains:'.length);
+                if (fileNameOrGlob.indexOf(ALL_ACTIVATION_EVENT) >= 0 || fileNameOrGlob.indexOf('?') >= 0) {
                     includePatterns.push(fileNameOrGlob);
                 } else {
                     paths.push(fileNameOrGlob);
@@ -714,23 +568,7 @@ export class HostedPluginSupport {
         }
     }
 
-    async activatePlugin(id: string): Promise<void> {
-        const activation = [];
-        for (const manager of this.managers.values()) {
-            activation.push(manager.$activatePlugin(id));
-        }
-        await Promise.all(activation);
-    }
-
-    protected measure(name: string): Measurement {
-        return this.stopwatch.start(name, { context: this.clientId });
-    }
-
-    protected getPluginCount(plugins: number): string {
-        return `${plugins} plugin${plugins === 1 ? '' : 's'}`;
-    }
-
-    protected readonly webviewsToRestore = new Set<WebviewWidget>();
+    protected readonly webviewsToRestore = new Map<string, WebviewWidget>();
     protected readonly webviewRevivers = new Map<string, (webview: WebviewWidget) => Promise<void>>();
 
     registerWebviewReviver(viewType: string, reviver: (webview: WebviewWidget) => Promise<void>): void {
@@ -738,6 +576,10 @@ export class HostedPluginSupport {
             throw new Error(`Reviver for ${viewType} already registered`);
         }
         this.webviewRevivers.set(viewType, reviver);
+
+        if (this.webviewsToRestore.has(viewType)) {
+            this.restoreWebview(this.webviewsToRestore.get(viewType) as WebviewWidget);
+        }
     }
 
     unregisterWebviewReviver(viewType: string): void {
@@ -758,38 +600,24 @@ export class HostedPluginSupport {
     }
 
     protected preserveWebview(webview: WebviewWidget): void {
-        if (!this.webviewsToRestore.has(webview)) {
-            this.webviewsToRestore.add(webview);
-            webview.disposed.connect(() => this.webviewsToRestore.delete(webview));
+        if (!this.webviewsToRestore.has(webview.viewType)) {
+            this.activateByEvent(`onWebviewPanel:${webview.viewType}`);
+            this.webviewsToRestore.set(webview.viewType, webview);
+            webview.disposed.connect(() => this.webviewsToRestore.delete(webview.viewType));
         }
-    }
-
-    protected restoreWebviews(): void {
-        for (const webview of this.webviewsToRestore) {
-            this.restoreWebview(webview);
-        }
-        this.webviewsToRestore.clear();
     }
 
     protected async restoreWebview(webview: WebviewWidget): Promise<void> {
-        await this.activateByEvent(`onWebviewPanel:${webview.viewType}`);
         const restore = this.webviewRevivers.get(webview.viewType);
-        if (!restore) {
-            /* eslint-disable max-len */
-            webview.setHTML(this.getDeserializationFailedContents(`
-            <p>The extension providing '${webview.viewType}' view is not capable of restoring it.</p>
-            <p>Want to help fix this? Please inform the extension developer to register a <a href="https://code.visualstudio.com/api/extension-guides/webview#serialization">reviver</a>.</p>
-            `));
-            /* eslint-enable max-len */
-            return;
-        }
-        try {
-            await restore(webview);
-        } catch (e) {
-            webview.setHTML(this.getDeserializationFailedContents(`
-            An error occurred while restoring '${webview.viewType}' view. Please check logs.
-            `));
-            console.error('Failed to restore the webview', e);
+        if (restore) {
+            try {
+                await restore(webview);
+            } catch (e) {
+                webview.setHTML(this.getDeserializationFailedContents(`
+                An error occurred while restoring '${webview.viewType}' view. Please check logs.
+                `));
+                console.error('Failed to restore the webview', e);
+            }
         }
     }
 
@@ -804,23 +632,4 @@ export class HostedPluginSupport {
         </html>`;
     }
 
-}
-
-export class PluginContributions extends DisposableCollection {
-    constructor(
-        readonly plugin: DeployedPlugin
-    ) {
-        super();
-    }
-    state: PluginContributions.State = PluginContributions.State.INITIALIZING;
-}
-
-export namespace PluginContributions {
-    export enum State {
-        INITIALIZING = 0,
-        LOADING = 1,
-        LOADED = 2,
-        STARTING = 3,
-        STARTED = 4
-    }
 }

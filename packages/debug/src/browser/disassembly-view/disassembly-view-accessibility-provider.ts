@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { nls } from '@theia/core';
@@ -23,7 +23,7 @@ import { DisassembledInstructionEntry } from './disassembly-view-utilities';
 export class AccessibilityProvider implements IListAccessibilityProvider<DisassembledInstructionEntry> {
 
     getWidgetAriaLabel(): string {
-        return nls.localize('disassemblyView', 'Disassembly View');
+        return nls.localizeByDefault('Disassembly View');
     }
 
     getAriaLabel(element: DisassembledInstructionEntry): string | null {
@@ -31,12 +31,12 @@ export class AccessibilityProvider implements IListAccessibilityProvider<Disasse
 
         const instruction = element.instruction;
         if (instruction.address !== '-1') {
-            label += `${nls.localize('theia/debug/instructionAddress', 'Address')}: ${instruction.address}`;
+            label += `${nls.localizeByDefault('Address')}: ${instruction.address}`;
         }
         if (instruction.instructionBytes) {
-            label += `, ${nls.localize('theia/debug/instructionBytes', 'Bytes')}: ${instruction.instructionBytes}`;
+            label += `, ${nls.localizeByDefault('Bytes')}: ${instruction.instructionBytes}`;
         }
-        label += `, ${nls.localize('theia/debug/instructionText', 'Instruction')}: ${instruction.instruction}`;
+        label += `, ${nls.localizeByDefault('Instruction')}: ${instruction.instruction}`;
 
         return label;
     }

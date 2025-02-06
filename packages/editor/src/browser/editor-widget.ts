@@ -11,15 +11,19 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { Disposable, SelectionService, Event, UNTITLED_SCHEME } from '@theia/core/lib/common';
-import { Widget, BaseWidget, Message, Saveable, SaveableSource, Navigatable, StatefulWidget, lock } from '@theia/core/lib/browser';
+import { Disposable, SelectionService, Event, UNTITLED_SCHEME, DisposableCollection } from '@theia/core/lib/common';
+import { Widget, BaseWidget, Message, Saveable, SaveableSource, Navigatable, StatefulWidget, lock, TabBar, DockPanel, unlock, ExtractableWidget } from '@theia/core/lib/browser';
 import URI from '@theia/core/lib/common/uri';
+import { find } from '@theia/core/shared/@phosphor/algorithm';
 import { TextEditor } from './editor';
 
-export class EditorWidget extends BaseWidget implements SaveableSource, Navigatable, StatefulWidget {
+export class EditorWidget extends BaseWidget implements SaveableSource, Navigatable, StatefulWidget, ExtractableWidget {
+
+    protected toDisposeOnTabbarChange = new DisposableCollection();
+    protected currentTabbar: TabBar<Widget> | undefined;
 
     constructor(
         readonly editor: TextEditor,
@@ -31,14 +35,24 @@ export class EditorWidget extends BaseWidget implements SaveableSource, Navigata
             lock(this.title);
         }
         this.toDispose.push(this.editor);
+        this.toDispose.push(this.toDisposeOnTabbarChange);
         this.toDispose.push(this.editor.onSelectionChanged(() => this.setSelection()));
         this.toDispose.push(this.editor.onFocusChanged(() => this.setSelection()));
+        this.toDispose.push(this.editor.onDidChangeReadOnly(isReadonly => {
+            if (isReadonly) {
+                lock(this.title);
+            } else {
+                unlock(this.title);
+            }
+        }));
         this.toDispose.push(Disposable.create(() => {
             if (this.selectionService.selection === this.editor) {
                 this.selectionService.selection = undefined;
             }
         }));
     }
+    isExtractable: boolean = true;
+    secondaryWindow: Window | undefined;
 
     setSelection(): void {
         if (this.editor.isFocused() && this.selectionService.selection !== this.editor) {
@@ -68,6 +82,33 @@ export class EditorWidget extends BaseWidget implements SaveableSource, Navigata
         if (this.isVisible) {
             this.editor.refresh();
         }
+        this.checkForTabbarChange();
+    }
+
+    protected checkForTabbarChange(): void {
+        const { parent } = this;
+        if (parent instanceof DockPanel) {
+            const newTabbar = find(parent.tabBars(), tabbar => !!tabbar.titles.find(title => title === this.title));
+            if (this.currentTabbar !== newTabbar) {
+                this.toDisposeOnTabbarChange.dispose();
+                const listener = () => this.checkForTabbarChange();
+                parent.layoutModified.connect(listener);
+                this.toDisposeOnTabbarChange.push(Disposable.create(() => parent.layoutModified.disconnect(listener)));
+                const last = this.currentTabbar;
+                this.currentTabbar = newTabbar;
+                this.handleTabBarChange(last, newTabbar);
+            }
+        }
+    }
+
+    protected handleTabBarChange(oldTabBar?: TabBar<Widget>, newTabBar?: TabBar<Widget>): void {
+        const ownSaveable = Saveable.get(this);
+        const competingEditors = ownSaveable && newTabBar?.titles.filter(title => title !== this.title
+            && (title.owner instanceof EditorWidget)
+            && title.owner.editor.uri.isEqual(this.editor.uri)
+            && Saveable.get(title.owner) === ownSaveable
+        );
+        competingEditors?.forEach(title => title.owner.close());
     }
 
     protected override onAfterShow(msg: Message): void {

@@ -2,11 +2,11 @@
 
 ## Version Support Policy
 
-We try to support Node.js versions from 12 up to the current _Active LTS_ version.
+We aim to support Node.js current _Active LTS_ version.
 
-See https://nodejs.org/en/about/releases/ to see the status of Node.js versions.
+See <https://nodejs.org/en/about/releases/> to see the status of Node.js versions.
 
-We recommend setting up your environment to run Theia using the Node.js _Active LTS_, but any supported version should work as well. File an issue otherwise: https://github.com/eclipse-theia/theia/issues/new/choose.
+We recommend setting up your environment to run Theia using the Node.js _Active LTS_, but any supported version should work as well. File an issue otherwise: <https://github.com/eclipse-theia/theia/issues/new/choose>.
 
 Note that the Node.js version you should use depends on your own project's dependencies: packages other than Theia might have their own requirements, so we try to support a reasonable range for adopters to be able to satisfy such constraints.
 
@@ -15,6 +15,7 @@ Note that the Node.js version you should use depends on your own project's depen
 - Follow Node.js LTS cadence and initiate the update when a new Node.js version becomes _Active LTS_.
 - Use `@types/node` for the oldest supported Node version (backward compatibility).
 - Update the CI matrix to include the new Node.js versions to support.
+- Update the documentation referencing recommended Node versions.
 - Update the CHANGELOG.
 
 # Electron
@@ -23,7 +24,7 @@ Note that the Node.js version you should use depends on your own project's depen
 
 We aim to use Electron's latest _Stable Release_.
 
-See https://www.electronjs.org/releases/stable to see the latest Electron stable releases.
+See <https://www.electronjs.org/releases/stable> to see the latest Electron stable releases.
 
 Note that clearing new Electron releases IP-wise is a lot of work and may cause us to lag behind a bit.
 
@@ -45,5 +46,5 @@ with VS Code's Node runtime, which depends on the Electron version that they end
 You should look for this information in the [VS Code repository](https://github.com/microsoft/vscode).
 
 VS Code Extensions being meant to run in VS Code, developers may use any API available in the runtime in which their
-extension runs. So if they expect to run in Node 14, then they may use Node 14 APIs. Running your Theia application
-on Node 12 then means that some plugin features might not work because of missing APIs from the Node runtime.
+extension runs. So if they expect to run in Node 16, then they may use Node 16 APIs. Running your Theia application
+on Node 14 then means that some plugin features might not work because of missing APIs from the Node runtime.

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
@@ -129,7 +129,11 @@ export class HostedPluginManagerClient {
     protected readonly fileDialogService: FileDialogService;
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         this.openNewTabAskDialog = new OpenHostedInstanceLinkDialog(this.windowService);
 
         // is needed for case when page is loaded when hosted instance is already running.
@@ -244,7 +248,8 @@ export class HostedPluginManagerClient {
                 try {
                     if (this.isDebug) {
                         this.pluginInstanceURL = await this.hostedPluginServer.runDebugHostedPluginInstance(this.pluginLocation!.toString(), {
-                            debugMode: this.hostedPluginPreferences['hosted-plugin.debugMode']
+                            debugMode: this.hostedPluginPreferences['hosted-plugin.debugMode'],
+                            debugPort: [...this.hostedPluginPreferences['hosted-plugin.debugPorts']]
                         });
                         await this.startDebugSessionManager();
                     } else {
@@ -367,6 +372,9 @@ export class HostedPluginManagerClient {
         config = Object.assign(config || {}, { debugMode: this.hostedPluginPreferences['hosted-plugin.debugMode'] });
         if (config.pluginLocation) {
             this.pluginLocation = new URI((!config.pluginLocation.startsWith('/') ? '/' : '') + config.pluginLocation.replace(/\\/g, '/')).withScheme('file');
+        }
+        if (config.debugPort === undefined) {
+            config.debugPort = [...this.hostedPluginPreferences['hosted-plugin.debugPorts']];
         }
         return config;
     }

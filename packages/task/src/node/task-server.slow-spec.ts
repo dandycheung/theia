@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 // tslint:disable-next-line:no-implicit-dependencies
@@ -25,11 +25,10 @@ import * as https from 'https';
 import { isWindows, isOSX } from '@theia/core/lib/common/os';
 import { FileUri } from '@theia/core/lib/node';
 import { terminalsPath } from '@theia/terminal/lib/common/terminal-protocol';
-import { expectThrowsAsync } from '@theia/core/lib/common/test/expect';
 import { TestWebSocketChannelSetup } from '@theia/core/lib/node/messaging/test/test-web-socket-channel';
 import { expect } from 'chai';
 import URI from '@theia/core/lib/common/uri';
-import { RpcProtocol } from '@theia/core';
+import { StringBufferingStream } from '@theia/terminal/lib/node/buffering-stream';
 
 // test scripts that we bundle with tasks
 const commandShortRunning = './task';
@@ -72,7 +71,7 @@ describe('Task server / back-end', function (): void {
         taskServer = testContainer.get(TaskServer);
         taskServer.setClient(taskWatcher.getTaskClient());
         backend = testContainer.get(BackendApplication);
-        server = await backend.start();
+        server = await backend.start(3000, 'localhost');
     });
 
     afterEach(async () => {
@@ -89,12 +88,6 @@ describe('Task server / back-end', function (): void {
     it('task running in terminal - expected data is received from the terminal ws server', async function (): Promise<void> {
         const someString = 'someSingleWordString';
 
-        // This test is flaky on Windows and fails intermittently. Disable it for now
-        if (isWindows) {
-            this.skip();
-            return;
-        }
-
         // create task using terminal process
         const command = isWindows ? commandShortRunningWindows : (isOSX ? commandShortRunningOsx : commandShortRunning);
         const taskInfo: TaskInfo = await taskServer.run(createProcessTaskConfig('shell', `${command} ${someString}`), wsRoot);
@@ -103,40 +96,28 @@ describe('Task server / back-end', function (): void {
         const messagesToWaitFor = 10;
         const messages: string[] = [];
 
+        // check output of task on terminal is what we expect
+        const expected = `${isOSX ? 'tasking osx' : 'tasking'}... ${someString}`;
+
         // hook-up to terminal's ws and confirm that it outputs expected tasks' output
         await new Promise<void>((resolve, reject) => {
             const setup = new TestWebSocketChannelSetup({ server, path: `${terminalsPath}/${terminalId}` });
-            setup.multiplexer.onDidOpenChannel(event => {
-                const channel = event.channel;
-                const connection = new RpcProtocol(channel, async (method, args) => {
-                    const error = new Error(`Received unexpected request: ${method} with args: ${args} `);
-                    reject(error);
-                    throw error;
-                });
+            const stringBuffer = new StringBufferingStream();
+            setup.connectionProvider.listen(`${terminalsPath}/${terminalId}`, (path, channel) => {
+                channel.onMessage(e => stringBuffer.push(e().readString()));
                 channel.onError(reject);
                 channel.onClose(() => reject(new Error('Channel has been closed')));
-                connection.onNotification(not => {
-                    // check output of task on terminal is what we expect
-                    const expected = `${isOSX ? 'tasking osx' : 'tasking'}... ${someString}`;
-                    // Instead of waiting for one message from the terminal, we wait for several ones as the very first message can be something unexpected.
-                    // For instance: `nvm is not compatible with the \"PREFIX\" environment variable: currently set to \"/usr/local\"\r\n`
-                    const currentMessage = not.args[0];
-                    messages.unshift(currentMessage);
-                    if (currentMessage.indexOf(expected) !== -1) {
-                        resolve();
-                        channel.close();
-                        return;
-                    }
-                    if (messages.length >= messagesToWaitFor) {
-                        reject(new Error(`expected sub-string not found in terminal output. Expected: "${expected}" vs Actual messages: ${JSON.stringify(messages)}`));
-                        channel.close();
-                    }
-                });
-                channel.onMessage(reader => {
-
-                });
+            }, false);
+            stringBuffer.onData(currentMessage => {
+                // Instead of waiting for one message from the terminal, we wait for several ones as the very first message can be something unexpected.
+                // For instance: `nvm is not compatible with the \"PREFIX\" environment variable: currently set to \"/usr/local\"\r\n`
+                messages.unshift(currentMessage);
+                if (currentMessage.includes(expected)) {
+                    resolve();
+                } else if (messages.length >= messagesToWaitFor) {
+                    reject(new Error(`expected sub-string not found in terminal output. Expected: "${expected}" vs Actual messages: ${JSON.stringify(messages)}`));
+                }
             });
-
         });
     });
 
@@ -217,7 +198,7 @@ describe('Task server / back-end', function (): void {
         // possible on what node's child_process module does.
         if (isWindows) {
             // On Windows, node-pty just reports an exit code of 0.
-            expect(exitStatus).equals(0);
+            expect(exitStatus).equals(1);
         } else {
             // On Linux/macOS, node-pty sends SIGHUP by default, for some reason.
             expect(exitStatus).equals('SIGHUP');
@@ -236,8 +217,8 @@ describe('Task server / back-end', function (): void {
         // currently.  Ideally, its behavior should be aligned as much as
         // possible on what node's child_process module does.
         if (isWindows) {
-            // On Windows, node-pty just reports an exit code of 0.
-            expect(exitStatus).equals(0);
+            // On Windows, node-pty just reports an exit code of 1.
+            expect(exitStatus).equals(1);
         } else {
             // On Linux/macOS, node-pty sends SIGHUP by default, for some reason.
             expect(exitStatus).equals('SIGHUP');
@@ -267,11 +248,6 @@ describe('Task server / back-end', function (): void {
         } else {
             expect(code).equals(127);
         }
-    });
-
-    it('task using raw process can handle command that does not exist', async function (): Promise<void> {
-        const p = taskServer.run(createProcessTaskConfig2('process', bogusCommand, []), wsRoot);
-        await expectThrowsAsync(p, 'ENOENT');
     });
 
     it('getTasks(ctx) returns tasks according to created context', async function (): Promise<void> {

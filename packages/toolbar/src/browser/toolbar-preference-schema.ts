@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { IJSONSchema } from '@theia/core/lib/common/json-schema';
@@ -31,7 +31,8 @@ const toolbarColumnGroup: IJSONSchema = {
                 'command': { 'type': 'string' },
                 'icon': { 'type': 'string' },
                 'tooltip': { 'type': 'string' },
-                'group': { 'enum': ['contributed'] }
+                'group': { 'enum': ['contributed'] },
+                'when': { 'type': 'string' },
             },
             'required': [
                 'id',

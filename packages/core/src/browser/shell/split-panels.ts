@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable } from 'inversify';
@@ -91,13 +91,14 @@ export class SplitPositionHandler {
             move.resolve = resolve;
             move.reject = reject;
             if (this.splitMoves.length === 0) {
-                window.requestAnimationFrame(this.animationFrame.bind(this));
+                setTimeout(this.animationFrame.bind(this), 10);
             }
             this.splitMoves.push(move);
         });
     }
 
-    protected animationFrame(time: number): void {
+    protected animationFrame(): void {
+        const time = Date.now();
         const move = this.splitMoves[this.currentMoveIndex];
         let rejectedOrResolved = false;
         if (move.ended || move.referenceWidget && move.referenceWidget.isHidden) {
@@ -133,7 +134,7 @@ export class SplitPositionHandler {
             this.currentMoveIndex = 0;
         }
         if (this.splitMoves.length > 0) {
-            window.requestAnimationFrame(this.animationFrame.bind(this));
+            setTimeout(this.animationFrame.bind(this));
         }
     }
 

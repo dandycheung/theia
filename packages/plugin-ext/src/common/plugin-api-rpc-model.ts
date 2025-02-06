@@ -11,14 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as theia from '@theia/plugin';
 import type * as monaco from '@theia/monaco-editor-core';
 import { MarkdownString as MarkdownStringDTO } from '@theia/core/lib/common/markdown-rendering';
 import { UriComponents } from './uri-components';
-import { CompletionItemTag } from '../plugin/types-impl';
+import { CompletionItemTag, DocumentPasteEditKind, SnippetString } from '../plugin/types-impl';
 import { Event as TheiaEvent } from '@theia/core/lib/common/event';
 import { URI } from '@theia/core/shared/vscode-uri';
 import { SerializedRegExp } from './plugin-api-rpc';
@@ -72,6 +72,17 @@ export interface Range {
     readonly endColumn: number;
 }
 
+export interface Position {
+    /**
+     * line number (starts at 1)
+     */
+    readonly lineNumber: number,
+    /**
+     * column (starts at 1)
+     */
+    readonly column: number
+}
+
 export { MarkdownStringDTO as MarkdownString };
 
 export interface SerializedDocumentFilter {
@@ -79,6 +90,7 @@ export interface SerializedDocumentFilter {
     language?: string;
     scheme?: string;
     pattern?: theia.GlobPattern;
+    notebookType?: string;
 }
 
 export enum CompletionTriggerKind {
@@ -321,6 +333,32 @@ export interface TextEdit {
     range: Range;
     text: string;
     eol?: monaco.editor.EndOfLineSequence;
+}
+
+export interface DocumentDropEdit {
+    insertText: string | SnippetString;
+    additionalEdit?: WorkspaceEdit;
+}
+
+export interface DocumentDropEditProviderMetadata {
+    readonly providedDropEditKinds?: readonly DocumentPasteEditKind[];
+    readonly dropMimeTypes: readonly string[];
+}
+
+export interface DataTransferFileDTO {
+    readonly id: string;
+    readonly name: string;
+    readonly uri?: UriComponents;
+}
+
+export interface DataTransferItemDTO {
+    readonly asString: string;
+    readonly fileData: DataTransferFileDTO | undefined;
+    readonly uriListData?: ReadonlyArray<string | UriComponents>;
+}
+
+export interface DataTransferDTO {
+    readonly items: Array<[/* type */string, DataTransferItemDTO]>;
 }
 
 export interface Location {
@@ -660,6 +698,13 @@ export interface Comment {
     readonly contextValue?: string;
     readonly label?: string;
     readonly mode?: CommentMode;
+    /** Timestamp serialized as ISO date string via Date.prototype.toISOString */
+    readonly timestamp?: string;
+}
+
+export enum CommentThreadState {
+    Unresolved = 0,
+    Resolved = 1
 }
 
 export enum CommentThreadCollapsibleState {
@@ -690,10 +735,12 @@ export interface CommentThread {
     comments: Comment[] | undefined;
     onDidChangeComments: TheiaEvent<Comment[] | undefined>;
     collapsibleState?: CommentThreadCollapsibleState;
+    state?: CommentThreadState;
     input?: CommentInput;
     onDidChangeInput: TheiaEvent<CommentInput | undefined>;
     onDidChangeRange: TheiaEvent<Range>;
     onDidChangeLabel: TheiaEvent<string | undefined>;
+    onDidChangeState: TheiaEvent<CommentThreadState | undefined>;
     onDidChangeCollapsibleState: TheiaEvent<CommentThreadCollapsibleState | undefined>;
     isDisposed: boolean;
     canReply: boolean;
@@ -859,3 +906,13 @@ export interface InlineCompletionsProvider<T extends InlineCompletions = InlineC
     freeInlineCompletions(completions: T): void;
 }
 
+export interface DebugStackFrameDTO {
+    readonly sessionId: string,
+    readonly frameId: number,
+    readonly threadId: number
+}
+
+export interface DebugThreadDTO {
+    readonly sessionId: string,
+    readonly threadId: number
+}

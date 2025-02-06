@@ -11,19 +11,20 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { SelectionService } from '@theia/core/lib/common/selection-service';
 import { SelectionCommandHandler } from '@theia/core/lib/common/selection-command-handler';
 import { ResourceFileEdit, ResourceTextEdit } from '@theia/monaco-editor-core/esm/vs/editor/browser/services/bulkEditService';
+import { isObject } from '@theia/core/lib/common';
 
 export interface BulkEditNodeSelection {
     bulkEdit: ResourceFileEdit | ResourceTextEdit;
 }
 export namespace BulkEditNodeSelection {
     export function is(arg: unknown): arg is BulkEditNodeSelection {
-        return !!arg && typeof arg === 'object' && ('bulkEdit' in arg);
+        return isObject(arg) && 'bulkEdit' in arg;
     }
 
     export class CommandHandler extends SelectionCommandHandler<BulkEditNodeSelection> {

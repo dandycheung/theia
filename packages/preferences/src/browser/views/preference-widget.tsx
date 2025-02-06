@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { postConstruct, injectable, inject } from '@theia/core/shared/inversify';
@@ -39,7 +39,7 @@ export class PreferencesWidget extends Panel implements StatefulWidget {
     /**
      * The widget `label` which is used for display purposes.
      */
-    static readonly LABEL = nls.localizeByDefault('Preferences');
+    static readonly LABEL = nls.localizeByDefault('Settings');
 
     @inject(PreferencesEditorWidget) protected readonly editorWidget: PreferencesEditorWidget;
     @inject(PreferencesTreeWidget) protected readonly treeWidget: PreferencesTreeWidget;
@@ -78,6 +78,7 @@ export class PreferencesWidget extends Panel implements StatefulWidget {
     protected init(): void {
         this.id = PreferencesWidget.ID;
         this.title.label = PreferencesWidget.LABEL;
+        this.title.caption = PreferencesWidget.LABEL;
         this.title.closable = true;
         this.addClass('theia-settings-container');
         this.title.iconClass = codicon('settings');
@@ -95,6 +96,10 @@ export class PreferencesWidget extends Panel implements StatefulWidget {
         this.addWidget(this.editorWidget);
 
         this.update();
+    }
+
+    getPreviewNode(): Node | undefined {
+        return this.node;
     }
 
     storeState(): PreferencesWidgetState {

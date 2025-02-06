@@ -6,5 +6,9 @@
   "include": [
     "rules"
   ],
-  "references": []
+  "references": [
+    {
+      "path": "../private-re-exports"
+    }
+  ]
 }

@@ -11,17 +11,17 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import * as electronRemote from '../../../electron-shared/@electron/remote';
 import { injectable, inject, postConstruct } from 'inversify';
-import * as electron from '../../../electron-shared/electron';
-import { NewWindowOptions } from '../../common/window';
+import { NewWindowOptions, WindowSearchParams } from '../../common/window';
 import { DefaultWindowService } from '../../browser/window/default-window-service';
 import { ElectronMainWindowService } from '../../electron-common/electron-main-window-service';
 import { ElectronWindowPreferences } from './electron-window-preferences';
-import { CloseRequestArguments, CLOSE_REQUESTED_SIGNAL, RELOAD_REQUESTED_SIGNAL, StopReason } from '../../electron-common/messaging/electron-messages';
+import { ConnectionCloseService } from '../../common/messaging/connection-management';
+import { FrontendIdProvider } from '../../browser/messaging/frontend-id-provider';
+import { WindowReloadOptions } from '../../browser/window/window-service';
 
 @injectable()
 export class ElectronWindowService extends DefaultWindowService {
@@ -36,21 +36,30 @@ export class ElectronWindowService extends DefaultWindowService {
      */
     protected closeOnUnload: boolean = false;
 
+    @inject(FrontendIdProvider)
+    protected readonly frontendIdProvider: FrontendIdProvider;
+
     @inject(ElectronMainWindowService)
     protected readonly delegate: ElectronMainWindowService;
 
     @inject(ElectronWindowPreferences)
     protected readonly electronWindowPreferences: ElectronWindowPreferences;
 
+    @inject(ConnectionCloseService)
+    protected readonly connectionCloseService: ConnectionCloseService;
+
     override openNewWindow(url: string, { external }: NewWindowOptions = {}): undefined {
         this.delegate.openNewWindow(url, { external });
         return undefined;
     }
 
-    override openNewDefaultWindow(): void {
-        this.delegate.openNewDefaultWindow();
+    override openNewDefaultWindow(params?: WindowSearchParams): void {
+        this.delegate.openNewDefaultWindow(params);
     }
 
+    override focus(): void {
+        window.electronTheiaCore.focusWindow();
+    }
     @postConstruct()
     protected init(): void {
         // Update the default zoom level on startup when the preferences event is fired.
@@ -59,40 +68,42 @@ export class ElectronWindowService extends DefaultWindowService {
                 this.updateWindowZoomLevel();
             }
         });
+        window.electronTheiaCore.onAboutToClose(() => {
+            this.connectionCloseService.markForClose(this.frontendIdProvider.getId());
+        });
     }
 
     protected override registerUnloadListeners(): void {
-        electron.ipcRenderer.on(CLOSE_REQUESTED_SIGNAL, (_event, closeRequestEvent: CloseRequestArguments) => this.handleCloseRequestedEvent(closeRequestEvent));
-        window.addEventListener('unload', () => this.onUnloadEmitter.fire());
-    }
-
-    /**
-     * Run when ElectronMain detects a `close` event and emits a `close-requested` event.
-     * Should send an event to `electron.ipcRenderer` on the event's `confirmChannel` if it is safe to exit
-     * after running FrontendApplication `onWillStop` handlers or on the `cancelChannel` if it is not safe to exit.
-     */
-    protected async handleCloseRequestedEvent(event: CloseRequestArguments): Promise<void> {
-        const safeToClose = await this.isSafeToShutDown(event.reason);
-        if (safeToClose) {
-            console.debug(`Shutting down because of ${StopReason[event.reason]} request.`);
-            electron.ipcRenderer.send(event.confirmChannel);
-        } else {
-            electron.ipcRenderer.send(event.cancelChannel);
-        }
+        window.electronTheiaCore.setCloseRequestHandler(reason => this.isSafeToShutDown(reason));
+        window.addEventListener('unload', () => {
+            this.onUnloadEmitter.fire();
+        });
     }
 
     /**
      * Updates the window zoom level based on the preference value.
      */
-    protected updateWindowZoomLevel(): void {
+    protected async updateWindowZoomLevel(): Promise<void> {
         const preferredZoomLevel = this.electronWindowPreferences['window.zoomLevel'];
-        const webContents = electronRemote.getCurrentWindow().webContents;
-        if (webContents.getZoomLevel() !== preferredZoomLevel) {
-            webContents.setZoomLevel(preferredZoomLevel);
+        if (await window.electronTheiaCore.getZoomLevel() !== preferredZoomLevel) {
+            window.electronTheiaCore.setZoomLevel(preferredZoomLevel);
         }
     }
 
-    override reload(): void {
-        electron.ipcRenderer.send(RELOAD_REQUESTED_SIGNAL);
+    override reload(params?: WindowReloadOptions): void {
+        if (params) {
+            const newLocation = new URL(location.href);
+            if (params.search) {
+                const query = Object.entries(params.search).map(([name, value]) => `${name}=${value}`).join('&');
+                newLocation.search = query;
+            }
+            if (params.hash) {
+                newLocation.hash = '#' + params.hash;
+            }
+            window.electronTheiaCore.requestReload(newLocation.toString());
+        } else {
+            window.electronTheiaCore.requestReload();
+        }
     }
 }
+

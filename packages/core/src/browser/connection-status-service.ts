@@ -11,16 +11,16 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, optional, postConstruct } from 'inversify';
 import { ILogger } from '../common/logger';
 import { Event, Emitter } from '../common/event';
-import { DefaultFrontendApplicationContribution } from './frontend-application';
+import { DefaultFrontendApplicationContribution } from './frontend-application-contribution';
 import { StatusBar, StatusBarAlignment } from './status-bar/status-bar';
-import { WebSocketConnectionProvider } from './messaging/ws-connection-provider';
 import { Disposable, DisposableCollection, nls } from '../common';
+import { WebSocketConnectionSource } from './messaging/ws-connection-source';
 
 /**
  * Service for listening on backend connection changes.
@@ -119,7 +119,7 @@ export class FrontendConnectionStatusService extends AbstractConnectionStatusSer
 
     private scheduledPing: number | undefined;
 
-    @inject(WebSocketConnectionProvider) protected readonly wsConnectionProvider: WebSocketConnectionProvider;
+    @inject(WebSocketConnectionSource) protected readonly wsConnectionProvider: WebSocketConnectionSource;
     @inject(PingService) protected readonly pingService: PingService;
 
     @postConstruct()

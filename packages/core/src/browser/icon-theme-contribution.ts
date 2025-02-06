@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, named } from 'inversify';
-import { FrontendApplicationContribution } from './frontend-application';
+import { FrontendApplicationContribution } from './frontend-application-contribution';
 import { ContributionProvider } from '../common/contribution-provider';
 import { IconThemeService, IconTheme } from './icon-theme-service';
 import { MaybePromise } from '../common/types';
@@ -50,6 +50,7 @@ export class DefaultFileIconThemeContribution implements IconTheme, IconThemeCon
     readonly label = 'File Icons (Theia)';
     readonly hasFileIcons = true;
     readonly hasFolderIcons = true;
+    readonly showLanguageModeIcons = true;
 
     registerIconThemes(iconThemes: IconThemeService): MaybePromise<void> {
         iconThemes.register(this);

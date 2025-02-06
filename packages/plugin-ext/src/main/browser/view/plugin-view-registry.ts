@@ -11,14 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct, optional } from '@theia/core/shared/inversify';
 import {
     ApplicationShell, ViewContainer as ViewContainerWidget, WidgetManager, QuickViewService,
     ViewContainerIdentifier, ViewContainerTitleOptions, Widget, FrontendApplicationContribution,
-    StatefulWidget, CommonMenus, BaseWidget, TreeViewWelcomeWidget, codicon, ViewContainerPart
+    StatefulWidget, CommonMenus, TreeViewWelcomeWidget, ViewContainerPart, BaseWidget,
 } from '@theia/core/lib/browser';
 import { ViewContainer, View, ViewWelcome, PluginViewType } from '../../../common';
 import { PluginSharedStyle } from '../plugin-shared-style';
@@ -32,26 +32,35 @@ import { Disposable, DisposableCollection } from '@theia/core/lib/common/disposa
 import { CommandRegistry } from '@theia/core/lib/common/command';
 import { MenuModelRegistry } from '@theia/core/lib/common/menu';
 import { Emitter, Event } from '@theia/core/lib/common/event';
-import { ContextKeyService } from '@theia/core/lib/browser/context-key-service';
+import { ContextKey, ContextKeyService } from '@theia/core/lib/browser/context-key-service';
 import { ViewContextKeyService } from './view-context-key-service';
 import { PROBLEMS_WIDGET_ID } from '@theia/markers/lib/browser/problem/problem-widget';
 import { OutputWidget } from '@theia/output/lib/browser/output-widget';
 import { DebugConsoleContribution } from '@theia/debug/lib/browser/console/debug-console-contribution';
-import { TERMINAL_WIDGET_FACTORY_ID } from '@theia/terminal/lib/browser/terminal-widget-impl';
 import { TreeViewWidget } from './tree-view-widget';
 import { SEARCH_VIEW_CONTAINER_ID } from '@theia/search-in-workspace/lib/browser/search-in-workspace-factory';
-import { ThemeIcon } from '@theia/monaco-editor-core/esm/vs/platform/theme/common/themeService';
+import { TEST_VIEW_CONTAINER_ID } from '@theia/test/lib/browser/view/test-view-contribution';
 import { WebviewView, WebviewViewResolver } from '../webview-views/webview-views';
 import { WebviewWidget, WebviewWidgetIdentifier } from '../webview/webview';
 import { CancellationToken } from '@theia/core/lib/common/cancellation';
-import { v4 } from 'uuid';
+import { generateUuid } from '@theia/core/lib/common/uuid';
 import { nls } from '@theia/core';
+import { TheiaDockPanel } from '@theia/core/lib/browser/shell/theia-dock-panel';
+import { Deferred } from '@theia/core/lib/common/promise-util';
+import { ThemeIcon } from '@theia/monaco-editor-core/esm/vs/base/common/themables';
 
 export const PLUGIN_VIEW_FACTORY_ID = 'plugin-view';
 export const PLUGIN_VIEW_CONTAINER_FACTORY_ID = 'plugin-view-container';
 export const PLUGIN_VIEW_DATA_FACTORY_ID = 'plugin-view-data';
 
 export type ViewDataProvider = (params: { state?: object, viewInfo: View }) => Promise<TreeViewWidget>;
+
+export interface ViewContainerInfo {
+    id: string
+    location: string
+    options: ViewContainerTitleOptions
+    onViewAdded: () => void
+}
 
 @injectable()
 export class PluginViewRegistry implements FrontendApplicationContribution {
@@ -94,7 +103,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
 
     private readonly views = new Map<string, [string, View]>();
     private readonly viewsWelcome = new Map<string, ViewWelcome[]>();
-    private readonly viewContainers = new Map<string, [string, ViewContainerTitleOptions]>();
+    private readonly viewContainers = new Map<string, ViewContainerInfo>();
     private readonly containerViews = new Map<string, string[]>();
     private readonly viewClauseContexts = new Map<string, Set<string> | undefined>();
 
@@ -102,21 +111,40 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
     private readonly viewDataState = new Map<string, object>();
 
     private readonly webviewViewResolvers = new Map<string, WebviewViewResolver>();
+    protected readonly onNewResolverRegisteredEmitter = new Emitter<{ readonly viewType: string }>();
+    readonly onNewResolverRegistered = this.onNewResolverRegisteredEmitter.event;
+
+    private readonly webviewViewRevivals = new Map<string, { readonly webview: WebviewView; readonly revival: Deferred<void> }>();
+
+    private nextViewContainerId = 0;
+
+    private static readonly BUILTIN_VIEW_CONTAINERS = new Set<string>([
+        'explorer',
+        'scm',
+        'search',
+        'test',
+        'debug'
+    ]);
+
+    private static readonly ID_MAPPINGS: Map<string, string> = new Map([
+        // VS Code Viewlets
+        [EXPLORER_VIEW_CONTAINER_ID, 'workbench.view.explorer'],
+        [SCM_VIEW_CONTAINER_ID, 'workbench.view.scm'],
+        [SEARCH_VIEW_CONTAINER_ID, 'workbench.view.search'],
+        [DebugWidget.ID, 'workbench.view.debug'],
+        ['vsx-extensions-view-container', 'workbench.view.extensions'], // cannot use the id from 'vsx-registry' package because of circular dependency
+        [PROBLEMS_WIDGET_ID, 'workbench.panel.markers'],
+        [TEST_VIEW_CONTAINER_ID, 'workbench.view.testing'],
+        [OutputWidget.ID, 'workbench.panel.output'],
+        [DebugConsoleContribution.options.id, 'workbench.panel.repl'],
+        // Theia does not have a single terminal widget, but instead each terminal gets its own widget. Therefore "the terminal widget is active" doesn't make sense in Theia
+        // [TERMINAL_WIDGET_FACTORY_ID, 'workbench.panel.terminal'],
+        // [?? , 'workbench.panel.comments'] not sure what this mean: we don't show comments in sidebars nor the bottom
+    ]);
 
     @postConstruct()
     protected init(): void {
-        // VS Code Viewlets
-        this.trackVisibleWidget(EXPLORER_VIEW_CONTAINER_ID, { viewletId: 'workbench.view.explorer' });
-        this.trackVisibleWidget(SCM_VIEW_CONTAINER_ID, { viewletId: 'workbench.view.scm' });
-        this.trackVisibleWidget(SEARCH_VIEW_CONTAINER_ID, { viewletId: 'workbench.view.search' });
-        this.trackVisibleWidget(DebugWidget.ID, { viewletId: 'workbench.view.debug' });
-        // TODO workbench.view.extensions - Theia does not have a proper extension view yet
 
-        // VS Code Panels
-        this.trackVisibleWidget(PROBLEMS_WIDGET_ID, { panelId: 'workbench.panel.markers' });
-        this.trackVisibleWidget(OutputWidget.ID, { panelId: 'workbench.panel.output' });
-        this.trackVisibleWidget(DebugConsoleContribution.options.id, { panelId: 'workbench.panel.repl' });
-        this.trackVisibleWidget(TERMINAL_WIDGET_FACTORY_ID, { panelId: 'workbench.panel.terminal' });
         // TODO workbench.panel.comments - Theia does not have a proper comments view yet
 
         this.updateFocusedView();
@@ -131,6 +159,9 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             }
             if (factoryId === SEARCH_VIEW_CONTAINER_ID && widget instanceof ViewContainerWidget) {
                 waitUntil(this.prepareViewContainer('search', widget));
+            }
+            if (factoryId === TEST_VIEW_CONTAINER_ID && widget instanceof ViewContainerWidget) {
+                waitUntil(this.prepareViewContainer('test', widget));
             }
             if (factoryId === DebugWidget.ID && widget instanceof DebugWidget) {
                 const viewContainer = widget['sessionWidget']['viewContainer'];
@@ -148,16 +179,14 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
                 const disposable = new DisposableCollection();
                 disposable.push(this.registerViewWelcome({
                     view: 'explorer',
-                    content: nls.localizeByDefault('You have not yet opened a folder.\n[Open Folder](command:{0})', 'workbench.action.files.openFolder'),
+                    content: nls.localizeByDefault(
+                        'You have not yet opened a folder.\n{0}',
+                        `[${nls.localizeByDefault('Open Folder')}](command:workbench.action.files.openFolder)`
+                    ),
                     order: 0
                 }));
                 disposable.push(event.widget.onDidDispose(() => disposable.dispose()));
             }
-        });
-        this.doRegisterViewContainer('test', 'left', {
-            label: 'Test',
-            iconClass: codicon('beaker'),
-            closeable: true
         });
         this.contextKeyService.onDidChange(e => {
             for (const [, view] of this.views.values()) {
@@ -176,6 +205,39 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
                 }
             }
         });
+
+        const hookDockPanelKey = (panel: TheiaDockPanel, key: ContextKey<string>) => {
+            let toDisposeOnActivate = new DisposableCollection();
+            panel.onDidChangeCurrent(title => {
+                toDisposeOnActivate.dispose();
+                toDisposeOnActivate = new DisposableCollection();
+                if (title && title.owner instanceof BaseWidget) {
+                    const widget = title.owner;
+                    let value = PluginViewRegistry.ID_MAPPINGS.get(widget.id);
+                    if (!value) {
+                        if (widget.id.startsWith(PLUGIN_VIEW_CONTAINER_FACTORY_ID)) {
+                            value = this.toViewContainerId({ id: widget.id });
+                        }
+                    }
+                    const setKey = () => {
+                        if (widget.isVisible && value) {
+                            key.set(value);
+                        } else {
+                            key.reset();
+                        }
+                    };
+                    toDisposeOnActivate.push(widget.onDidChangeVisibility(() => {
+                        setKey();
+                    }));
+                    setKey();
+
+                }
+            });
+        };
+
+        hookDockPanelKey(this.shell.leftPanelHandler.dockPanel, this.viewContextKeys.activeViewlet);
+        hookDockPanelKey(this.shell.rightPanelHandler.dockPanel, this.viewContextKeys.activeAuxiliary);
+        hookDockPanelKey(this.shell.bottomPanel, this.viewContextKeys.activePanel);
     }
 
     protected async updateViewWelcomeVisibility(viewId: string): Promise<void> {
@@ -221,14 +283,15 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
     }
 
     registerViewContainer(location: string, viewContainer: ViewContainer): Disposable {
-        if (this.viewContainers.has(viewContainer.id)) {
+        const containerId = `workbench.view.extension.${viewContainer.id}`;
+        if (this.viewContainers.has(containerId)) {
             console.warn('view container such id already registered: ', JSON.stringify(viewContainer));
             return Disposable.NULL;
         }
         const toDispose = new DisposableCollection();
         const containerClass = 'theia-plugin-view-container';
         let themeIconClass = '';
-        const iconClass = 'plugin-view-container-icon-' + viewContainer.id;
+        const iconClass = 'plugin-view-container-icon-' + this.nextViewContainerId++; // having dots in class would not work for css, so we need to generate an id.
 
         if (viewContainer.themeIcon) {
             const icon = ThemeIcon.fromString(viewContainer.themeIcon);
@@ -245,7 +308,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             `));
         }
 
-        toDispose.push(this.doRegisterViewContainer(viewContainer.id, location, {
+        toDispose.push(this.doRegisterViewContainer(containerId, location, {
             label: viewContainer.title,
             // The container class automatically sets a mask; if we're using a theme icon, we don't want one.
             iconClass: (themeIconClass || containerClass) + ' ' + iconClass,
@@ -268,34 +331,47 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
 
     protected doRegisterViewContainer(id: string, location: string, options: ViewContainerTitleOptions): Disposable {
         const toDispose = new DisposableCollection();
-        this.viewContainers.set(id, [location, options]);
         toDispose.push(Disposable.create(() => this.viewContainers.delete(id)));
         const toggleCommandId = `plugin.view-container.${id}.toggle`;
-        toDispose.push(this.commands.registerCommand({
-            id: toggleCommandId,
-            label: 'Toggle ' + options.label + ' View'
-        }, {
-            execute: () => this.toggleViewContainer(id)
-        }));
-        toDispose.push(this.menus.registerMenuAction(CommonMenus.VIEW_VIEWS, {
-            commandId: toggleCommandId,
-            label: options.label
-        }));
-        toDispose.push(this.quickView?.registerItem({
-            label: options.label,
-            open: async () => {
-                const widget = await this.openViewContainer(id);
-                if (widget) {
-                    this.shell.activateWidget(widget.id);
+        // Some plugins may register empty view containers.
+        // We should not register commands for them immediately, as that leads to bad UX.
+        // Instead, we register commands the first time we add a view to them.
+        let activate = () => {
+            toDispose.push(this.commands.registerCommand({
+                id: toggleCommandId,
+                category: nls.localizeByDefault('View'),
+                label: nls.localizeByDefault('Toggle {0}', options.label)
+            }, {
+                execute: () => this.toggleViewContainer(id)
+            }));
+            toDispose.push(this.menus.registerMenuAction(CommonMenus.VIEW_VIEWS, {
+                commandId: toggleCommandId,
+                label: options.label
+            }));
+            toDispose.push(this.quickView?.registerItem({
+                label: options.label,
+                open: async () => {
+                    const widget = await this.openViewContainer(id);
+                    if (widget) {
+                        this.shell.activateWidget(widget.id);
+                    }
                 }
-            }
-        }));
-        toDispose.push(Disposable.create(async () => {
-            const widget = await this.getPluginViewContainer(id);
-            if (widget) {
-                widget.dispose();
-            }
-        }));
+            }));
+            toDispose.push(Disposable.create(async () => {
+                const widget = await this.getPluginViewContainer(id);
+                if (widget) {
+                    widget.dispose();
+                }
+            }));
+            // Ignore every subsequent activation call
+            activate = () => { };
+        };
+        this.viewContainers.set(id, {
+            id,
+            location,
+            options,
+            onViewAdded: () => activate()
+        });
         return toDispose;
     }
 
@@ -304,6 +380,10 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
     }
 
     registerView(viewContainerId: string, view: View): Disposable {
+        if (!PluginViewRegistry.BUILTIN_VIEW_CONTAINERS.has(viewContainerId)) {
+            // if it's not a built-in view container, it must be a contributed view container, see https://github.com/eclipse-theia/theia/issues/13249
+            viewContainerId = `workbench.view.extension.${viewContainerId}`;
+        }
         if (this.views.has(view.id)) {
             console.warn('view with such id already registered: ', JSON.stringify(view));
             return Disposable.NULL;
@@ -313,6 +393,11 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         view.when = view.when?.trim();
         this.views.set(view.id, [viewContainerId, view]);
         toDispose.push(Disposable.create(() => this.views.delete(view.id)));
+
+        const containerInfo = this.viewContainers.get(viewContainerId);
+        if (containerInfo) {
+            containerInfo.onViewAdded();
+        }
 
         const containerViews = this.getContainerViews(viewContainerId);
         containerViews.push(view.id);
@@ -342,47 +427,54 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         return toDispose;
     }
 
+    async resolveWebviewView(viewId: string, webview: WebviewView, cancellation: CancellationToken): Promise<void> {
+        const resolver = this.webviewViewResolvers.get(viewId);
+        if (resolver) {
+            return resolver.resolve(webview, cancellation);
+        }
+        const pendingRevival = this.webviewViewRevivals.get(viewId);
+        if (pendingRevival) {
+            return pendingRevival.revival.promise;
+        }
+        const pending = new Deferred<void>();
+        this.webviewViewRevivals.set(viewId, { webview, revival: pending });
+        return pending.promise;
+    }
+
     async registerWebviewView(viewId: string, resolver: WebviewViewResolver): Promise<Disposable> {
         if (this.webviewViewResolvers.has(viewId)) {
             throw new Error(`View resolver already registered for ${viewId}`);
         }
         this.webviewViewResolvers.set(viewId, resolver);
+        this.onNewResolverRegisteredEmitter.fire({ viewType: viewId });
 
-        const webviewView = await this.createNewWebviewView();
-        const token = CancellationToken.None;
-        this.getView(viewId).then(async view => {
-            if (view) {
-                if (view.isVisible) {
-                    await this.prepareView(view, webviewView.webview.identifier.id);
-                } else {
-                    const toDisposeOnDidExpandView = new DisposableCollection(this.onDidExpandView(async id => {
-                        if (id === viewId) {
-                            dispose();
-                            await this.prepareView(view, webviewView.webview.identifier.id);
-                        }
-                    }));
-                    const dispose = () => toDisposeOnDidExpandView.dispose();
-                    view.disposed.connect(dispose);
-                    toDisposeOnDidExpandView.push(Disposable.create(() => view.disposed.disconnect(dispose)));
-                }
-            }
-        });
+        const toDispose = new DisposableCollection(Disposable.create(() => this.webviewViewResolvers.delete(viewId)));
+        this.initView(viewId, toDispose);
 
-        resolver.resolve(webviewView, token);
+        const pendingRevival = this.webviewViewRevivals.get(viewId);
+        if (pendingRevival) {
+            resolver.resolve(pendingRevival.webview, CancellationToken.None).then(() => {
+                this.webviewViewRevivals.delete(viewId);
+                pendingRevival.revival.resolve();
+            });
+        }
 
-        return Disposable.create(() => {
-            this.webviewViewResolvers.delete(viewId);
-        });
+        return toDispose;
     }
 
-    async createNewWebviewView(): Promise<WebviewView> {
+    protected async createNewWebviewView(viewId: string): Promise<WebviewView> {
         const webview = await this.widgetManager.getOrCreateWidget<WebviewWidget>(
-            WebviewWidget.FACTORY_ID, <WebviewWidgetIdentifier>{ id: v4() });
+            WebviewWidget.FACTORY_ID, <WebviewWidgetIdentifier>{
+                id: generateUuid(),
+                viewId,
+            });
         webview.setContentOptions({ allowScripts: true });
 
         let _description: string | undefined;
+        let _resolved = false;
+        let _pendingResolution: Promise<void> | undefined;
 
-        return {
+        const webviewView: WebviewView = {
             webview,
 
             get onDidChangeVisibility(): Event<boolean> { return webview.onDidChangeVisibility; },
@@ -394,9 +486,44 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             get description(): string | undefined { return _description; },
             set description(value: string | undefined) { _description = value; },
 
-            dispose: webview.dispose,
+            get badge(): number | undefined { return webview.badge; },
+            set badge(badge: number | undefined) { webview.badge = badge; },
+
+            get badgeTooltip(): string | undefined { return webview.badgeTooltip; },
+            set badgeTooltip(badgeTooltip: string | undefined) { webview.badgeTooltip = badgeTooltip; },
+            onDidChangeBadge: webview.onDidChangeBadge,
+            onDidChangeBadgeTooltip: webview.onDidChangeBadgeTooltip,
+
+            dispose: () => {
+                _resolved = false;
+                webview.dispose();
+                toDispose.dispose();
+            },
+            resolve: async () => {
+                if (_resolved) {
+                    return;
+                }
+                if (_pendingResolution) {
+                    return _pendingResolution;
+                }
+                _pendingResolution = this.resolveWebviewView(viewId, webviewView, CancellationToken.None).then(() => {
+                    _resolved = true;
+                    _pendingResolution = undefined;
+                });
+                return _pendingResolution;
+            },
             show: webview.show
         };
+
+        const toDispose = this.onNewResolverRegistered(resolver => {
+            if (resolver.viewType === viewId) {
+                // Potentially re-activate if we have a new resolver
+                webviewView.resolve();
+            }
+        });
+
+        webviewView.resolve();
+        return webviewView;
     }
 
     registerViewWelcome(viewWelcome: ViewWelcome): Disposable {
@@ -478,7 +605,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         return this.getView(viewId);
     }
 
-    protected async prepareView(widget: PluginViewWidget, webviewId?: string): Promise<void> {
+    protected async prepareView(widget: PluginViewWidget): Promise<void> {
         const data = this.views.get(widget.options.viewId);
         if (!data) {
             return;
@@ -488,6 +615,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             widget.title.label = view.name;
         }
         const currentDataWidget = widget.widgets[0];
+        const webviewId = currentDataWidget instanceof WebviewWidget ? currentDataWidget.identifier?.id : undefined;
         const viewDataWidget = await this.createViewDataWidget(view.id, webviewId);
         if (widget.isDisposed) {
             viewDataWidget?.dispose();
@@ -531,7 +659,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         if (!data) {
             return undefined;
         }
-        const [location] = data;
+        const { location } = data;
         const containerWidget = await this.getOrCreateViewContainerWidget(containerId);
         if (!containerWidget.isAttached) {
             await this.shell.addWidget(containerWidget, {
@@ -545,7 +673,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
     protected async prepareViewContainer(viewContainerId: string, containerWidget: ViewContainerWidget): Promise<void> {
         const data = this.viewContainers.get(viewContainerId);
         if (data) {
-            const [, options] = data;
+            const { options } = data;
             containerWidget.setTitleOptions(options);
         }
         for (const viewId of this.getContainerViews(viewContainerId)) {
@@ -605,6 +733,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             case EXPLORER_VIEW_CONTAINER_ID: return 'explorer';
             case SCM_VIEW_CONTAINER_ID: return 'scm';
             case SEARCH_VIEW_CONTAINER_ID: return 'search';
+            case TEST_VIEW_CONTAINER_ID: return 'test';
             case undefined: return container.parent?.parent instanceof DebugWidget ? 'debug' : container.id;
             case PLUGIN_VIEW_CONTAINER_FACTORY_ID: return this.toViewContainerId(description.options);
             default: return container.id;
@@ -620,6 +749,9 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         }
         if (viewContainerId === 'search') {
             return this.widgetManager.getWidget<ViewContainerWidget>(SEARCH_VIEW_CONTAINER_ID);
+        }
+        if (viewContainerId === 'test') {
+            return this.widgetManager.getWidget<ViewContainerWidget>(TEST_VIEW_CONTAINER_ID);
         }
         if (viewContainerId === 'debug') {
             const debug = await this.widgetManager.getWidget(DebugWidget.ID);
@@ -670,6 +802,12 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             }
         })().catch(console.error));
         promises.push((async () => {
+            const test = await this.widgetManager.getWidget(TEST_VIEW_CONTAINER_ID);
+            if (test instanceof ViewContainerWidget) {
+                await this.prepareViewContainer('test', test);
+            }
+        })().catch(console.error));
+        promises.push((async () => {
             const debug = await this.widgetManager.getWidget(DebugWidget.ID);
             if (debug instanceof DebugWidget) {
                 const viewContainer = debug['sessionWidget']['viewContainer'];
@@ -704,7 +842,7 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         return { id: PLUGIN_VIEW_CONTAINER_FACTORY_ID + ':' + viewContainerId, progressLocationId: viewContainerId };
     }
     protected toViewContainerId(identifier: ViewContainerIdentifier): string {
-        return identifier.id.substr(PLUGIN_VIEW_CONTAINER_FACTORY_ID.length + 1);
+        return identifier.id.substring(PLUGIN_VIEW_CONTAINER_FACTORY_ID.length + 1);
     }
 
     protected toPluginViewWidgetIdentifier(viewId: string): PluginViewWidgetIdentifier {
@@ -745,35 +883,37 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             this.viewDataProviders.delete(viewId);
             this.viewDataState.delete(viewId);
         }));
-        this.getView(viewId).then(async view => {
-            if (toDispose.disposed) {
-                return;
-            }
-            if (view) {
-                if (view.isVisible) {
-                    await this.prepareView(view);
-                } else {
-                    const toDisposeOnDidExpandView = new DisposableCollection(this.onDidExpandView(async id => {
-                        if (id === viewId) {
-                            unsubscribe();
-                            await this.prepareView(view);
-                        }
-                    }));
-                    const unsubscribe = () => toDisposeOnDidExpandView.dispose();
-                    view.disposed.connect(unsubscribe);
-                    toDisposeOnDidExpandView.push(Disposable.create(() => view.disposed.disconnect(unsubscribe)));
-                    toDispose.push(toDisposeOnDidExpandView);
-                }
-            }
-        });
+        this.initView(viewId, toDispose);
         return toDispose;
+    }
+
+    protected async initView(viewId: string, toDispose: DisposableCollection): Promise<void> {
+        const view = await this.getView(viewId);
+        if (toDispose.disposed) {
+            return;
+        }
+        if (view) {
+            if (view.isVisible) {
+                await this.prepareView(view);
+            } else {
+                const toDisposeOnDidExpandView = new DisposableCollection(this.onDidExpandView(async id => {
+                    if (id === viewId) {
+                        unsubscribe();
+                        await this.prepareView(view);
+                    }
+                }));
+                const unsubscribe = () => toDisposeOnDidExpandView.dispose();
+                view.disposed.connect(unsubscribe);
+                toDisposeOnDidExpandView.push(Disposable.create(() => view.disposed.disconnect(unsubscribe)));
+                toDispose.push(toDisposeOnDidExpandView);
+            }
+        }
     }
 
     protected async createViewDataWidget(viewId: string, webviewId?: string): Promise<Widget | undefined> {
         const view = this.views.get(viewId);
         if (view?.[1]?.type === PluginViewType.Webview) {
-            const webviewWidget = this.widgetManager.getWidget(WebviewWidget.FACTORY_ID, <WebviewWidgetIdentifier>{ id: webviewId });
-            return webviewWidget;
+            return this.createWebviewWidget(viewId, webviewId);
         }
         const provider = this.viewDataProviders.get(viewId);
         if (!view || !provider) {
@@ -791,6 +931,15 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         return widget;
     }
 
+    protected async createWebviewWidget(viewId: string, webviewId?: string): Promise<Widget | undefined> {
+        if (!webviewId) {
+            const webviewView = await this.createNewWebviewView(viewId);
+            webviewId = webviewView.webview.identifier.id;
+        }
+        const webviewWidget = this.widgetManager.getWidget(WebviewWidget.FACTORY_ID, <WebviewWidgetIdentifier>{ id: webviewId, viewId });
+        return webviewWidget;
+    }
+
     protected storeViewDataStateOnDispose(viewId: string, widget: Widget & StatefulWidget): void {
         const dispose = widget.dispose.bind(widget);
         widget.dispose = () => {
@@ -802,66 +951,8 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
         };
     }
 
-    protected trackVisibleWidget(factoryId: string, view: PluginViewRegistry.VisibleView): void {
-        this.doTrackVisibleWidget(this.widgetManager.tryGetWidget(factoryId), view);
-        this.widgetManager.onDidCreateWidget(event => {
-            if (factoryId === event.factoryId) {
-                const { widget } = event;
-                this.doTrackVisibleWidget(widget, view);
-            }
-        });
-    }
-
-    protected doTrackVisibleWidget(widget: Widget | undefined, view: PluginViewRegistry.VisibleView): void {
-        if (widget instanceof BaseWidget) {
-            widget.onDidChangeVisibility(() => this.updateVisibleWidget(widget, view));
-            const toDispose = new DisposableCollection(
-                Disposable.create(() => this.updateVisibleWidget(widget, view)),
-                this.shell.onDidChangeActiveWidget(() => {
-                    if (this.shell.activeWidget === widget) {
-                        this.updateVisibleWidget(widget, view);
-                    }
-                })
-            );
-            if (view.sideArea !== undefined) {
-                toDispose.pushAll([
-                    this.shell.onDidAddWidget(w => {
-                        if (w === widget) {
-                            this.updateVisibleWidget(widget, view);
-                        }
-                    })
-                ]);
-            }
-            widget.disposed.connect(() => toDispose.dispose());
-        }
-    }
-
-    protected readonly visiblePanels = new Set<string>();
-    protected readonly visibleViewlets = new Set<string>();
-
-    protected updateVisibleWidget(widget: BaseWidget, view: PluginViewRegistry.VisibleView): void {
-        const visibleViews = 'viewletId' in view ? this.visibleViewlets : this.visiblePanels;
-        const viewId = 'viewletId' in view ? view.viewletId : view.panelId;
-        const visibleView = 'viewletId' in view ? this.viewContextKeys.activeViewlet : this.viewContextKeys.activePanel;
-        visibleViews.delete(viewId);
-        if (this.isVisibleWidget(widget, view)) {
-            visibleView.set(viewId);
-            visibleViews.add(viewId);
-        } else {
-            const lastVisibleView = [...visibleViews.values()][visibleViews.size - 1];
-            visibleView.set(lastVisibleView);
-        }
-    }
-
-    protected isVisibleWidget(widget: BaseWidget, view: PluginViewRegistry.VisibleView): boolean {
-        if (widget.isDisposed || !widget.isVisible) {
-            return false;
-        }
-        if (view.sideArea === undefined) {
-            return true;
-        }
-        const area = this.shell.getAreaFor(widget);
-        return view.sideArea === (area === 'left' || area === 'right');
+    protected isVisibleWidget(widget: Widget): boolean {
+        return !widget.isDisposed && widget.isVisible;
     }
 
     protected updateFocusedView(): void {
@@ -872,11 +963,5 @@ export class PluginViewRegistry implements FrontendApplicationContribution {
             this.viewContextKeys.focusedView.reset();
         }
     }
+}
 
-}
-export namespace PluginViewRegistry {
-    export type VisibleView = ({ viewletId: string } | { panelId: string }) & {
-        /** `undefined` means any area */
-        sideArea?: boolean
-    };
-}

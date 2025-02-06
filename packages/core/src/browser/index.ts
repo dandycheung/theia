@@ -11,13 +11,15 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 export * from './shell';
 export * from './frontend-application';
+export * from './frontend-application-contribution';
 export * from './keyboard';
 export * from './opener-service';
+export * from './open-with-service';
 export * from './browser';
 export * from './context-menu-renderer';
 export * from './widgets';
@@ -44,3 +46,6 @@ export * from './tooltip-service';
 export * from './decoration-style';
 export * from './styling-service';
 export * from './hover-service';
+export * from './saveable-service';
+export * from './undo-redo-handler';
+export * from './widget-status-bar-service';
