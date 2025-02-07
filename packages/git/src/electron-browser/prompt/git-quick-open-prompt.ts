@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, optional } from '@theia/core/shared/inversify';
 import { QuickInputService } from '@theia/core/lib/browser';
-import * as PQueue from 'p-queue';
+import PQueue from 'p-queue';
 import { GitPrompt } from '../../common/git-prompt';
 
 @injectable()
@@ -38,6 +38,11 @@ export class GitQuickOpenPrompt extends GitPrompt {
                 });
                 resolve(GitPrompt.Success.create(result!));
             });
+        }).then((answer: GitPrompt.Answer | void) => {
+            if (!answer) {
+                return { type: GitPrompt.Answer.Type.CANCEL };
+            }
+            return answer;
         });
     }
     override dispose(): void {

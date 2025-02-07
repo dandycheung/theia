@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -565,7 +565,7 @@ export class PreferenceServiceImpl implements PreferenceService {
         for (const scope of PreferenceScope.getScopes()) {
             if (this.schema.isValidInScope(preferenceName, scope)) {
                 const provider = this.getProvider(scope);
-                if (provider) {
+                if (provider?.canHandleScope(scope)) {
                     const { configUri, value } = provider.resolve<T>(preferenceName, resourceUri);
                     if (value !== undefined) {
                         result.configUri = configUri;

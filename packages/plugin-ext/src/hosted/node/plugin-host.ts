@@ -11,14 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
-// eslint-disable-next-line import/no-extraneous-dependencies
-import 'reflect-metadata';
-import { ConnectionClosedError, RPCProtocolImpl } from '../../common/rpc-protocol';
+import '@theia/core/shared/reflect-metadata';
+import { Container } from '@theia/core/shared/inversify';
+import { ConnectionClosedError, RPCProtocol } from '../../common/rpc-protocol';
 import { ProcessTerminatedMessage, ProcessTerminateMessage } from './hosted-plugin-protocol';
 import { PluginHostRPC } from './plugin-host-rpc';
-import { IPCChannel } from '@theia/core/lib/node';
+import pluginHostModule from './plugin-host-module';
 
 console.log('PLUGIN_HOST(' + process.pid + ') starting instance');
 
@@ -75,8 +75,12 @@ process.on('rejectionHandled', (promise: Promise<any>) => {
 });
 
 let terminating = false;
-const channel = new IPCChannel();
-const rpc = new RPCProtocolImpl(channel);
+
+const container = new Container();
+container.load(pluginHostModule);
+
+const rpc: RPCProtocol = container.get(RPCProtocol);
+const pluginHostRPC = container.get(PluginHostRPC);
 
 process.on('message', async (message: string) => {
     if (terminating) {
@@ -104,6 +108,3 @@ process.on('message', async (message: string) => {
         console.error(e);
     }
 });
-
-const pluginHostRPC = new PluginHostRPC(rpc);
-pluginHostRPC.initialize();

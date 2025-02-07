@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from 'inversify';
@@ -23,23 +23,24 @@ import { isOSX } from '../common/os';
 import { nls } from '../common/nls';
 import { DefaultTheme } from '@theia/application-package/lib/application-props';
 
+/* eslint-disable max-len */
 const windowTitleDescription = [
-    'Controls the window title based on the active editor. Variables are substituted based on the context:',
-    '`${activeEditorShort}`: the file name (e.g. myFile.txt).',
-    '`${activeEditorMedium}`: the path of the file relative to the workspace folder (e.g. myFolder/myFileFolder/myFile.txt).',
-    '`${activeEditorLong}`: the full path of the file (e.g. /Users/Development/myFolder/myFileFolder/myFile.txt).',
-    '`${activeFolderShort}`: the name of the folder the file is contained in (e.g. myFileFolder).',
-    '`${activeFolderMedium}`: the path of the folder the file is contained in, relative to the workspace folder (e.g. myFolder/myFileFolder).',
-    '`${activeFolderLong}`: the full path of the folder the file is contained in (e.g. /Users/Development/myFolder/myFileFolder).',
-    '`${folderName}`: name of the workspace folder the file is contained in (e.g. myFolder).',
-    '`${folderPath}`: file path of the workspace folder the file is contained in (e.g. /Users/Development/myFolder).',
-    '`${rootName}`: name of the opened workspace or folder (e.g. myFolder or myWorkspace).',
-    '`${rootPath}`: file path of the opened workspace or folder (e.g. /Users/Development/myWorkspace).',
-    '`${appName}`: e.g. VS Code.',
-    '`${remoteName}`: e.g. SSH',
-    '`${dirty}`: an indicator for when the active editor has unsaved changes.',
-    '`${separator}`: a conditional separator (" - ") that only shows when surrounded by variables with values or static text.'
-].map(e => nls.localizeByDefault(e)).join('\n- ');
+    nls.localizeByDefault('Controls the window title based on the current context such as the opened workspace or active editor. Variables are substituted based on the context:'),
+    nls.localizeByDefault('`${activeEditorShort}`: the file name (e.g. myFile.txt).'),
+    nls.localizeByDefault('`${activeEditorMedium}`: the path of the file relative to the workspace folder (e.g. myFolder/myFileFolder/myFile.txt).'),
+    nls.localizeByDefault('`${activeEditorLong}`: the full path of the file (e.g. /Users/Development/myFolder/myFileFolder/myFile.txt).'),
+    nls.localizeByDefault('`${activeFolderShort}`: the name of the folder the file is contained in (e.g. myFileFolder).'),
+    nls.localizeByDefault('`${activeFolderMedium}`: the path of the folder the file is contained in, relative to the workspace folder (e.g. myFolder/myFileFolder).'),
+    nls.localizeByDefault('`${activeFolderLong}`: the full path of the folder the file is contained in (e.g. /Users/Development/myFolder/myFileFolder).'),
+    nls.localizeByDefault('`${folderName}`: name of the workspace folder the file is contained in (e.g. myFolder).'),
+    nls.localizeByDefault('`${folderPath}`: file path of the workspace folder the file is contained in (e.g. /Users/Development/myFolder).'),
+    nls.localizeByDefault('`${rootName}`: name of the workspace with optional remote name and workspace indicator if applicable (e.g. myFolder, myRemoteFolder [SSH] or myWorkspace (Workspace)).'),
+    nls.localizeByDefault('`${rootPath}`: file path of the opened workspace or folder (e.g. /Users/Development/myWorkspace).'),
+    nls.localizeByDefault('`${appName}`: e.g. VS Code.'),
+    nls.localizeByDefault('`${remoteName}`: e.g. SSH'),
+    nls.localizeByDefault('`${dirty}`: an indicator for when the active editor has unsaved changes.'),
+    nls.localizeByDefault('`${separator}`: a conditional separator (" - ") that only shows when surrounded by variables with values or static text.')
+].join('\n- ');
 
 export const corePreferenceSchema: PreferenceSchema = {
     'type': 'object',
@@ -52,7 +53,6 @@ export const corePreferenceSchema: PreferenceSchema = {
                 'always',
             ],
             default: 'ifRequired',
-            // eslint-disable-next-line max-len
             description: nls.localizeByDefault('Controls whether to show a confirmation dialog before closing the browser tab or window. Note that even if enabled, browsers may still decide to close a tab or window without confirmation and that this setting is only a hint that may not work in all cases.'),
         },
         'breadcrumbs.enabled': {
@@ -80,6 +80,17 @@ export const corePreferenceSchema: PreferenceSchema = {
             default: 'code',
             markdownDescription: nls.localizeByDefault('Controls the dispatching logic for key presses to use either `code` (recommended) or `keyCode`.')
         },
+        'window.tabbar.enhancedPreview': {
+            type: 'string',
+            enum: ['classic', 'enhanced', 'visual'],
+            markdownEnumDescriptions: [
+                nls.localize('theia/core/enhancedPreview/classic', 'Display a simple preview of the tab with basic information.'),
+                nls.localize('theia/core/enhancedPreview/enhanced', 'Display an enhanced preview of the tab with additional information.'),
+                nls.localize('theia/core/enhancedPreview/visual', 'Display a visual preview of the tab.'),
+            ],
+            default: 'classic',
+            description: nls.localize('theia/core/enhancedPreview', 'Controls what information about the tab should be displayed in horizontal tab bars, when hovering.')
+        },
         'window.menuBarVisibility': {
             type: 'string',
             enum: ['classic', 'visible', 'hidden', 'compact'],
@@ -87,12 +98,13 @@ export const corePreferenceSchema: PreferenceSchema = {
                 nls.localizeByDefault('Menu is displayed at the top of the window and only hidden in full screen mode.'),
                 nls.localizeByDefault('Menu is always visible at the top of the window even in full screen mode.'),
                 nls.localizeByDefault('Menu is always hidden.'),
-                nls.localizeByDefault('Menu is displayed as a compact button in the sidebar. This value is ignored when `#window.titleBarStyle#` is `native`.')
+                environment.electron.is()
+                    ? nls.localizeByDefault('Menu is displayed as a compact button in the side bar. This value is ignored when {0} is {1}.', '`#window.titleBarStyle#`', '`native`')
+                    : nls.localizeByDefault('Menu is displayed as a compact button in the side bar.')
             ],
             default: 'classic',
             scope: 'application',
-            // eslint-disable-next-line max-len
-            markdownDescription: nls.localizeByDefault('Control the visibility of the menu bar. A setting of \'toggle\' means that the menu bar is hidden and a single press of the Alt key will show it. A setting of \'compact\' will move the menu into the sidebar.'),
+            markdownDescription: nls.localizeByDefault("Control the visibility of the menu bar. A setting of 'toggle' means that the menu bar is hidden and a single press of the Alt key will show it. A setting of 'compact' will move the menu into the side bar."),
             included: !(isOSX && environment.electron.is())
         },
         'window.title': {
@@ -107,12 +119,27 @@ export const corePreferenceSchema: PreferenceSchema = {
             type: 'string',
             default: ' - ',
             scope: 'application',
-            markdownDescription: nls.localizeByDefault('Separator used by `window.title`.')
+            markdownDescription: nls.localizeByDefault('Separator used by {0}.', '`#window.title#`')
+        },
+        'window.secondaryWindowPlacement': {
+            type: 'string',
+            enum: ['originalSize', 'halfWidth', 'fullSize'],
+            enumDescriptions: [
+                nls.localize('theia/core/secondaryWindow/originalSize', 'The position and size of the extracted widget will be the same as the original widget.'),
+                nls.localize('theia/core/secondaryWindow/halfWidth', 'The position and size of the extracted widget will be half the width of the running Theia application.'),
+                nls.localize('theia/core/secondaryWindow/fullSize', 'The position and size of the extracted widget will be the same as the running Theia application.'),
+            ],
+            default: 'originalSize',
+            description: nls.localize('theia/core/secondaryWindow/description', 'Sets the initial position and size of the extracted secondary window.'),
+        },
+        'window.secondaryWindowAlwaysOnTop': {
+            type: 'boolean',
+            default: false,
+            description: nls.localize('theia/core/secondaryWindow/alwaysOnTop', 'When enabled, the secondary window stays above all other windows, including those of different applications.'),
         },
         'http.proxy': {
             type: 'string',
             pattern: '^https?://([^:]*(:[^@]*)?@)?([^:]+|\\[[:0-9a-fA-F]+\\])(:\\d+)?/?$|^$',
-            // eslint-disable-next-line max-len
             markdownDescription: nls.localizeByDefault('The proxy setting to use. If not set, will be inherited from the `http_proxy` and `https_proxy` environment variables.'),
             scope: 'application'
         },
@@ -133,7 +160,7 @@ export const corePreferenceSchema: PreferenceSchema = {
             enumDescriptions: [
                 nls.localizeByDefault('Disable proxy support for extensions.'),
                 nls.localizeByDefault('Enable proxy support for extensions.'),
-                nls.localize('theia/core/proxySupportFallback', 'Enable proxy support for extensions, fall back to request options, when no proxy found.'),
+                nls.localizeByDefault('Enable proxy support for extensions, fall back to request options, when no proxy found.'),
                 nls.localizeByDefault('Enable proxy support for extensions, override request options.'),
             ],
             default: 'override',
@@ -143,7 +170,6 @@ export const corePreferenceSchema: PreferenceSchema = {
         'http.systemCertificates': {
             type: 'boolean',
             default: true,
-            // eslint-disable-next-line max-len
             description: nls.localizeByDefault('Controls whether CA certificates should be loaded from the OS. (On Windows and macOS, a reload of the window is required after turning this off.)'),
             scope: 'application'
         },
@@ -154,32 +180,37 @@ export const corePreferenceSchema: PreferenceSchema = {
                 'doubleClick'
             ],
             default: 'singleClick',
-            // eslint-disable-next-line max-len
             description: nls.localizeByDefault('Controls how to open items in trees and lists using the mouse (if supported). Note that some trees and lists might choose to ignore this setting if it is not applicable.')
         },
         'workbench.editor.highlightModifiedTabs': {
             'type': 'boolean',
-            // eslint-disable-next-line max-len
             'markdownDescription': nls.localize('theia/core/highlightModifiedTabs', 'Controls whether a top border is drawn on modified (dirty) editor tabs or not.'),
             'default': false
         },
         'workbench.editor.closeOnFileDelete': {
             'type': 'boolean',
-            // eslint-disable-next-line max-len
-            'description': nls.localizeByDefault('Controls whether editors showing a file that was opened during the session should close automatically when getting deleted or renamed by some other process. Disabling this will keep the editor open  on such an event. Note that deleting from within the application will always close the editor and that dirty files will never close to preserve your data.'),
+            'description': nls.localizeByDefault('Controls whether editors showing a file that was opened during the session should close automatically when getting deleted or renamed by some other process. Disabling this will keep the editor open  on such an event. Note that deleting from within the application will always close the editor and that editors with unsaved changes will never close to preserve your data.'),
             'default': false
         },
         'workbench.editor.mouseBackForwardToNavigate': {
             'type': 'boolean',
-            // nls-todo: Will be available with newer VSCode API
-            'description': nls.localize('theia/core/mouseBackForwardToNavigate', "Enables the use of mouse buttons four and five for commands 'Go Back' and 'Go Forward'."),
+            'description': nls.localizeByDefault("Enables the use of mouse buttons four and five for commands 'Go Back' and 'Go Forward'."),
+            'default': true
+        },
+        'workbench.editor.revealIfOpen': {
+            'type': 'boolean',
+            'description': nls.localizeByDefault('Controls whether an editor is revealed in any of the visible groups if opened. If disabled, an editor will prefer to open in the currently active editor group. If enabled, an already opened editor will be revealed instead of opened again in the currently active editor group. Note that there are some cases where this setting is ignored, such as when forcing an editor to open in a specific group or to the side of the currently active group.'),
+            'default': false
+        },
+        'workbench.editor.decorations.badges': {
+            'type': 'boolean',
+            'description': nls.localizeByDefault('Controls whether editor file decorations should use badges.'),
             'default': true
         },
         'workbench.commandPalette.history': {
             type: 'number',
             default: 50,
             minimum: 0,
-            // eslint-disable-next-line max-len
             description: nls.localizeByDefault('Controls the number of recently used commands to keep in history for the command palette. Set to 0 to disable command history.')
         },
         'workbench.colorTheme': {
@@ -187,7 +218,7 @@ export const corePreferenceSchema: PreferenceSchema = {
             enum: ['dark', 'light', 'hc-theia'],
             enumItemLabels: ['Dark (Theia)', 'Light (Theia)', 'High Contrast (Theia)'],
             default: DefaultTheme.defaultForOSTheme(FrontendApplicationConfigProvider.get().defaultTheme),
-            description: nls.localizeByDefault('Specifies the color theme used in the workbench.')
+            description: nls.localizeByDefault('Specifies the color theme used in the workbench when {0} is not enabled.', '`#window.autoDetectColorScheme#`')
         },
         'workbench.iconTheme': {
             type: ['string'],
@@ -229,13 +260,38 @@ export const corePreferenceSchema: PreferenceSchema = {
             default: 4,
             minimum: 1,
             maximum: 20,
-            // eslint-disable-next-line max-len
             description: nls.localizeByDefault('Controls the feedback area size in pixels of the dragging area in between views/editors. Set it to a larger value if you feel it\'s hard to resize views using the mouse.')
         },
         'workbench.tab.maximize': {
             type: 'boolean',
             default: false,
             description: nls.localize('theia/core/tabMaximize', 'Controls whether to maximize tabs on double click.')
+        },
+        'workbench.tab.shrinkToFit.enabled': {
+            type: 'boolean',
+            default: false,
+            description: nls.localize('theia/core/tabShrinkToFit', 'Shrink tabs to fit available space.')
+        },
+        'workbench.tab.shrinkToFit.minimumSize': {
+            type: 'number',
+            default: 50,
+            minimum: 10,
+            description: nls.localize('theia/core/tabMinimumSize', 'Specifies the minimum size for tabs.')
+        },
+        'workbench.tab.shrinkToFit.defaultSize': {
+            type: 'number',
+            default: 200,
+            minimum: 10,
+            description: nls.localize('theia/core/tabDefaultSize', 'Specifies the default size for tabs.')
+        },
+        'workbench.editorAssociations': {
+            type: 'object',
+            markdownDescription: nls.localizeByDefault('Configure [glob patterns](https://aka.ms/vscode-glob-patterns) to editors (for example `"*.hex": "hexEditor.hexedit"`). These have precedence over the default behavior.'),
+            patternProperties: {
+                '.*': {
+                    type: 'string'
+                }
+            }
         }
     }
 };
@@ -245,6 +301,7 @@ export interface CoreConfiguration {
     'breadcrumbs.enabled': boolean;
     'files.encoding': string;
     'keyboard.dispatch': 'code' | 'keyCode';
+    'window.tabbar.enhancedPreview': 'classic' | 'enhanced' | 'visual';
     'window.menuBarVisibility': 'classic' | 'visible' | 'hidden' | 'compact';
     'window.title': string;
     'window.titleSeparator': string;
@@ -253,6 +310,8 @@ export interface CoreConfiguration {
     'workbench.editor.highlightModifiedTabs': boolean;
     'workbench.editor.mouseBackForwardToNavigate': boolean;
     'workbench.editor.closeOnFileDelete': boolean;
+    'workbench.editor.revealIfOpen': boolean;
+    'workbench.editor.decorations.badges': boolean;
     'workbench.colorTheme': string;
     'workbench.iconTheme': string;
     'workbench.silentNotifications': boolean;
@@ -262,6 +321,9 @@ export interface CoreConfiguration {
     'workbench.sash.hoverDelay': number;
     'workbench.sash.size': number;
     'workbench.tab.maximize': boolean;
+    'workbench.tab.shrinkToFit.enabled': boolean;
+    'workbench.tab.shrinkToFit.minimumSize': number;
+    'workbench.tab.shrinkToFit.defaultSize': number;
 }
 
 export const CorePreferenceContribution = Symbol('CorePreferenceContribution');

@@ -11,38 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { interfaces } from '@theia/core/shared/inversify';
-import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
-import { RPCProtocol } from '../../common/rpc-protocol';
-import { EnvMain } from '../../common/plugin-api-rpc';
 import { QueryParameters } from '../../common/env';
-import { isWindows, isOSX } from '@theia/core';
-import { OperatingSystem } from '../../plugin/types-impl';
-
-export class EnvMainImpl implements EnvMain {
-    private envVariableServer: EnvVariablesServer;
-
-    constructor(rpc: RPCProtocol, container: interfaces.Container) {
-        this.envVariableServer = container.get(EnvVariablesServer);
-    }
-
-    $getEnvVariable(envVarName: string): Promise<string | undefined> {
-        return this.envVariableServer.getValue(envVarName).then(result => result ? result.value : undefined);
-    }
-
-    async $getClientOperatingSystem(): Promise<OperatingSystem> {
-        if (isWindows) {
-            return OperatingSystem.Windows;
-        }
-        if (isOSX) {
-            return OperatingSystem.OSX;
-        }
-        return OperatingSystem.Linux;
-    }
-}
+export { EnvMainImpl } from '../common/env-main';
 
 /**
  * Returns query parameters from current page.
@@ -50,7 +23,7 @@ export class EnvMainImpl implements EnvMain {
 export function getQueryParameters(): QueryParameters {
     const queryParameters: QueryParameters = {};
     if (window.location.search !== '') {
-        const queryParametersString = window.location.search.substr(1); // remove question mark
+        const queryParametersString = window.location.search.substring(1); // remove question mark
         const params = queryParametersString.split('&');
         for (const pair of params) {
             if (pair === '') {

@@ -11,12 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import URI from '@theia/core/lib/common/uri';
-import { Path } from '@theia/core';
-import { nls } from '@theia/core/lib/common/nls';
+import { Path, nls, isObject } from '@theia/core';
 
 export interface WorkingDirectoryStatus {
 
@@ -110,6 +109,7 @@ export namespace GitFileStatus {
             case GitFileStatus.Copied: return nls.localize('theia/git/copied', 'Copied');
             // eslint-disable-next-line @theia/localization-check
             case GitFileStatus.Modified: return nls.localize('vscode.git/repository/modified', 'Modified');
+            // eslint-disable-next-line @theia/localization-check
             case GitFileStatus.Deleted: return nls.localize('vscode.git/repository/deleted', 'Deleted');
             case GitFileStatus.Conflicted: return nls.localize('theia/git/conflicted', 'Conflicted');
             default: throw new Error(`Unexpected Git file stats: ${status}.`);
@@ -148,6 +148,10 @@ export namespace GitFileStatus {
             case GitFileStatus.Deleted: return 'var(--theia-gitDecoration-deletedResourceForeground)';
             case GitFileStatus.Conflicted: return 'var(--theia-gitDecoration-conflictingResourceForeground)';
         }
+    }
+
+    export function toStrikethrough(status: GitFileStatus): boolean {
+        return status === GitFileStatus.Deleted;
     }
 
 }
@@ -213,7 +217,7 @@ export namespace Repository {
         return repository === repository2;
     }
     export function is(repository: unknown): repository is Repository {
-        return !!repository && typeof repository === 'object' && 'localUri' in repository;
+        return isObject(repository) && 'localUri' in repository;
     }
     export function relativePath(repository: Repository | URI, uri: URI | string): Path | undefined {
         const repositoryUri = new URI(Repository.is(repository) ? repository.localUri : String(repository));

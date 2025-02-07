@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
@@ -39,7 +39,15 @@ export class EditorVariableContribution implements VariableContribution {
             description: 'The current selected text in the active file',
             resolve: () => {
                 const editor = this.getCurrentEditor();
-                return editor ? editor.document.getText(editor.selection) : undefined;
+                return editor?.document.getText(editor.selection);
+            }
+        });
+        variables.registerVariable({
+            name: 'currentText',
+            description: 'The current text in the active file',
+            resolve: () => {
+                const editor = this.getCurrentEditor();
+                return editor?.document.getText();
             }
         });
     }

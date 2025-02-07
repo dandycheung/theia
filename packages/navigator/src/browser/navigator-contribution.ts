@@ -11,10 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
+import { inject, injectable, optional, postConstruct } from '@theia/core/shared/inversify';
 import { AbstractViewContribution } from '@theia/core/lib/browser/shell/view-contribution';
 import {
     CommonCommands,
@@ -31,7 +31,8 @@ import {
     ApplicationShell,
     TabBar,
     Title,
-    SHELL_TABBAR_CONTEXT_MENU
+    SHELL_TABBAR_CONTEXT_MENU,
+    OpenWithService
 } from '@theia/core/lib/browser';
 import { FileDownloadCommands } from '@theia/filesystem/lib/browser/download/file-download-command-contribution';
 import {
@@ -40,6 +41,7 @@ import {
     MenuModelRegistry,
     MenuPath,
     Mutable,
+    QuickInputService,
 } from '@theia/core/lib/common';
 import {
     DidCreateNewResourceEvent,
@@ -51,13 +53,12 @@ import {
 import { EXPLORER_VIEW_CONTAINER_ID, EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS } from './navigator-widget-factory';
 import { FILE_NAVIGATOR_ID, FileNavigatorWidget } from './navigator-widget';
 import { FileNavigatorPreferences } from './navigator-preferences';
-import { NavigatorKeybindingContexts } from './navigator-keybinding-context';
 import { FileNavigatorFilter } from './navigator-filter';
 import { WorkspaceNode } from './navigator-tree';
 import { NavigatorContextKeyService } from './navigator-context-key-service';
 import {
+    RenderedToolbarItem,
     TabBarToolbarContribution,
-    TabBarToolbarItem,
     TabBarToolbarRegistry
 } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { FileSystemCommands } from '@theia/filesystem/lib/browser/filesystem-frontend-contribution';
@@ -114,6 +115,7 @@ export namespace NavigatorContextMenu {
     /** @deprecated use MODIFICATION */
     export const ACTIONS = MODIFICATION;
 
+    /** @deprecated use the `FileNavigatorCommands.OPEN_WITH` command */
     export const OPEN_WITH = [...NAVIGATION, 'open_with'];
 }
 
@@ -149,6 +151,12 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
     @inject(WorkspaceCommandContribution)
     protected readonly workspaceCommandContribution: WorkspaceCommandContribution;
 
+    @inject(OpenWithService)
+    protected readonly openWithService: OpenWithService;
+
+    @inject(QuickInputService) @optional()
+    protected readonly quickInputService: QuickInputService;
+
     constructor(
         @inject(FileNavigatorPreferences) protected readonly fileNavigatorPreferences: FileNavigatorPreferences,
         @inject(OpenerService) protected readonly openerService: OpenerService,
@@ -170,7 +178,11 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
     }
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         await this.fileNavigatorPreferences.ready;
         this.shell.onDidChangeCurrentWidget(() => this.onCurrentWidgetChangedHandler());
 
@@ -290,6 +302,11 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
                 });
             }
         });
+        registry.registerCommand(FileNavigatorCommands.OPEN_WITH, UriAwareCommandHandler.MonoSelect(this.selectionService, {
+            isEnabled: uri => this.openWithService.getHandlers(uri).length > 0,
+            isVisible: uri => this.openWithService.getHandlers(uri).length > 0,
+            execute: uri => this.openWithService.openWith(uri)
+        }));
         registry.registerCommand(OpenEditorsCommands.CLOSE_ALL_TABS_FROM_TOOLBAR, {
             execute: widget => this.withOpenEditorsWidget(widget, () => this.shell.closeMany(this.editorWidgets)),
             isEnabled: widget => this.withOpenEditorsWidget(widget, () => true),
@@ -363,18 +380,12 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
 
         registry.registerMenuAction(NavigatorContextMenu.NAVIGATION, {
             commandId: FileNavigatorCommands.OPEN.id,
-            label: FileNavigatorCommands.OPEN.label
+            label: nls.localizeByDefault('Open')
         });
-        registry.registerSubmenu(NavigatorContextMenu.OPEN_WITH, nls.localizeByDefault('Open With...'));
-        this.openerService.getOpeners().then(openers => {
-            for (const opener of openers) {
-                const openWithCommand = WorkspaceCommands.FILE_OPEN_WITH(opener);
-                registry.registerMenuAction(NavigatorContextMenu.OPEN_WITH, {
-                    commandId: openWithCommand.id,
-                    label: opener.label,
-                    icon: opener.iconClass
-                });
-            }
+        registry.registerMenuAction(NavigatorContextMenu.NAVIGATION, {
+            commandId: FileNavigatorCommands.OPEN_WITH.id,
+            when: '!explorerResourceIsFolder',
+            label: nls.localizeByDefault('Open With...')
         });
 
         registry.registerMenuAction(NavigatorContextMenu.CLIPBOARD, {
@@ -503,19 +514,19 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
         registry.registerKeybinding({
             command: WorkspaceCommands.FILE_DELETE.id,
             keybinding: isOSX ? 'cmd+backspace' : 'del',
-            context: NavigatorKeybindingContexts.navigatorActive
+            when: 'filesExplorerFocus'
         });
 
         registry.registerKeybinding({
             command: WorkspaceCommands.FILE_RENAME.id,
             keybinding: 'f2',
-            context: NavigatorKeybindingContexts.navigatorActive
+            when: 'filesExplorerFocus'
         });
 
         registry.registerKeybinding({
             command: FileNavigatorCommands.TOGGLE_HIDDEN_FILES.id,
             keybinding: 'ctrlcmd+i',
-            context: NavigatorKeybindingContexts.navigatorActive
+            when: 'filesExplorerFocus'
         });
     }
 
@@ -523,13 +534,13 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
         toolbarRegistry.registerItem({
             id: FileNavigatorCommands.NEW_FILE_TOOLBAR.id,
             command: FileNavigatorCommands.NEW_FILE_TOOLBAR.id,
-            tooltip: nls.localizeByDefault('New File'),
+            tooltip: nls.localizeByDefault('New File...'),
             priority: 0,
         });
         toolbarRegistry.registerItem({
             id: FileNavigatorCommands.NEW_FOLDER_TOOLBAR.id,
             command: FileNavigatorCommands.NEW_FOLDER_TOOLBAR.id,
-            tooltip: nls.localizeByDefault('New Folder'),
+            tooltip: nls.localizeByDefault('New Folder...'),
             priority: 1,
         });
         toolbarRegistry.registerItem({
@@ -577,7 +588,7 @@ export class FileNavigatorContribution extends AbstractViewContribution<FileNavi
     /**
      * Register commands to the `More Actions...` navigator toolbar item.
      */
-    public registerMoreToolbarItem = (item: Mutable<TabBarToolbarItem>) => {
+    public registerMoreToolbarItem = (item: Mutable<RenderedToolbarItem> & { command: string }) => {
         const commandId = item.command;
         const id = 'navigator.tabbar.toolbar.' + commandId;
         const command = this.commandRegistry.getCommand(commandId);

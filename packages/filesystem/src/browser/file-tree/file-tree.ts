@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
+import { isObject, Mutable } from '@theia/core/lib/common';
 import { TreeNode, CompositeTreeNode, SelectableTreeNode, ExpandableTreeNode, TreeImpl } from '@theia/core/lib/browser';
-import { Mutable } from '@theia/core/lib/common/types';
 import { FileStat, Stat, FileType, FileOperationError, FileOperationResult } from '../../common/files';
 import { UriSelection } from '@theia/core/lib/common/selection';
 import { MessageService } from '@theia/core/lib/common/message-service';
@@ -102,7 +102,7 @@ export interface FileStatNode extends SelectableTreeNode, Mutable<UriSelection>,
 }
 export namespace FileStatNode {
     export function is(node: unknown): node is FileStatNode {
-        return !!node && typeof node === 'object' && 'fileStat' in node;
+        return isObject(node) && 'fileStat' in node;
     }
 
     export function getUri(node: TreeNode | undefined): string | undefined {
@@ -120,7 +120,7 @@ export type FileStatNodeData = Omit<FileStatNode, 'uri' | 'fileStat'> & {
 };
 export namespace FileStatNodeData {
     export function is(node: unknown): node is FileStatNodeData {
-        return !!node && typeof node === 'object' && 'uri' in node && ('fileStat' in node || 'stat' in node);
+        return isObject(node) && 'uri' in node && ('fileStat' in node || 'stat' in node);
     }
 }
 

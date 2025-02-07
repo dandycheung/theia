@@ -11,9 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
+import * as deepEqual from 'fast-deep-equal';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { Emitter } from '@theia/core/lib/common';
 import { StorageService } from '@theia/core/lib/browser';
@@ -60,18 +61,24 @@ export class BreakpointManager extends MarkerManager<SourceBreakpoint> {
     readonly onDidChangeInstructionBreakpoints = this.onDidChangeInstructionBreakpointsEmitter.event;
 
     override setMarkers(uri: URI, owner: string, newMarkers: SourceBreakpoint[]): Marker<SourceBreakpoint>[] {
-        const result = super.setMarkers(uri, owner, newMarkers);
+        const result = this.findMarkers({ uri, owner });
         const added: SourceBreakpoint[] = [];
         const removed: SourceBreakpoint[] = [];
         const changed: SourceBreakpoint[] = [];
-        const oldMarkers = new Map(result.map(({ data }) => [data.id, data] as [string, SourceBreakpoint]));
+        const oldMarkers = new Map(result.map(({ data }) => [data.id, data]));
         const ids = new Set<string>();
+        let didChangeMarkers = false;
         for (const newMarker of newMarkers) {
             ids.add(newMarker.id);
-            if (oldMarkers.has(newMarker.id)) {
-                changed.push(newMarker);
-            } else {
+            const oldMarker = oldMarkers.get(newMarker.id);
+            if (!oldMarker) {
                 added.push(newMarker);
+            } else {
+                // We emit all existing markers as 'changed', but we only fire an event if something really did change.
+                // We also fire an event if oldMarker === newMarker, as we cannot actually detect a change in this case
+                // (https://github.com/eclipse-theia/theia/issues/12546).
+                didChangeMarkers ||= !!added.length || oldMarker === newMarker || !deepEqual(oldMarker, newMarker);
+                changed.push(newMarker);
             }
         }
         for (const [id, data] of oldMarkers.entries()) {
@@ -79,7 +86,10 @@ export class BreakpointManager extends MarkerManager<SourceBreakpoint> {
                 removed.push(data);
             }
         }
-        this.onDidChangeBreakpointsEmitter.fire({ uri, added, removed, changed });
+        if (added.length || removed.length || didChangeMarkers) {
+            super.setMarkers(uri, owner, newMarkers);
+            this.onDidChangeBreakpointsEmitter.fire({ uri, added, removed, changed });
+        }
         return result;
     }
 
@@ -189,6 +199,14 @@ export class BreakpointManager extends MarkerManager<SourceBreakpoint> {
         const breakpoint = this.getExceptionBreakpoint(filter);
         if (breakpoint) {
             breakpoint.enabled = !breakpoint.enabled;
+            this.fireOnDidChangeMarkers(BreakpointManager.EXCEPTION_URI);
+        }
+    }
+
+    updateExceptionBreakpoint(filter: string, options: Partial<Pick<ExceptionBreakpoint, 'condition' | 'enabled'>>): void {
+        const breakpoint = this.getExceptionBreakpoint(filter);
+        if (breakpoint) {
+            Object.assign(breakpoint, options);
             this.fireOnDidChangeMarkers(BreakpointManager.EXCEPTION_URI);
         }
     }

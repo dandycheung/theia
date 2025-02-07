@@ -11,9 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
+import { isObject } from './types';
 import URI from './uri';
 
 export interface UriSelection {
@@ -23,7 +24,7 @@ export interface UriSelection {
 export namespace UriSelection {
 
     export function is(arg: unknown): arg is UriSelection {
-        return !!arg && typeof arg === 'object' && ('uri' in arg) && (arg as UriSelection).uri instanceof URI;
+        return isObject<UriSelection>(arg) && arg.uri instanceof URI;
     }
 
     export function getUri(selection: unknown): URI | undefined {

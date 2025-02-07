@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 // @ts-check
 const { execSync, exec } = require('child_process');
@@ -128,7 +128,7 @@ async function exitHandler() {
     preparePackageTemplate();
     prepareWorkspace();
     if (yarn) {
-        execSync('yarn build', { cwd: '../../', stdio: 'pipe' });
+        execSync('npm run build', { cwd: '../../', stdio: 'pipe' });
     }
     await extensionImpact(extensions);
 })();
@@ -212,10 +212,10 @@ async function calculateExtension(extensionQualifier) {
     logToConsole(`Building the ${hostApp} example with ${extensionQualifier}.`);
     writeFileSync(`../../examples/${hostApp}/package.json`, JSON.stringify(basePackageCopy, null, 2));
     try {
-        execSync(`yarn ${hostApp} build`, { cwd: '../../', stdio: 'pipe' });
+        execSync(`npm run build:${hostApp}`, { cwd: '../../', stdio: 'pipe' });
 
         // Rebuild native modules if necessary
-        execSync(`yarn ${hostApp} rebuild`, { cwd: '../../', stdio: 'pipe' });
+        execSync(`npm run rebuild:${hostApp}`, { cwd: '../../', stdio: 'pipe' });
     } catch (error) {
         log(`${extensionQualifier}, Error while building the package.json, -, -, -`);
         return;
@@ -228,7 +228,7 @@ async function calculateExtension(extensionQualifier) {
         switch (app) {
             case 'browser':
                 command = `concurrently --success first -k -r "cd scripts/performance && node browser-performance.js --name Browser --folder browser --runs ${runs}${url ? ' --url ' + url : ''}" `
-                    + `"yarn --cwd examples/browser start | grep -v '.*'"`
+                    + `"npm run start:browser | grep -v '.*'"`
                 cwd = path.resolve(__dirname, '../../');
                 break;
             case 'electron':

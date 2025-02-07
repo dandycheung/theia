@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 // @ts-check
@@ -73,7 +73,7 @@ describe('Keybindings', function () {
             when: 'false'
         }));
 
-        const editor = await editorManager.open(workspaceService.tryGetRoots()[0].resource.resolve('package.json'), {
+        const editor = await editorManager.open(workspaceService.tryGetRoots()[0].resource.resolve('webpack.config.js'), {
             mode: 'activate',
             selection: {
                 start: {
@@ -83,7 +83,6 @@ describe('Keybindings', function () {
             }
         });
         toTearDown.push(editor);
-
         const waitForCommand = new Deferred();
         toTearDown.push(commands.onWillExecuteCommand(e => waitForCommand.resolve(e.commandId)));
         keybindings.dispatchKeyDown({

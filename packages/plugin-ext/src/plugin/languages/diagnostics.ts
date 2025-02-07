@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as theia from '@theia/plugin';
@@ -22,7 +22,7 @@ import { MarkerData } from '../../common/plugin-api-rpc-model';
 import { RPCProtocol } from '../../common/rpc-protocol';
 import { PLUGIN_RPC_CONTEXT, LanguagesMain } from '../../common/plugin-api-rpc';
 import { URI } from '@theia/core/shared/vscode-uri';
-import { v4 } from 'uuid';
+import { generateUuid } from '@theia/core/lib/common/uuid';
 
 export class DiagnosticCollection implements theia.DiagnosticCollection {
     private static DIAGNOSTICS_PRIORITY = [
@@ -288,7 +288,7 @@ export class Diagnostics {
     }
 
     private getNextId(): string {
-        return v4();
+        return generateUuid();
     }
 
     private getAllDiagnosticsForResource(uri: URI): theia.Diagnostic[] {

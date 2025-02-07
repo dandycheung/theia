@@ -11,17 +11,18 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, named } from 'inversify';
 import { ColorRegistry } from './color-registry';
 import { Emitter } from '../common/event';
 import { ThemeService } from './theming';
-import { FrontendApplicationContribution } from './frontend-application';
+import { FrontendApplicationContribution } from './frontend-application-contribution';
 import { ContributionProvider } from '../common/contribution-provider';
 import { Disposable, DisposableCollection } from '../common/disposable';
 import { DEFAULT_BACKGROUND_COLOR_STORAGE_KEY } from './frontend-application-config-provider';
+import { SecondaryWindowHandler } from './secondary-window-handler';
 
 export const ColorContribution = Symbol('ColorContribution');
 export interface ColorContribution {
@@ -43,6 +44,9 @@ export class ColorApplicationContribution implements FrontendApplicationContribu
 
     @inject(ThemeService) protected readonly themeService: ThemeService;
 
+    @inject(SecondaryWindowHandler)
+    protected readonly secondaryWindowHandler: SecondaryWindowHandler;
+
     onStart(): void {
         for (const contribution of this.colorContributions.getContributions()) {
             contribution.registerColors(this.colors);
@@ -55,13 +59,18 @@ export class ColorApplicationContribution implements FrontendApplicationContribu
         this.colors.onDidChange(() => this.update());
 
         this.registerWindow(window);
+        this.secondaryWindowHandler.onWillAddWidget(([widget, window]) => {
+            this.registerWindow(window);
+        });
+        this.secondaryWindowHandler.onWillRemoveWidget(([widget, window]) => {
+            this.windows.delete(window);
+        });
     }
 
-    registerWindow(win: Window): Disposable {
+    registerWindow(win: Window): void {
         this.windows.add(win);
         this.updateWindow(win);
         this.onDidChangeEmitter.fire();
-        return Disposable.create(() => this.windows.delete(win));
     }
 
     protected readonly toUpdate = new DisposableCollection();

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from '@theia/core/shared/inversify';
@@ -22,6 +22,10 @@ import { CommandRegistryMain, CommandRegistryExt, MAIN_RPC_CONTEXT } from '../..
 import { RPCProtocol } from '../../common/rpc-protocol';
 import { KeybindingRegistry } from '@theia/core/lib/browser';
 import { PluginContributionHandler } from './plugin-contribution-handler';
+import { ArgumentProcessor } from '../../common/commands';
+import { ContributionProvider } from '@theia/core';
+
+export const ArgumentProcessorContribution = Symbol('ArgumentProcessorContribution');
 
 export class CommandRegistryMainImpl implements CommandRegistryMain, Disposable {
     private readonly proxy: CommandRegistryExt;
@@ -31,6 +35,8 @@ export class CommandRegistryMainImpl implements CommandRegistryMain, Disposable 
     private readonly keyBinding: KeybindingRegistry;
     private readonly contributions: PluginContributionHandler;
 
+    private readonly argumentProcessors: ArgumentProcessor[] = [];
+
     protected readonly toDispose = new DisposableCollection();
 
     constructor(rpc: RPCProtocol, container: interfaces.Container) {
@@ -38,10 +44,24 @@ export class CommandRegistryMainImpl implements CommandRegistryMain, Disposable 
         this.delegate = container.get(CommandRegistry);
         this.keyBinding = container.get(KeybindingRegistry);
         this.contributions = container.get(PluginContributionHandler);
+
+        container.getNamed<ContributionProvider<ArgumentProcessor>>(ContributionProvider, ArgumentProcessorContribution).getContributions().forEach(processor => {
+            this.registerArgumentProcessor(processor);
+        });
     }
 
     dispose(): void {
         this.toDispose.dispose();
+    }
+
+    registerArgumentProcessor(processor: ArgumentProcessor): Disposable {
+        this.argumentProcessors.push(processor);
+        return Disposable.create(() => {
+            const index = this.argumentProcessors.lastIndexOf(processor);
+            if (index >= 0) {
+                this.argumentProcessors.splice(index, 1);
+            }
+        });
     }
 
     $registerCommand(command: theia.CommandDescription): void {
@@ -59,7 +79,7 @@ export class CommandRegistryMainImpl implements CommandRegistryMain, Disposable 
 
     $registerHandler(id: string): void {
         this.handlers.set(id, this.contributions.registerCommandHandler(id, (...args) =>
-            this.proxy.$executeCommand(id, ...args)
+            this.proxy.$executeCommand(id, ...args.map(arg => this.argumentProcessors.reduce((currentValue, processor) => processor.processArgument(currentValue), arg)))
         ));
         this.toDispose.push(Disposable.create(() => this.$unregisterHandler(id)));
     }

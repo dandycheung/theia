@@ -25,6 +25,7 @@ Example of a valid `keymaps.json` file
     }
 ]
 ```
+
  where `command` is a unique command id and keybinding is a valid `keybinding`. There's also an optional `context` property that can be specified (which is also a unique string for a context id).
 
 ## Supported Keys
@@ -37,13 +38,14 @@ You can use `shift`, `ctrl`, `alt`, `meta`, `option` (`alt`), `command` (`meta`)
 
 You can also use the following strings for special keys: `backspace`, `tab`, `enter`, `return`, `capslock`, `esc`, `escape`, `space`, `pageup`, `pagedown`, `end`, `home`, `left`, `up`, `right`, `down`, `ins`, `del` and `plus`.
 
-If unsure you can always look at the framework's [supported keys](https://eclipse-theia.github.io/theia/docs/next/modules/core.key-2.html)
+If unsure you can always look at the framework's [supported keys](https://eclipse-theia.github.io/theia/docs/next/modules/core.Key-4.html)
 
 ## Key Sequences
 
 Key sequences like: `ctrl+x ctrl+a` or `ctrl+a b c` are supported.  With the following limitations:
- - If the key sequence exceeds 1 key chord it won't show in the electron menu.
- - If the key sequence exceeds 2 key chords it won't show in the command palette.
+
+- If the key sequence exceeds 1 key chord it won't show in the electron menu.
+- If the key sequence exceeds 2 key chords it won't show in the command palette.
 
 ## Additional Information
 
@@ -57,5 +59,6 @@ Key sequences like: `ctrl+x ctrl+a` or `ctrl+a b c` are supported.  With the fol
 - [一 (Secondary) GNU General Public License, version 2 with the GNU Classpath Exception](https://projects.eclipse.org/license/secondary-gpl-2.0-cp)
 
 ## Trademark
+
 "Theia" is a trademark of the Eclipse Foundation
-https://www.eclipse.org/theia
+<https://www.eclipse.org/theia>

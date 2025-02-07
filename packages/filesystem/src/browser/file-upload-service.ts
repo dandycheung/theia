@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -30,13 +30,24 @@ import { FileSystemPreferences } from './filesystem-preferences';
 import { FileService } from './file-service';
 import { ConfirmDialog, Dialog } from '@theia/core/lib/browser';
 import { nls } from '@theia/core/lib/common/nls';
+import { Emitter, Event } from '@theia/core/lib/common/event';
 
 export const HTTP_UPLOAD_URL: string = new Endpoint({ path: HTTP_FILE_UPLOAD_PATH }).getRestUrl().toString(true);
 
+export type CustomDataTransfer = Iterable<readonly [string, CustomDataTransferItem]>;
+
+export interface CustomDataTransferItem {
+    asFile(): {
+        readonly id: string;
+        readonly name: string;
+        data(): Promise<Uint8Array>;
+    } | undefined
+}
 export interface FileUploadParams {
-    source?: DataTransfer
+    source?: DataTransfer | CustomDataTransfer
     progress?: FileUploadProgressParams
     onDidUpload?: (uri: string) => void;
+    leaveInTemp?: boolean // dont move file out of the initial tmp directory
 }
 export interface FileUploadProgressParams {
     text: string
@@ -51,6 +62,12 @@ export class FileUploadService {
 
     static TARGET = 'target';
     static UPLOAD = 'upload';
+
+    protected readonly onDidUploadEmitter = new Emitter<string[]>();
+
+    get onDidUpload(): Event<string[]> {
+        return this.onDidUploadEmitter.event;
+    }
 
     protected uploadForm: FileUploadService.Form;
     protected deferredUpload?: Deferred<FileUploadResult>;
@@ -114,12 +131,12 @@ export class FileUploadService {
     }
 
     async upload(targetUri: string | URI, params: FileUploadParams = {}): Promise<FileUploadResult> {
-        const { source, onDidUpload } = params;
+        const { source, onDidUpload, leaveInTemp } = params;
         if (source) {
             return this.withProgress(
                 (progress, token) => this.uploadAll(
                     typeof targetUri === 'string' ? new URI(targetUri) : targetUri,
-                    { source, progress, token, onDidUpload }
+                    { source, progress, token, leaveInTemp, onDidUpload }
                 ),
                 params.progress,
             );
@@ -197,7 +214,7 @@ export class FileUploadService {
                     // Don't await here: the semaphore will organize the uploading tasks, not the async indexer.
                     uploads.push(uploadSemaphore.runExclusive(async () => {
                         checkCancelled(params.token);
-                        const { upload, response } = this.uploadFile(item.file, item.uri, params.token, (total, done) => {
+                        const { upload, response } = this.uploadFile(item.file, item.uri, params.token, params.leaveInTemp, (total, done) => {
                             const entry = status.get(item.file);
                             if (entry) {
                                 entry.total = total;
@@ -237,9 +254,11 @@ export class FileUploadService {
         } catch (error) {
             uploadSemaphore.cancel();
             if (!isCancelled(error)) {
+                this.messageService.error(nls.localize('theia/filesystem/uploadFailed', 'An error occurred while uploading a file. {0}', error.message));
                 throw error;
             }
         }
+        this.onDidUploadEmitter.fire(result.uploaded);
         return result;
     }
 
@@ -257,6 +276,7 @@ export class FileUploadService {
         file: File,
         targetUri: URI,
         token: CancellationToken,
+        leaveInTemp: boolean | undefined,
         onProgress: (total: number, done: number) => void
     ): {
         /**
@@ -279,6 +299,9 @@ export class FileUploadService {
         const data = new FormData();
         data.set('uri', targetUri.toString(true));
         data.set('file', file);
+        if (leaveInTemp) {
+            data.set('leaveInTemp', 'true');
+        }
         // TODO: Use Fetch API once it supports upload monitoring.
         const xhr = new XMLHttpRequest();
         token.onCancellationRequested(() => xhr.abort());
@@ -326,6 +349,10 @@ export class FileUploadService {
                     unregister();
                     if (xhr.status === 200) {
                         resolve();
+                    } else if (xhr.status === 500 && xhr.statusText !== xhr.response) {
+                        // internal error with cause message
+                        // see packages/filesystem/src/node/node-file-upload-service.ts
+                        reject(new Error(`Internal server error: ${xhr.response}`));
                     } else {
                         reject(new Error(`POST request failed: ${xhr.status} ${xhr.statusText}`));
                     }
@@ -379,8 +406,10 @@ export class FileUploadService {
     protected async index(targetUri: URI, source: FileUploadService.Source, context: FileUploadService.Context): Promise<void> {
         if (source instanceof FormData) {
             await this.indexFormData(targetUri, source, context);
-        } else {
+        } else if (source instanceof DataTransfer) {
             await this.indexDataTransfer(targetUri, source, context);
+        } else {
+            await this.indexCustomDataTransfer(targetUri, source, context);
         }
     }
 
@@ -398,6 +427,15 @@ export class FileUploadService {
             await this.indexDataTransferItemList(targetUri, dataTransfer.items, context);
         } else {
             await this.indexFileList(targetUri, dataTransfer.files, context);
+        }
+    }
+
+    protected async indexCustomDataTransfer(targetUri: URI, dataTransfer: CustomDataTransfer, context: FileUploadService.Context): Promise<void> {
+        for (const [_, item] of dataTransfer) {
+            const fileInfo = item.asFile();
+            if (fileInfo) {
+                await this.indexFile(targetUri, new File([await fileInfo.data()], fileInfo.id), context);
+            }
         }
     }
 
@@ -488,7 +526,7 @@ export class FileUploadService {
 }
 
 export namespace FileUploadService {
-    export type Source = FormData | DataTransfer;
+    export type Source = FormData | DataTransfer | CustomDataTransfer;
     export interface UploadEntry {
         file: File
         uri: URI
@@ -508,6 +546,7 @@ export namespace FileUploadService {
         source: FileUploadService.Source,
         progress: Progress,
         token: CancellationToken,
-        onDidUpload?: (uri: string) => void
+        onDidUpload?: (uri: string) => void,
+        leaveInTemp?: boolean
     }
 }

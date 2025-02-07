@@ -11,14 +11,16 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { Event } from '@theia/core';
+import { Event, ViewColumn } from '@theia/core';
 import { BaseWidget } from '@theia/core/lib/browser';
+import { MarkdownString } from '@theia/core/lib/common/markdown-rendering/markdown-string';
+import { ThemeIcon } from '@theia/core/lib/common/theme';
 import { CommandLineOptions } from '@theia/process/lib/common/shell-command-builder';
 import { TerminalSearchWidget } from '../search/terminal-search-widget';
-import { TerminalProcessInfo } from '../../common/base-terminal-protocol';
+import { TerminalProcessInfo, TerminalExitReason } from '../../common/base-terminal-protocol';
 import URI from '@theia/core/lib/common/uri';
 
 export interface TerminalDimensions {
@@ -28,6 +30,32 @@ export interface TerminalDimensions {
 
 export interface TerminalExitStatus {
     readonly code: number | undefined;
+    readonly reason: TerminalExitReason;
+}
+
+export type TerminalLocationOptions = TerminalLocation | TerminalEditorLocation | TerminalSplitLocation;
+
+export enum TerminalLocation {
+    Panel = 1,
+    Editor = 2
+}
+
+export interface TerminalEditorLocation {
+    readonly viewColumn: ViewColumn;
+    readonly preserveFocus?: boolean;
+}
+
+export interface TerminalSplitLocation {
+    readonly parentTerminal: string;
+}
+
+export interface TerminalBuffer {
+    readonly length: number;
+    /**
+     * @param start zero based index of the first line to return
+     * @param length the max number or lines to return
+     */
+    getLines(start: number, length: number): string[];
 }
 
 /**
@@ -36,11 +64,13 @@ export interface TerminalExitStatus {
 export abstract class TerminalWidget extends BaseWidget {
 
     abstract processId: Promise<number>;
-
     /**
      * Get the current executable and arguments.
      */
     abstract processInfo: Promise<TerminalProcessInfo>;
+
+    /** The ids of extensions contributing to the environment of this terminal mapped to the provided description for their changes. */
+    abstract envVarCollectionDescriptionsByExtension: Promise<Map<string, (string | MarkdownString | undefined)[]>>;
 
     /** Terminal kind that indicates whether a terminal is created by a user or by some extension for a user */
     abstract readonly kind: 'user' | string;
@@ -53,6 +83,9 @@ export abstract class TerminalWidget extends BaseWidget {
 
     /** Terminal widget can be hidden from users until explicitly shown once. */
     abstract readonly hiddenFromUser: boolean;
+
+    /** The position of the terminal widget. */
+    abstract readonly location: TerminalLocationOptions;
 
     /** The last CWD assigned to the terminal, useful when attempting getCwdURI on a task terminal fails */
     lastCwd: URI;
@@ -95,6 +128,10 @@ export abstract class TerminalWidget extends BaseWidget {
     /** Event that fires when the terminal input data */
     abstract onData: Event<string>;
 
+    abstract onOutput: Event<string>;
+
+    abstract buffer: TerminalBuffer;
+
     abstract scrollLineUp(): void;
 
     abstract scrollLineDown(): void;
@@ -117,6 +154,11 @@ export abstract class TerminalWidget extends BaseWidget {
      * Cleat terminal output.
      */
     abstract clearOutput(): void;
+
+    /**
+     * Select entire content in the terminal.
+     */
+    abstract selectAll(): void;
 
     abstract writeLine(line: string): void;
 
@@ -148,6 +190,11 @@ export interface TerminalWidgetOptions {
      * Human readable terminal representation on the UI.
      */
     readonly title?: string;
+
+    /**
+     * icon class with or without color modifier
+     */
+    readonly iconClass?: string | ThemeIcon;
 
     /**
      * Path to the executable shell. For example: `/bin/bash`, `bash`, `sh`.
@@ -211,4 +258,11 @@ export interface TerminalWidgetOptions {
      * When enabled the terminal will run the process as normal but not be surfaced to the user until `Terminal.show` is called.
      */
     readonly hideFromUser?: boolean;
+
+    readonly location?: TerminalLocationOptions;
+
+    /**
+     * When enabled, the terminal will not be persisted across window reloads.
+     */
+    readonly isTransient?: boolean;
 }

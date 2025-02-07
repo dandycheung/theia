@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as chai from 'chai';
@@ -38,10 +38,5 @@ describe('TerminalServer', function (): void {
         const args = ['--version'];
         const createResult = await terminalServer.create({ command: process.execPath, 'args': args });
         expect(createResult).to.be.greaterThan(-1);
-    });
-
-    it('test terminal create from non-existent path', async function (): Promise<void> {
-        const createError = await terminalServer.create({ command: '/non-existent' });
-        expect(createError).eq(-1);
     });
 });

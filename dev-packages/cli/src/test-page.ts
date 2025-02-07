@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import * as puppeteer from 'puppeteer';
-const collectFiles: (options: TestFileOptions) => string[] = require('mocha/lib/cli/collect-files');
+import * as puppeteer from 'puppeteer-core';
+const collectFiles: (options: TestFileOptions) => { files: string[] } = require('mocha/lib/cli/collect-files');
 
 export interface TestFileOptions {
     ignore: string[]
@@ -113,7 +113,8 @@ export default async function newTestPage(options: TestPageOptions): Promise<pup
                 reporter: 'spec',
                 ui: 'bdd',
                 color: true,
-                retries: 5
+                retries: 0,
+                timeout: 10000
             });
         });
 
@@ -121,7 +122,7 @@ export default async function newTestPage(options: TestPageOptions): Promise<pup
             await onWillRun();
         }
 
-        for (const file of files) {
+        for (const file of files.files) {
             await page.addScriptTag({ path: file });
         }
 

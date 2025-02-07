@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Widget } from './widget';
@@ -28,6 +28,6 @@ export interface ExtractableWidget extends Widget {
 
 export namespace ExtractableWidget {
     export function is(widget: unknown): widget is ExtractableWidget {
-        return widget instanceof Widget && widget.hasOwnProperty('isExtractable') && (widget as ExtractableWidget).isExtractable === true;
+        return widget instanceof Widget && 'isExtractable' in widget && (widget as ExtractableWidget).isExtractable === true;
     }
 }

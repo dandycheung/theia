@@ -2,6 +2,7 @@
 node_modules
 build
 lib
+tmp
 *.log
 .idea
 .metadata
@@ -13,8 +14,7 @@ coverage
 errorShots
 examples/*/src-gen
 examples/*/gen-webpack.config.js
-examples/*/.theia
-examples/*/.vscode
+examples/*/gen-webpack.node.config.js
 examples/*/.test
 .browser_modules
 **/docs/api
@@ -33,3 +33,6 @@ dependency-check-summary.txt*
 *-trace.json
 .tours
 /performance-result.json
+*.vsix
+/scripts/native-dependencies-*
+allure-results

@@ -11,7 +11,7 @@
  * with the GNU Classpath Exception which is available at
  * https://www.gnu.org/software/classpath/license.html.
  *
- * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
  ********************************************************************************/
 
 import { injectable } from '@theia/core/shared/inversify';
@@ -64,22 +64,21 @@ export class CDTGDBMemoryProvider extends AbstractMemoryProvider {
                         expression: addrExp,
                         context: 'watch',
                         frameId: frame.raw.id,
-                    });
+                    }).catch(e => { console.warn(`Failed to evaluate ${addrExp}. Corresponding variable will be omitted from Memory Inspector display.`, e); });
+                    if (!addrResp) { continue; }
+
                     const sizeResp = await session.sendRequest('evaluate', {
                         expression: sizeExp,
                         context: 'watch',
                         frameId: frame.raw.id,
-                    });
+                    }).catch(e => { console.warn(`Failed to evaluate ${sizeExp}. Corresponding variable will be omitted from Memory Inspector display.`, e); });
+                    if (!sizeResp) { continue; }
 
                     // Make sure the address is in the format we expect.
                     const addressPart = /0x[0-9a-f]+/i.exec(addrResp.body.result);
-                    if (!addressPart) {
-                        continue;
-                    }
+                    if (!addressPart) { continue; }
 
-                    if (!/^[0-9]+$/.test(sizeResp.body.result)) {
-                        continue;
-                    }
+                    if (!/^[0-9]+$/.test(sizeResp.body.result)) { continue; }
 
                     const size = parseInt(sizeResp.body.result);
                     const address = hexStrToUnsignedLong(addressPart[0]);

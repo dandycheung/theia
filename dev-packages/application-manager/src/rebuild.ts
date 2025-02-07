@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import cp = require('child_process');
@@ -19,7 +19,7 @@ import fs = require('fs-extra');
 import path = require('path');
 import os = require('os');
 
-export type RebuildTarget = 'electron' | 'browser';
+export type RebuildTarget = 'electron' | 'browser' | 'browser-only';
 
 const EXIT_SIGNALS: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
 
@@ -32,10 +32,12 @@ type NodeABI = string | number;
 
 export const DEFAULT_MODULES = [
     'node-pty',
-    'nsfw',
     'native-keymap',
     'find-git-repositories',
     'drivelist',
+    'keytar',
+    'ssh2',
+    'cpu-features'
 ];
 
 export interface RebuildOptions {
@@ -301,7 +303,12 @@ async function guardExit<T>(run: (token: ExitToken) => Promise<T>): Promise<T> {
         return await run(token);
     } finally {
         for (const signal of EXIT_SIGNALS) {
-            process.off(signal, signalListener);
+            // FIXME we have a type clash here between Node, Electron and Mocha.
+            // Typescript is resolving here to Electron's Process interface which extends the NodeJS.EventEmitter interface
+            // However instead of the actual NodeJS.EventEmitter interface it resolves to an empty stub of Mocha
+            // Therefore it can't find the correct "off" signature and throws an error
+            // By casting to the NodeJS.EventEmitter ourselves, we short circuit the resolving and it succeeds
+            (process as NodeJS.EventEmitter).off(signal, signalListener);
         }
     }
 }

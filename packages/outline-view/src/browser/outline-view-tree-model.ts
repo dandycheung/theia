@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable } from '@theia/core/shared/inversify';
@@ -49,4 +49,29 @@ export class OutlineViewTreeModel extends TreeModelImpl {
             this.onOpenNodeEmitter.fire(node);
         }
     }
+
+    expandAll(raw?: TreeNode): void {
+        if (CompositeTreeNode.is(raw)) {
+            for (const child of raw.children) {
+                if (ExpandableTreeNode.is(child)) {
+                    this.expandAll(child);
+                }
+            }
+        }
+        if (ExpandableTreeNode.is(raw)) {
+            this.expandNode(raw);
+        }
+    }
+
+    areNodesCollapsed(): boolean {
+        if (CompositeTreeNode.is(this.root)) {
+            for (const child of this.root.children) {
+                if (!ExpandableTreeNode.isCollapsed(child)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
 }

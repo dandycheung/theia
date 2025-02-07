@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable } from 'inversify';
-import { escapeRegExpCharacters } from '../../common';
+import { escapeRegExpCharacters, isObject } from '../../common';
 import { PreferenceSchemaProperties } from '../../common/preferences/preference-schema';
 
 export interface OverridePreferenceName {
@@ -24,7 +24,7 @@ export interface OverridePreferenceName {
 }
 export namespace OverridePreferenceName {
     export function is(arg: unknown): arg is OverridePreferenceName {
-        return !!arg && typeof arg === 'object' && 'preferenceName' in arg && 'overrideIdentifier' in arg;
+        return isObject(arg) && 'preferenceName' in arg && 'overrideIdentifier' in arg;
     }
 }
 

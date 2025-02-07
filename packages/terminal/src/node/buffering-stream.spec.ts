@@ -11,17 +11,17 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { wait } from '@theia/core/lib/common/promise-util';
 import { expect } from 'chai';
-import { BufferingStream } from './buffering-stream';
+import { BufferBufferingStream } from './buffering-stream';
 
 describe('BufferringStream', () => {
 
     it('should emit whatever data was buffered before the timeout', async () => {
-        const buffer = new BufferingStream({ emitInterval: 1000 });
+        const buffer = new BufferBufferingStream({ emitInterval: 1000 });
         const chunkPromise = waitForChunk(buffer);
         buffer.push(Buffer.from([0]));
         await wait(100);
@@ -33,14 +33,14 @@ describe('BufferringStream', () => {
     });
 
     it('should not emit chunks bigger than maxChunkSize', async () => {
-        const buffer = new BufferingStream({ maxChunkSize: 2 });
+        const buffer = new BufferBufferingStream({ maxChunkSize: 2 });
         buffer.push(Buffer.from([0, 1, 2, 3, 4, 5]));
         expect(await waitForChunk(buffer)).deep.eq(Buffer.from([0, 1]));
         expect(await waitForChunk(buffer)).deep.eq(Buffer.from([2, 3]));
         expect(await waitForChunk(buffer)).deep.eq(Buffer.from([4, 5]));
     });
 
-    function waitForChunk(buffer: BufferingStream): Promise<Buffer> {
+    function waitForChunk(buffer: BufferBufferingStream): Promise<Buffer> {
         return new Promise(resolve => buffer.onData(resolve));
     }
 });

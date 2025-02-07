@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from '@theia/core/shared/react';
@@ -92,8 +92,14 @@ export class DebugBreakpointWidget implements Disposable {
         }
     }
 
+    private readonly selectComponentRef = React.createRef<SelectComponent>();
+
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         this.toDispose.push(this.zone = new MonacoEditorZoneWidget(this.editor.getControl()));
         this.zone.containerNode.classList.add('theia-debug-breakpoint-widget');
 
@@ -151,6 +157,7 @@ export class DebugBreakpointWidget implements Disposable {
             this.zone.layout(heightInLines);
             this.updatePlaceholder();
         }));
+        this._input.getControl().createContextKey<boolean>('breakpointWidgetFocus', true);
     }
 
     dispose(): void {
@@ -192,10 +199,12 @@ export class DebugBreakpointWidget implements Disposable {
         this.zone.show({ afterLineNumber, afterColumn, heightInLines, frameWidth: 1 });
         editor.setPosition(editor.getModel()!.getPositionAt(editor.getModel()!.getValueLength()));
         this._input.focus();
+        this.editor.getControl().createContextKey<boolean>('isBreakpointWidgetVisible', true);
     }
 
     hide(): void {
         this.zone.hide();
+        this.editor.getControl().createContextKey<boolean>('isBreakpointWidgetVisible', false);
         this.editor.focus();
     }
 
@@ -215,6 +224,10 @@ export class DebugBreakpointWidget implements Disposable {
         if (this._input) {
             this._input.getControl().setValue(this._values[this.context] || '');
         }
+        const selectComponent = this.selectComponentRef.current;
+        if (selectComponent && selectComponent.value !== this.context) {
+            selectComponent.value = this.context;
+        }
         this.selectNodeRoot.render(<SelectComponent
             defaultValue={this.context} onChange={this.updateInput}
             options={[
@@ -222,6 +235,7 @@ export class DebugBreakpointWidget implements Disposable {
                 { value: 'hitCondition', label: nls.localizeByDefault('Hit Count') },
                 { value: 'logMessage', label: nls.localizeByDefault('Log Message') },
             ]}
+            ref={this.selectComponentRef}
         />);
     }
 
@@ -260,13 +274,17 @@ export class DebugBreakpointWidget implements Disposable {
             .setDecorationsByType('Debug breakpoint placeholder', DebugBreakpointWidget.PLACEHOLDER_DECORATION, decorations);
     }
     protected get placeholder(): string {
+        const acceptString = 'Enter';
+        const closeString = 'Escape';
         if (this.context === 'logMessage') {
-            return nls.localizeByDefault("Message to log when breakpoint is hit. Expressions within {} are interpolated. 'Enter' to accept, 'esc' to cancel.");
+            return nls.localizeByDefault(
+                "Message to log when breakpoint is hit. Expressions within {} are interpolated. '{0}' to accept, '{1}' to cancel.", acceptString, closeString
+            );
         }
         if (this.context === 'hitCondition') {
-            return nls.localizeByDefault("Break when hit count condition is met. 'Enter' to accept, 'esc' to cancel.");
+            return nls.localizeByDefault("Break when hit count condition is met. '{0}' to accept, '{1}' to cancel.", acceptString, closeString);
         }
-        return nls.localizeByDefault("Break when expression evaluates to true. 'Enter' to accept, 'esc' to cancel.");
+        return nls.localizeByDefault("Break when expression evaluates to true. '{0}' to accept, '{1}' to cancel.", acceptString, closeString);
     }
 
 }

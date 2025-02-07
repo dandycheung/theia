@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -158,7 +158,7 @@ export class DocumentsExtImpl implements DocumentsExt {
         const uriString = uri.toString();
         const data = this.editorsAndDocuments.getDocument(uriString);
         if (!data) {
-            throw new Error('unknown document');
+            throw new Error('unknown document: ' + uriString);
         }
         data.acceptIsDirty(isDirty);
         this._onDidChangeDocument.fire({
@@ -172,7 +172,7 @@ export class DocumentsExtImpl implements DocumentsExt {
         const uriString = uri.toString();
         const data = this.editorsAndDocuments.getDocument(uriString);
         if (!data) {
-            throw new Error('unknown document');
+            throw new Error('unknown document: ' + uriString);
         }
         data.acceptIsDirty(isDirty);
         data.onEvents(e);

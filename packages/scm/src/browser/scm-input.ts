@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -36,14 +36,15 @@ export interface ScmInputValidator {
 }
 
 export interface ScmInputOptions {
-    placeholder?: string
-    validator?: ScmInputValidator
-    visible?: boolean
+    placeholder?: string;
+    validator?: ScmInputValidator;
+    visible?: boolean;
+    enabled?: boolean;
 }
 
 export interface ScmInputData {
-    value?: string
-    issue?: ScmInputIssue
+    value?: string;
+    issue?: ScmInputIssue;
 }
 
 export class ScmInput implements Disposable {
@@ -104,6 +105,19 @@ export class ScmInput implements Disposable {
             return;
         }
         this._visible = visible;
+        this.fireDidChange();
+        this.validate();
+    }
+
+    protected _enabled = this.options.enabled ?? true;
+    get enabled(): boolean {
+        return this._enabled;
+    }
+    set enabled(enabled: boolean) {
+        if (this._enabled === enabled) {
+            return;
+        }
+        this._enabled = enabled;
         this.fireDidChange();
         this.validate();
     }

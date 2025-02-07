@@ -11,47 +11,17 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
+import { expect, test } from '@playwright/test';
 import { TheiaApp } from '../theia-app';
-
-import { expect } from '@playwright/test';
-import test, { page } from './fixtures/theia-fixture';
-import { TheiaPageObject } from '../theia-page-object';
-
-class TheiaSampleToolbar extends TheiaPageObject {
-    protected selector = '#main-toolbar';
-
-    async show(): Promise<void> {
-        if (!await this.isShown()) {
-            await this.toggle();
-        }
-    }
-
-    async toggle(): Promise<void> {
-        const isShown = await this.isShown();
-        const viewMenu = await this.app.menuBar.openMenu('View');
-        await viewMenu.clickMenuItem('Toggle Toolbar');
-        isShown ? await this.waitUntilHidden() : await this.waitUntilShown();
-    }
-
-    async waitUntilHidden(): Promise<void> {
-        await this.page.waitForSelector(this.selector, { state: 'hidden' });
-    }
-
-    async waitUntilShown(): Promise<void> {
-        await this.page.waitForSelector(this.selector, { state: 'visible' });
-    }
-
-    async isShown(): Promise<boolean> {
-        const toolbar = await this.page.$(this.selector);
-        return !!toolbar && toolbar.isVisible();
-    }
-}
+import { TheiaAppLoader } from '../theia-app-loader';
+import { TheiaToolbar } from '../theia-toolbar';
+import { TheiaWorkspace } from '../theia-workspace';
 
 class TheiaSampleApp extends TheiaApp {
-    protected toolbar = new TheiaSampleToolbar(this);
+    protected toolbar = new TheiaToolbar(this);
 
     override async waitForInitialized(): Promise<void> {
         await this.toolbar.show();
@@ -66,12 +36,16 @@ class TheiaSampleApp extends TheiaApp {
     }
 }
 
-let app: TheiaSampleApp;
-
 test.describe('Theia Sample Application', () => {
 
-    test('should load', async () => {
-        app = await TheiaApp.loadApp(page, TheiaSampleApp);
+    let app: TheiaSampleApp;
+
+    test.beforeAll(async ({ playwright, browser }) => {
+        app = await TheiaAppLoader.load({ playwright, browser }, new TheiaWorkspace(), TheiaSampleApp);
+    });
+
+    test.afterAll(async () => {
+        await app.page.close();
     });
 
     test('should start with visible toolbar', async () => {

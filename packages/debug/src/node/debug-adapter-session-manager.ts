@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { UUID } from '@theia/core/shared/@phosphor/coreutils';
@@ -37,7 +37,7 @@ export class DebugAdapterSessionManager implements MessagingService.Contribution
     protected readonly debugAdapterFactory: DebugAdapterFactory;
 
     configure(service: MessagingService): void {
-        service.wsChannel(`${DebugAdapterPath}/:id`, ({ id }: { id: string }, wsChannel) => {
+        service.registerChannelHandler(`${DebugAdapterPath}/:id`, ({ id }: { id: string }, wsChannel) => {
             const session = this.find(id);
             if (!session) {
                 wsChannel.close();

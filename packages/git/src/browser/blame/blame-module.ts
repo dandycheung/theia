@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from '@theia/core/shared/inversify';
-import { KeybindingContribution, KeybindingContext } from '@theia/core/lib/browser';
+import { KeybindingContribution } from '@theia/core/lib/browser';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
-import { BlameContribution, BlameAnnotationsKeybindingContext } from './blame-contribution';
+import { BlameContribution } from './blame-contribution';
 import { BlameDecorator } from './blame-decorator';
 import { BlameManager } from './blame-manager';
 
@@ -28,6 +28,4 @@ export function bindBlame(bind: interfaces.Bind): void {
     for (const serviceIdentifier of [CommandContribution, KeybindingContribution, MenuContribution]) {
         bind(serviceIdentifier).toService(BlameContribution);
     }
-    bind(BlameAnnotationsKeybindingContext).toSelf().inSingletonScope();
-    bind(KeybindingContext).toService(BlameAnnotationsKeybindingContext);
 }

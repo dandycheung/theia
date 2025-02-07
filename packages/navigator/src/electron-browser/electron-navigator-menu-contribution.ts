@@ -11,19 +11,22 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { Command, CommandContribution, CommandRegistry, MenuContribution, MenuModelRegistry } from '@theia/core';
-import { CommonCommands, KeybindingContribution, KeybindingRegistry } from '@theia/core/lib/browser';
+import { Command, CommandContribution, CommandRegistry, MenuContribution, MenuModelRegistry, SelectionService, URI } from '@theia/core';
+import { CommonCommands, KeybindingContribution, KeybindingRegistry, OpenWithService } from '@theia/core/lib/browser';
 import { WidgetManager } from '@theia/core/lib/browser/widget-manager';
-import * as electron from '@theia/core/electron-shared/electron';
-import * as electronRemote from '@theia/core/electron-shared/@electron/remote';
+import { nls } from '@theia/core/lib/common';
+import { FileUri } from '@theia/core/lib/common/file-uri';
+import { isOSX, isWindows } from '@theia/core/lib/common/os';
+import { UriAwareCommandHandler } from '@theia/core/lib/common/uri-command-handler';
+import '@theia/core/lib/electron-common/electron-api';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { FileStatNode } from '@theia/filesystem/lib/browser';
-import { FileNavigatorWidget, FILE_NAVIGATOR_ID } from '../browser';
-import { NavigatorContextMenu } from '../browser/navigator-contribution';
-import { isWindows, isOSX } from '@theia/core/lib/common/os';
+import { WorkspaceService } from '@theia/workspace/lib/browser';
+import { FILE_NAVIGATOR_ID, FileNavigatorWidget } from '../browser';
+import { NavigatorContextMenu, SHELL_TABBAR_CONTEXT_REVEAL } from '../browser/navigator-contribution';
 
 export const OPEN_CONTAINING_FOLDER = Command.toDefaultLocalizedCommand({
     id: 'revealFileInOS',
@@ -33,31 +36,66 @@ export const OPEN_CONTAINING_FOLDER = Command.toDefaultLocalizedCommand({
         /* linux */ 'Open Containing Folder'
 });
 
+export const OPEN_WITH_SYSTEM_APP = Command.toDefaultLocalizedCommand({
+    id: 'openWithSystemApp',
+    category: CommonCommands.FILE_CATEGORY,
+    label: 'Open With System Editor'
+});
+
 @injectable()
 export class ElectronNavigatorMenuContribution implements MenuContribution, CommandContribution, KeybindingContribution {
+
+    @inject(SelectionService)
+    protected readonly selectionService: SelectionService;
 
     @inject(WidgetManager)
     protected readonly widgetManager: WidgetManager;
 
+    @inject(WorkspaceService)
+    protected readonly workspaceService: WorkspaceService;
+
+    @inject(OpenWithService)
+    protected readonly openWithService: OpenWithService;
+
     registerCommands(commands: CommandRegistry): void {
-        commands.registerCommand(OPEN_CONTAINING_FOLDER, {
-            isEnabled: () => this.getSelectedFileStatNodes().length > 0,
-            isVisible: () => this.getSelectedFileStatNodes().length > 0,
-            execute: () => {
-                // workaround for https://github.com/electron/electron/issues/4349:
-                // use electron.remote.shell to open the window in the foreground on Windows
-                const shell = isWindows ? electronRemote.shell : electron.shell;
-                this.getSelectedFileStatNodes().forEach(node => {
-                    shell.showItemInFolder(node.uri['codeUri'].fsPath);
-                });
+        commands.registerCommand(OPEN_CONTAINING_FOLDER, UriAwareCommandHandler.MonoSelect(this.selectionService, {
+            execute: async uri => {
+                window.electronTheiaCore.showItemInFolder(FileUri.fsPath(uri));
+            },
+            isEnabled: uri => !!this.workspaceService.getWorkspaceRootUri(uri),
+            isVisible: uri => !!this.workspaceService.getWorkspaceRootUri(uri),
+        }));
+        commands.registerCommand(OPEN_WITH_SYSTEM_APP, UriAwareCommandHandler.MonoSelect(this.selectionService, {
+            execute: async uri => {
+                this.openWithSystemApplication(uri);
+            }
+        }));
+        this.openWithService.registerHandler({
+            id: 'system-editor',
+            label: nls.localize('theia/navigator/systemEditor', 'System Editor'),
+            providerName: nls.localizeByDefault('Built-in'),
+            // Low priority to avoid conflicts with other open handlers.
+            canHandle: uri => (uri.scheme === 'file') ? 10 : 0,
+            open: uri => {
+                this.openWithSystemApplication(uri);
+                return {};
             }
         });
+    }
+
+    protected openWithSystemApplication(uri: URI): void {
+        window.electronTheiaCore.openWithSystemApp(FileUri.fsPath(uri));
     }
 
     registerMenus(menus: MenuModelRegistry): void {
         menus.registerMenuAction(NavigatorContextMenu.NAVIGATION, {
             commandId: OPEN_CONTAINING_FOLDER.id,
             label: OPEN_CONTAINING_FOLDER.label
+        });
+        menus.registerMenuAction(SHELL_TABBAR_CONTEXT_REVEAL, {
+            commandId: OPEN_CONTAINING_FOLDER.id,
+            label: OPEN_CONTAINING_FOLDER.label,
+            order: '4'
         });
     }
 

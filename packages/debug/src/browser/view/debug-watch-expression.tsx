@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from '@theia/core/shared/react';
@@ -42,16 +42,15 @@ export class DebugWatchExpression extends ExpressionItem {
     }
 
     protected override setResult(body?: DebugProtocol.EvaluateResponse['body'], error?: string): void {
-        if (!this.options.session()) {
-            return;
+        if (this.options.session()) {
+            super.setResult(body, error);
+            this.isError = !!error;
         }
-        super.setResult(body, error);
-        this.isError = !!error;
         this.options.onDidChange();
     }
 
     override render(): React.ReactNode {
-        return <div className='theia-debug-console-variable'>
+        return <div className='theia-debug-console-variable theia-debug-watch-expression'>
             <div className={TREE_NODE_SEGMENT_GROW_CLASS}>
                 <span title={this.type || this._expression} className='name'>{this._expression}: </span>
                 <span title={this._value} ref={this.setValueRef} className={this.isError ? 'watch-error' : ''}>{this._value}</span>
@@ -62,8 +61,9 @@ export class DebugWatchExpression extends ExpressionItem {
 
     async open(): Promise<void> {
         const input = new SingleTextInputDialog({
-            title: 'Edit Watch Expression',
-            initialValue: this.expression
+            title: nls.localizeByDefault('Edit Expression'),
+            initialValue: this.expression,
+            placeholder: nls.localizeByDefault('Expression to watch')
         });
         const newValue = await input.open();
         if (newValue !== undefined) {

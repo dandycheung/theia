@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { CancellationToken, ContributionProvider, DisposableCollection, disposableTimeout, isOSX } from '@theia/core';
@@ -25,7 +25,7 @@ import { TerminalWidgetImpl } from './terminal-widget-impl';
 
 export const TerminalLinkProvider = Symbol('TerminalLinkProvider');
 export interface TerminalLinkProvider {
-    provideLinks(line: string, terminal: TerminalWidget, cancelationToken?: CancellationToken): Promise<TerminalLink[]>;
+    provideLinks(line: string, terminal: TerminalWidget, cancellationToken?: CancellationToken): Promise<TerminalLink[]>;
 }
 
 export const TerminalLink = Symbol('TerminalLink');

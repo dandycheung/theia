@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { TextEditorConfiguration, TextEditorsMain, TextEditorConfigurationUpdate, SingleEditOperation } from '../common/plugin-api-rpc';
 import { Range as ApiRange } from '../common/plugin-api-rpc-model';
@@ -30,7 +30,7 @@ export class TextEditorExt implements theia.TextEditor {
     private disposed = false;
     constructor(
         private readonly proxy: TextEditorsMain,
-        private readonly id: string,
+        readonly id: string,
         document: DocumentDataExt,
         private _selections: Selection[],
         options: TextEditorConfiguration,
@@ -277,7 +277,8 @@ export class TextEditorExt implements theia.TextEditor {
 }
 
 export class TextEditorOptionsExt implements theia.TextEditorOptions {
-    private _tabSize?: number;
+    private _tabSize: number;
+    private _indentSize: number | 'tabSize';
     private _insertSpace: boolean;
     private _cursorStyle: TextEditorCursorStyle;
     private _lineNumbers: TextEditorLineNumbersStyle;
@@ -289,12 +290,13 @@ export class TextEditorOptionsExt implements theia.TextEditorOptions {
 
     accept(source: TextEditorConfiguration): void {
         this._tabSize = source.tabSize;
+        this._indentSize = source.indentSize;
         this._insertSpace = source.insertSpaces;
         this._cursorStyle = source.cursorStyle;
         this._lineNumbers = source.lineNumbers;
     }
 
-    get tabSize(): number | string | undefined {
+    get tabSize(): number {
         return this._tabSize;
     }
 
@@ -305,10 +307,10 @@ export class TextEditorOptionsExt implements theia.TextEditorOptions {
         }
 
         if (typeof tabSize === 'number') {
-            if (this.tabSize === tabSize) {
+            if (this._tabSize === tabSize) {
                 return;
             }
-            this.tabSize = tabSize;
+            this._tabSize = tabSize;
         }
         warnOnError(this.proxy.$trySetOptions(this.id, {
             tabSize
@@ -318,6 +320,51 @@ export class TextEditorOptionsExt implements theia.TextEditorOptions {
     private validateTabSize(val: number | string | undefined): number | 'auto' | undefined {
         if (val === 'auto') {
             return 'auto';
+        }
+
+        if (typeof val === 'number') {
+            const r = Math.floor(val);
+            return r > 0 ? r : undefined;
+        }
+        if (typeof val === 'string') {
+            const r = parseInt(val, undefined);
+            if (isNaN(r)) {
+                return undefined;
+            }
+            return r > 0 ? r : undefined;
+        }
+        return undefined;
+    }
+
+    get indentSize(): number {
+        if (this._indentSize === 'tabSize') {
+            return this.tabSize;
+        }
+        return this._indentSize;
+    }
+
+    set indentSize(val: number | string | undefined) {
+        const indentSize = this.validateIndentSize(val);
+        if (!indentSize) {
+            return; // ignore invalid values
+        }
+
+        if (typeof indentSize === 'number') {
+            if (this._indentSize === indentSize) {
+                return;
+            }
+            this._indentSize = indentSize;
+        } else if (val === 'tabSize') {
+            this._indentSize = val;
+        }
+        warnOnError(this.proxy.$trySetOptions(this.id, {
+            indentSize
+        }));
+    }
+
+    private validateIndentSize(val: number | string | undefined): number | 'tabSize' | undefined {
+        if (val === 'tabSize') {
+            return 'tabSize';
         }
 
         if (typeof val === 'number') {
@@ -395,6 +442,19 @@ export class TextEditorOptionsExt implements theia.TextEditorOptions {
             }
         }
 
+        if (typeof newOptions.indentSize !== 'undefined') {
+            const indentSize = this.validateIndentSize(newOptions.indentSize);
+            if (indentSize === 'tabSize') {
+                hasUpdate = true;
+                configurationUpdate.indentSize = indentSize;
+            } else if (typeof indentSize === 'number' && this._indentSize !== indentSize) {
+                // reflect the new indentSize value immediately
+                this._indentSize = indentSize;
+                hasUpdate = true;
+                configurationUpdate.indentSize = indentSize;
+            }
+        }
+
         if (typeof newOptions.insertSpaces !== 'undefined') {
             const insertSpaces = this.validateInsertSpaces(newOptions.insertSpaces);
             if (insertSpaces === 'auto') {
@@ -439,7 +499,7 @@ export interface TextEditOperation {
 export interface EditData {
     documentVersionId: number;
     edits: TextEditOperation[];
-    setEndOfLine: EndOfLine;
+    setEndOfLine: EndOfLine | undefined;
     undoStopBefore: boolean;
     undoStopAfter: boolean;
 }
@@ -447,13 +507,12 @@ export interface EditData {
 export class TextEditorEdit {
     private readonly documentVersionId: number;
     private collectedEdits: TextEditOperation[];
-    private eol: EndOfLine;
+    private eol: EndOfLine | undefined;
     private readonly undoStopBefore: boolean;
     private readonly undoStopAfter: boolean;
     constructor(private document: theia.TextDocument, options: { undoStopBefore: boolean; undoStopAfter: boolean }) {
         this.documentVersionId = document.version;
         this.collectedEdits = [];
-        this.eol = 0;
         this.undoStopBefore = options.undoStopBefore;
         this.undoStopAfter = options.undoStopAfter;
     }

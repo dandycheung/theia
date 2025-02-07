@@ -20,6 +20,15 @@ The extension connects to the public Open VSX Registry hosted on `http://open-vs
 One can host own instance of a [registry](https://github.com/eclipse/openvsx#eclipse-open-vsx)
 and configure `VSX_REGISTRY_URL` environment variable to use it.
 
+### Using multiple registries
+
+It is possible to target multiple registries by specifying a CLI argument when
+running the backend: `--ovsx-router-config=<path>` where `path` must point to
+a json defining an `OVSXRouterConfig` object.
+
+See `@theia/ovsx-client`'s documentation to read more about `OVSXRouterClient`
+and its `OVSXRouterConfig` configuration.
+
 ## Additional Information
 
 - [API documentation for `@theia/vsx-registry`](https://eclipse-theia.github.io/theia/docs/next/modules/vsx-registry.html)
@@ -32,5 +41,6 @@ and configure `VSX_REGISTRY_URL` environment variable to use it.
 - [一 (Secondary) GNU General Public License, version 2 with the GNU Classpath Exception](https://projects.eclipse.org/license/secondary-gpl-2.0-cp)
 
 ## Trademark
+
 "Theia" is a trademark of the Eclipse Foundation
-https://www.eclipse.org/theia
+<https://www.eclipse.org/theia>

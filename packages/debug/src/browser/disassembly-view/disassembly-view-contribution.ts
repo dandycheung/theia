@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, interfaces, postConstruct } from '@theia/core/shared/inversify';
@@ -28,7 +28,7 @@ import { DebugStackFramesWidget } from '../view/debug-stack-frames-widget';
 
 export const OPEN_DISASSEMBLY_VIEW_COMMAND: Command = {
     id: 'open-disassembly-view',
-    label: nls.localize('theia/debug/open-disassembly-view', 'Open Disassembly View')
+    label: nls.localizeByDefault('Open Disassembly View')
 };
 
 export const LANGUAGE_SUPPORTS_DISASSEMBLE_REQUEST = 'languageSupportsDisassembleRequest';

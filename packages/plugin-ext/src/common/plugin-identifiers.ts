@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 export namespace PluginIdentifiers {
@@ -60,7 +60,7 @@ export namespace PluginIdentifiers {
         return id.slice(0, endOfId) as UnversionedId;
     }
     /**
-     * @returns `undefined` if it looks like the string passed in does not have the format returned by {@link PluginIdentifiers.toVersionedId}.
+     * @returns `undefined` if it looks like the string passed in does not have the format of {@link PluginIdentifiers.VersionedId}.
      */
     export function identifiersFromVersionedId(probablyId: string): Components | undefined {
         const endOfPublisher = probablyId.indexOf('.');
@@ -71,7 +71,7 @@ export namespace PluginIdentifiers {
         return { publisher: probablyId.slice(0, endOfPublisher), name: probablyId.slice(endOfPublisher + 1, endOfName), version: probablyId.slice(endOfName + 1) };
     }
     /**
-     * @returns `undefined` if it looks like the string passed in does not have the format returned by {@link PluginIdentifiers.toVersionedId}.
+     * @returns `undefined` if it looks like the string passed in does not have the format of {@link PluginIdentifiers.VersionedId}.
      */
     export function idAndVersionFromVersionedId(probablyId: string): IdAndVersion | undefined {
         const endOfPublisher = probablyId.indexOf('.');
