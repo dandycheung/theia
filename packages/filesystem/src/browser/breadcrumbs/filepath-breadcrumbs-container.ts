@@ -11,11 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Container, interfaces, injectable, inject } from '@theia/core/shared/inversify';
-import { TreeProps, ContextMenuRenderer, TreeNode, OpenerService, open, NodeProps, defaultTreeProps } from '@theia/core/lib/browser';
+import { TreeProps, ContextMenuRenderer, TreeNode, open, NodeProps, defaultTreeProps } from '@theia/core/lib/browser';
 import { FileTreeModel, FileStatNode, createFileTreeContainer, FileTreeWidget } from '../file-tree';
 
 const BREADCRUMBS_FILETREE_CLASS = 'theia-FilepathBreadcrumbFileTree';
@@ -34,9 +34,6 @@ export function createFileTreeBreadcrumbsWidget(parent: interfaces.Container): B
 
 @injectable()
 export class BreadcrumbsFileTreeWidget extends FileTreeWidget {
-
-    @inject(OpenerService)
-    protected readonly openerService: OpenerService;
 
     constructor(
         @inject(TreeProps) props: TreeProps,

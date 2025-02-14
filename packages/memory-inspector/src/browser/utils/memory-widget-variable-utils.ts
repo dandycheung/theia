@@ -11,12 +11,12 @@
  * with the GNU Classpath Exception which is available at
  * https://www.gnu.org/software/classpath/license.html.
  *
- * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
  ********************************************************************************/
 
 import { DebugScope, DebugVariable } from '@theia/debug/lib/browser/console/debug-console-items';
 import { DebugSession } from '@theia/debug/lib/browser/debug-session';
-import * as Long from 'long';
+import Long from 'long';
 
 export interface VariableRange {
     name: string;

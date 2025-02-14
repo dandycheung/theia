@@ -11,11 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 export * from './backend-application';
 export * from './debug';
-export * from './file-uri';
+export * from '../common/file-uri';
 export * from './messaging';
 export * from './cli';
+export { FileSystemLocking } from './filesystem-locking';

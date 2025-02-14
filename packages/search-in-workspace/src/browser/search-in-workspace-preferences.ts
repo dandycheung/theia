@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { nls } from '@theia/core/lib/common/nls';
@@ -32,6 +32,11 @@ export const searchInWorkspacePreferencesSchema: PreferenceSchema = {
             type: 'string',
             enum: ['auto', 'alwaysCollapse', 'alwaysExpand'],
         },
+        'search.quickOpen.includeHistory': {
+            description: nls.localizeByDefault('Whether to include results from recently opened files in the file results for Quick Open.'),
+            default: true,
+            type: 'boolean',
+        },
         'search.searchOnType': {
             description: nls.localizeByDefault('Search all files as you type.'),
             default: true,
@@ -39,7 +44,7 @@ export const searchInWorkspacePreferencesSchema: PreferenceSchema = {
         },
         'search.searchOnTypeDebouncePeriod': {
             // eslint-disable-next-line max-len
-            markdownDescription: nls.localizeByDefault('When `#search.searchOnType#` is enabled, controls the timeout in milliseconds between a character being typed and the search starting. Has no effect when `search.searchOnType` is disabled.'),
+            markdownDescription: nls.localizeByDefault('When {0} is enabled, controls the timeout in milliseconds between a character being typed and the search starting. Has no effect when {0} is disabled.', '`#search.searchOnType#`'),
             default: 300,
             type: 'number',
         },

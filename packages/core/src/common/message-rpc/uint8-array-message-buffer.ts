@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { Disposable } from '../disposable';
 import { Emitter, Event } from '../event';
@@ -73,6 +73,13 @@ export class Uint8ArrayWriteBuffer implements WriteBuffer, Disposable {
     writeUint8(value: number): this {
         this.ensureCapacity(1);
         this.buffer[this.offset++] = value;
+        return this;
+    }
+
+    writeRaw(bytes: Uint8Array): this {
+        this.ensureCapacity(bytes.byteLength);
+        this.buffer.set(bytes, this.offset);
+        this.offset += bytes.byteLength;
         return this;
     }
 

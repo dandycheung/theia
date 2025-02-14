@@ -11,14 +11,16 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../src/browser/style/index.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
-    WidgetFactory, bindViewContribution, FrontendApplicationContribution, ViewContainerIdentifier, OpenHandler, WidgetManager, WebSocketConnectionProvider
+    WidgetFactory, bindViewContribution, FrontendApplicationContribution, ViewContainerIdentifier, OpenHandler, WidgetManager, WebSocketConnectionProvider,
+    WidgetStatusBarContribution,
+    noopWidgetStatusBarContribution
 } from '@theia/core/lib/browser';
 import { VSXExtensionsViewContainer } from './vsx-extensions-view-container';
 import { VSXExtensionsContribution } from './vsx-extensions-contribution';
@@ -33,21 +35,17 @@ import { VSXExtensionsSourceOptions } from './vsx-extensions-source';
 import { VSXExtensionsSearchModel } from './vsx-extensions-search-model';
 import { bindExtensionPreferences } from './recommended-extensions/recommended-extensions-preference-contribution';
 import { bindPreferenceProviderOverrides } from './recommended-extensions/preference-provider-overrides';
-import { OVSXClientProvider, createOVSXClient } from '../common/ovsx-client-provider';
+import { bindVsxExtensionsPreferences } from './vsx-extensions-preferences';
 import { VSXEnvironment, VSX_ENVIRONMENT_PATH } from '../common/vsx-environment';
-import { RequestService } from '@theia/core/shared/@theia/request';
 import { LanguageQuickPickService } from '@theia/core/lib/browser/i18n/language-quick-pick-service';
 import { VSXLanguageQuickPickService } from './vsx-language-quick-pick-service';
+import { VsxExtensionArgumentProcessor } from './vsx-extension-argument-processor';
+import { ArgumentProcessorContribution } from '@theia/plugin-ext/lib/main/browser/command-registry-main';
 
-export default new ContainerModule((bind, unbind, _, rebind) => {
-    bind<OVSXClientProvider>(OVSXClientProvider).toDynamicValue(ctx => {
-        const clientPromise = createOVSXClient(ctx.container.get(VSXEnvironment), ctx.container.get(RequestService));
-        return () => clientPromise;
-    }).inSingletonScope();
-    bind(VSXEnvironment).toDynamicValue(
-        ctx => WebSocketConnectionProvider.createProxy(ctx.container, VSX_ENVIRONMENT_PATH)
-    ).inSingletonScope();
-
+export default new ContainerModule((bind, unbind, isBound, rebind) => {
+    bind(VSXEnvironment)
+        .toDynamicValue(ctx => WebSocketConnectionProvider.createProxy(ctx.container, VSX_ENVIRONMENT_PATH))
+        .inSingletonScope();
     bind(VSXExtension).toSelf();
     bind(VSXExtensionFactory).toFactory(ctx => (option: VSXExtensionOptions) => {
         const child = ctx.container.createChild();
@@ -68,6 +66,7 @@ export default new ContainerModule((bind, unbind, _, rebind) => {
     })).inSingletonScope();
     bind(VSXExtensionEditorManager).toSelf().inSingletonScope();
     bind(OpenHandler).toService(VSXExtensionEditorManager);
+    bind(WidgetStatusBarContribution).toConstantValue(noopWidgetStatusBarContribution(VSXExtensionEditor));
 
     bind(WidgetFactory).toDynamicValue(({ container }) => ({
         id: VSXExtensionsWidget.ID,
@@ -82,6 +81,7 @@ export default new ContainerModule((bind, unbind, _, rebind) => {
                 progressLocationId: 'extensions'
             });
             child.bind(VSXExtensionsViewContainer).toSelf();
+            child.bind(VSXExtensionsSearchBar).toSelf().inSingletonScope();
             const viewContainer = child.get(VSXExtensionsViewContainer);
             const widgetManager = child.get(WidgetManager);
             for (const id of [
@@ -100,7 +100,6 @@ export default new ContainerModule((bind, unbind, _, rebind) => {
     })).inSingletonScope();
 
     bind(VSXExtensionsSearchModel).toSelf().inSingletonScope();
-    bind(VSXExtensionsSearchBar).toSelf().inSingletonScope();
 
     rebind(LanguageQuickPickService).to(VSXLanguageQuickPickService).inSingletonScope();
 
@@ -110,4 +109,8 @@ export default new ContainerModule((bind, unbind, _, rebind) => {
 
     bindExtensionPreferences(bind);
     bindPreferenceProviderOverrides(bind, unbind);
+    bindVsxExtensionsPreferences(bind);
+
+    bind(VsxExtensionArgumentProcessor).toSelf().inSingletonScope();
+    bind(ArgumentProcessorContribution).toService(VsxExtensionArgumentProcessor);
 });

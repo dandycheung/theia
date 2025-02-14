@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 // eslint-disable-next-line import/no-extraneous-dependencies
@@ -43,11 +43,16 @@ export function enableJSDOM(): () => void {
     });
     (global as any)['document'] = dom.window.document;
     (global as any)['window'] = dom.window;
-    (global as any)['navigator'] = { userAgent: 'node.js', platform: 'Mac' };
+    try {
+        (global as any)['navigator'] = { userAgent: 'node.js', platform: 'Mac' };
+
+    } catch (e) {
+        // node 21+ already has a navigator object
+    }
 
     const toCleanup: string[] = [];
     Object.getOwnPropertyNames((dom.window as any)).forEach(property => {
-        if (typeof (global as any)[property] === 'undefined') {
+        if (!(property in global)) {
             (global as any)[property] = (dom.window as any)[property];
             toCleanup.push(property);
         }

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Command, CommandContribution, CommandRegistry } from '@theia/core/lib/common/command';
@@ -19,7 +19,6 @@ import { inject, injectable } from '@theia/core/shared/inversify';
 import { UriAwareCommandHandler, UriCommandHandler } from '@theia/core/lib/common/uri-command-handler';
 import URI from '@theia/core/lib/common/uri';
 import { SelectionService } from '@theia/core';
-import { theiaUritoUriComponents } from '../../common/uri-components';
 
 export namespace SelectionProviderCommands {
     export const GET_SELECTED_CONTEXT: Command = {
@@ -36,7 +35,7 @@ export class SelectionProviderCommandContribution implements CommandContribution
         commands.registerCommand(SelectionProviderCommands.GET_SELECTED_CONTEXT, this.newMultiUriAwareCommandHandler({
             isEnabled: () => true,
             isVisible: () => false,
-            execute: (selectedUris: URI[]) => selectedUris.map(uri => theiaUritoUriComponents(uri))
+            execute: (selectedUris: URI[]) => selectedUris.map(uri => uri.toComponents())
         }));
     }
 

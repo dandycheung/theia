@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
@@ -53,6 +53,17 @@ export class FileDialogWidget extends FileTreeWidget {
             });
         }
         return attr;
+    }
+
+    protected override handleEnter(event: KeyboardEvent): boolean | void {
+        // Handle ENTER in the dialog to Accept.
+        // Tree view will just expand/collapse the node. This works also with arrow keys or SPACE.
+        return false;
+    }
+
+    protected override handleEscape(event: KeyboardEvent): boolean | void {
+        // Handle ESC in the dialog to Cancel and close the Dialog.
+        return false;
     }
 
     protected override createNodeClassNames(node: TreeNode, props: NodeProps): string[] {

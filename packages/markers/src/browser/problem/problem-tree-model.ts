@@ -11,22 +11,25 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ProblemMarker } from '../../common/problem-marker';
 import { ProblemManager } from './problem-manager';
 import { ProblemCompositeTreeNode } from './problem-composite-tree-node';
-import { MarkerNode, MarkerTree, MarkerOptions, MarkerInfoNode } from '../marker-tree';
+import { MarkerNode, MarkerTree, MarkerOptions, MarkerInfoNode, MarkerRootNode } from '../marker-tree';
 import { MarkerTreeModel } from '../marker-tree-model';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { OpenerOptions, TreeNode } from '@theia/core/lib/browser';
 import { Marker } from '../../common/marker';
 import { Diagnostic } from '@theia/core/shared/vscode-languageserver-protocol';
 import { ProblemUtils } from './problem-utils';
+import debounce = require('@theia/core/shared/lodash.debounce');
 
 @injectable()
 export class ProblemTree extends MarkerTree<Diagnostic> {
+
+    protected queuedMarkers = new Map<string, ProblemCompositeTreeNode.Child>();
 
     constructor(
         @inject(ProblemManager) markerManager: ProblemManager,
@@ -77,12 +80,29 @@ export class ProblemTree extends MarkerTree<Diagnostic> {
     }
 
     protected override insertNodeWithMarkers(node: MarkerInfoNode, markers: Marker<Diagnostic>[]): void {
-        ProblemCompositeTreeNode.addChild(node.parent, node, markers);
-        const children = this.getMarkerNodes(node, markers);
-        node.numberOfMarkers = markers.length;
-        this.setChildren(node, children);
+        // Add the element to the queue.
+        // In case a diagnostics collection for the same file already exists, it will be replaced.
+        this.queuedMarkers.set(node.id, { node, markers });
+        this.doInsertNodesWithMarkers();
     }
 
+    protected doInsertNodesWithMarkers = debounce(() => {
+        const root = this.root;
+        // Sanity check; This should always be of type `MarkerRootNode`
+        if (!MarkerRootNode.is(root)) {
+            return;
+        }
+        const queuedItems = Array.from(this.queuedMarkers.values());
+        ProblemCompositeTreeNode.addChildren(root, queuedItems);
+
+        for (const { node, markers } of queuedItems) {
+            const children = this.getMarkerNodes(node, markers);
+            node.numberOfMarkers = markers.length;
+            this.setChildren(node, children);
+        }
+
+        this.queuedMarkers.clear();
+    }, 50);
 }
 
 @injectable()

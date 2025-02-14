@@ -11,12 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 export const ElectronMainApplicationGlobals = Symbol('ElectronMainApplicationGlobals');
 export interface ElectronMainApplicationGlobals {
-    readonly THEIA_APP_PROJECT_PATH: string
-    readonly THEIA_BACKEND_MAIN_PATH: string
-    readonly THEIA_FRONTEND_HTML_PATH: string
+    readonly THEIA_APP_PROJECT_PATH: string;
+    readonly THEIA_BACKEND_MAIN_PATH: string;
+    readonly THEIA_FRONTEND_HTML_PATH: string;
+    readonly THEIA_SECONDARY_WINDOW_HTML_PATH: string
 }

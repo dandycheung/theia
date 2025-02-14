@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -29,6 +29,7 @@ import {
     FileOperationOptions,
     TextDocumentChangeReason,
     IndentAction,
+    NotebookRendererScript,
 } from '../plugin/types-impl';
 import { UriComponents } from './uri-components';
 import {
@@ -72,6 +73,7 @@ import {
     CallHierarchyOutgoingCall,
     Comment,
     CommentOptions,
+    CommentThreadState,
     CommentThreadCollapsibleState,
     CommentThread,
     CommentThreadChangedEvent,
@@ -84,7 +86,12 @@ import {
     TypeHierarchyItem,
     InlineCompletion,
     InlineCompletions,
-    InlineCompletionContext
+    InlineCompletionContext,
+    DocumentDropEdit,
+    DataTransferDTO,
+    DocumentDropEditProviderMetadata,
+    DebugStackFrameDTO,
+    DebugThreadDTO
 } from './plugin-api-rpc-model';
 import { ExtPluginApi } from './plugin-ext-api-contribution';
 import { KeysToAnyValues, KeysToKeysToAnyValue } from './types';
@@ -97,7 +104,6 @@ import {
 import { DebuggerDescription } from '@theia/debug/lib/common/debug-service';
 import { DebugProtocol } from '@vscode/debugprotocol';
 import { SymbolInformation } from '@theia/core/shared/vscode-languageserver-protocol';
-import { ArgumentProcessor } from '../plugin/command-registry';
 import * as files from '@theia/filesystem/lib/common/files';
 import { BinaryBuffer } from '@theia/core/lib/common/buffer';
 import { ResourceLabelFormatter } from '@theia/core/lib/common/label-protocol';
@@ -107,12 +113,20 @@ import type {
     TimelineChangeEvent,
     TimelineProviderDescriptor
 } from '@theia/timeline/lib/common/timeline-model';
-import { SerializableEnvironmentVariableCollection } from '@theia/terminal/lib/common/base-terminal-protocol';
+import { SerializableEnvironmentVariableCollection } from '@theia/terminal/lib/common/shell-terminal-protocol';
 import { ThemeType } from '@theia/core/lib/common/theme';
 import { Disposable } from '@theia/core/lib/common/disposable';
-import { PickOptions, QuickInputButtonHandle } from '@theia/core/lib/common';
+import { isString, isObject, QuickInputButtonHandle } from '@theia/core/lib/common';
 import { Severity } from '@theia/core/lib/common/severity';
 import { DebugConfiguration, DebugSessionOptions } from '@theia/debug/lib/common/debug-configuration';
+import * as notebookCommon from '@theia/notebook/lib/common';
+import { CellExecutionUpdateType, CellRange, NotebookCellExecutionState } from '@theia/notebook/lib/common';
+import { LanguagePackBundle } from './language-pack-service';
+import { AccessibilityInformation } from '@theia/core/lib/common/accessibility';
+
+import { TreeDelta } from '@theia/test/lib/common/tree-delta';
+import { TestItemDTO, TestOutputDTO, TestRunDTO, TestRunProfileDTO, TestRunRequestDTO, TestStateChangeDTO } from './test-types';
+import { ArgumentProcessor } from './commands';
 
 export interface PreferenceData {
     [scope: number]: any;
@@ -147,23 +161,39 @@ export enum UIKind {
     Web = 2
 }
 
+export enum ExtensionKind {
+    /**
+     * Extension runs where the UI runs.
+     */
+    UI = 1,
+
+    /**
+     * Extension runs where the remote extension host runs.
+     */
+    Workspace = 2
+}
+
 export interface EnvInit {
     queryParams: QueryParameters;
     language: string;
     shell: string;
-    uiKind: UIKind,
+    uiKind: UIKind;
     appName: string;
     appHost: string;
+    appRoot: string;
+    appUriScheme: string;
 }
 
 export interface PluginAPI {
 
 }
 
+export const PluginManager = Symbol.for('PluginManager');
 export interface PluginManager {
     getAllPlugins(): Plugin[];
     getPluginById(pluginId: string): Plugin | undefined;
     getPluginExport(pluginId: string): PluginAPI | undefined;
+    getPluginKind(): theia.ExtensionKind;
     isRunning(pluginId: string): boolean;
     isActive(pluginId: string): boolean;
     activatePlugin(pluginId: string): PromiseLike<void>;
@@ -219,9 +249,11 @@ export interface PluginManagerInitializeParams {
     globalState: KeysToKeysToAnyValue
     workspaceState: KeysToKeysToAnyValue
     env: EnvInit
+    pluginKind: ExtensionKind
     extApi?: ExtPluginApi[]
     webview: WebviewInitData
     jsonValidation: PluginJsonValidationContribution[]
+    supportedActivationEvents?: string[]
 }
 
 export interface PluginManagerStartParams {
@@ -230,10 +262,9 @@ export interface PluginManagerStartParams {
     activationEvents: string[]
 }
 
-export interface PluginManagerExt {
-
+export interface AbstractPluginManagerExt<P extends Record<string, any>> {
     /** initialize the manager, should be called only once */
-    $init(params: PluginManagerInitializeParams): Promise<void>;
+    $init(params: P): Promise<void>;
 
     /** load and activate plugins */
     $start(params: PluginManagerStartParams): Promise<void>;
@@ -251,6 +282,8 @@ export interface PluginManagerExt {
     $activatePlugin(id: string): Promise<void>;
 }
 
+export interface PluginManagerExt extends AbstractPluginManagerExt<PluginManagerInitializeParams> { }
+
 export interface CommandRegistryMain {
     $registerCommand(command: theia.CommandDescription): void;
     $unregisterCommand(id: string): void;
@@ -261,6 +294,8 @@ export interface CommandRegistryMain {
     $executeCommand<T>(id: string, ...args: any[]): PromiseLike<T | undefined>;
     $getCommands(): PromiseLike<string[]>;
     $getKeyBinding(commandId: string): PromiseLike<theia.CommandKeyBinding[] | undefined>;
+
+    registerArgumentProcessor(processor: ArgumentProcessor): void;
 }
 
 export interface CommandRegistryExt {
@@ -269,6 +304,7 @@ export interface CommandRegistryExt {
 }
 
 export interface TerminalServiceExt {
+    $startProfile(providerId: string, cancellationToken: theia.CancellationToken): Promise<string>;
     $terminalCreated(id: string, name: string): void;
     $terminalNameChanged(id: string, name: string): void;
     $terminalOpened(id: string, processId: number, terminalId: number, cols: number, rows: number): void;
@@ -277,13 +313,16 @@ export interface TerminalServiceExt {
     $terminalSizeChanged(id: string, cols: number, rows: number): void;
     $currentTerminalChanged(id: string | undefined): void;
     $terminalStateChanged(id: string): void;
-    $initEnvironmentVariableCollections(collections: [string, SerializableEnvironmentVariableCollection][]): void;
+    $initEnvironmentVariableCollections(collections: [string, string, boolean, SerializableEnvironmentVariableCollection][]): void;
     $provideTerminalLinks(line: string, terminalId: string, token: theia.CancellationToken): Promise<ProvidedTerminalLink[]>;
     $handleTerminalLink(link: ProvidedTerminalLink): Promise<void>;
-    getEnvironmentVariableCollection(extensionIdentifier: string): theia.EnvironmentVariableCollection;
+    getEnvironmentVariableCollection(extensionIdentifier: string): theia.GlobalEnvironmentVariableCollection;
+    $setShell(shell: string): void;
+    $reportOutputMatch(observerId: string, groups: string[]): void;
 }
 export interface OutputChannelRegistryExt {
-    createOutputChannel(name: string, pluginInfo: PluginInfo): theia.OutputChannel
+    createOutputChannel(name: string, pluginInfo: PluginInfo): theia.OutputChannel,
+    createOutputChannel(name: string, pluginInfo: PluginInfo, options: { log: true }): theia.LogOutputChannel
 }
 
 export interface ConnectionMain {
@@ -303,15 +342,15 @@ export interface TerminalServiceMain {
      * Create new Terminal with Terminal options.
      * @param options - object with parameters to create new terminal.
      */
-    $createTerminal(id: string, options: theia.TerminalOptions, isPseudoTerminal?: boolean): Promise<string>;
+    $createTerminal(id: string, options: TerminalOptions, parentId?: string, isPseudoTerminal?: boolean): Promise<string>;
 
     /**
      * Send text to the terminal by id.
      * @param id - terminal widget id.
      * @param text - text content.
-     * @param addNewLine - in case true - add new line after the text, otherwise - don't apply new line.
+     * @param shouldExecute - in case true - Indicates that the text being sent should be executed rather than just inserted in the terminal.
      */
-    $sendText(id: string, text: string, addNewLine?: boolean): void;
+    $sendText(id: string, text: string, shouldExecute?: boolean): void;
 
     /**
      * Write data to the terminal by id.
@@ -397,7 +436,7 @@ export interface TerminalServiceMain {
      */
     $disposeByTerminalId(id: number, waitOnExit?: boolean | string): void;
 
-    $setEnvironmentVariableCollection(extensionIdentifier: string, persistent: boolean, collection: SerializableEnvironmentVariableCollection | undefined): void;
+    $setEnvironmentVariableCollection(persistent: boolean, extensionIdentifier: string, rootUri: string, collection: SerializableEnvironmentVariableCollection): void;
 
     /**
      * Set the terminal widget name.
@@ -417,6 +456,24 @@ export interface TerminalServiceMain {
      * @param providerId id of the terminal link provider to be unregistered.
      */
     $unregisterTerminalLinkProvider(providerId: string): Promise<void>;
+
+    /**
+     * Register a new terminal observer.
+     * @param providerId id of the terminal link provider to be registered.
+     * @param nrOfLinesToMatch the number of lines to match the outputMatcherRegex against
+     * @param outputMatcherRegex the regex to match the output to
+     */
+    $registerTerminalObserver(id: string, nrOfLinesToMatch: number, outputMatcherRegex: string): unknown;
+
+    /**
+     * Unregister the terminal observer with the specified id.
+     * @param providerId id of the terminal observer to be unregistered.
+     */
+    $unregisterTerminalObserver(id: string): unknown;
+}
+
+export interface TerminalOptions extends theia.TerminalOptions {
+    iconUrl?: string | { light: string; dark: string } | ThemeIcon;
 }
 
 export interface AutoFocus {
@@ -461,11 +518,9 @@ export interface StatusBarMessageRegistryMain {
     $dispose(id: string): void;
 }
 
-export type Item = string | theia.QuickPickItem;
-
 export interface QuickOpenExt {
     $onItemSelected(handle: number): void;
-    $validateInput(input: string): Promise<string | { content: string; severity: Severity; } | null | undefined> | undefined;
+    $validateInput(input: string): Promise<string | { content: string; severity: Severity; } | null | undefined>;
 
     $acceptOnDidAccept(sessionId: number): Promise<void>;
     $acceptDidChangeValue(sessionId: number, changedValue: string): Promise<void>;
@@ -476,11 +531,10 @@ export interface QuickOpenExt {
     $onDidChangeSelection(sessionId: number, handles: number[]): void;
 
     /* eslint-disable max-len */
-    showQuickPick(itemsOrItemsPromise: Array<theia.QuickPickItem> | Promise<Array<theia.QuickPickItem>>, options: theia.QuickPickOptions & { canPickMany: true; },
+    showQuickPick(plugin: Plugin, itemsOrItemsPromise: Array<theia.QuickPickItem> | Promise<Array<theia.QuickPickItem>>, options: theia.QuickPickOptions & { canPickMany: true; },
         token?: theia.CancellationToken): Promise<Array<theia.QuickPickItem> | undefined>;
-    showQuickPick(itemsOrItemsPromise: string[] | Promise<string[]>, options?: theia.QuickPickOptions, token?: theia.CancellationToken): Promise<string | undefined>;
-    showQuickPick(itemsOrItemsPromise: Array<theia.QuickPickItem> | Promise<Array<theia.QuickPickItem>>, options?: theia.QuickPickOptions, token?: theia.CancellationToken): Promise<theia.QuickPickItem | undefined>;
-    showQuickPick(itemsOrItemsPromise: Item[] | Promise<Item[]>, options?: theia.QuickPickOptions, token?: theia.CancellationToken): Promise<Item | Item[] | undefined>;
+    showQuickPick(plugin: Plugin, itemsOrItemsPromise: string[] | Promise<string[]>, options?: theia.QuickPickOptions, token?: theia.CancellationToken): Promise<string | undefined>;
+    showQuickPick(plugin: Plugin, itemsOrItemsPromise: Array<theia.QuickPickItem> | Promise<Array<theia.QuickPickItem>>, options?: theia.QuickPickOptions, token?: theia.CancellationToken): Promise<theia.QuickPickItem | undefined>;
 
     showInput(options?: theia.InputBoxOptions, token?: theia.CancellationToken): PromiseLike<string | undefined>;
     // showWorkspaceFolderPick(options?: theia.WorkspaceFolderPickOptions, token?: theia.CancellationToken): Promise<theia.WorkspaceFolder | undefined>
@@ -600,22 +654,36 @@ export interface WorkspaceFolderPickOptionsMain {
     ignoreFocusOut?: boolean;
 }
 
-export type TransferQuickPickItems = TransferQuickPickItemValue | TransferQuickPickSeparator;
-
-export interface TransferQuickPickItemValue extends theia.QuickPickItem {
+export interface TransferQuickPickItem {
     handle: number;
-    type?: 'item'
+    kind: 'item' | 'separator',
+    label: string;
+    iconUrl?: string | { light: string; dark: string } | ThemeIcon;
+    description?: string;
+    detail?: string;
+    picked?: boolean;
+    alwaysShow?: boolean;
+    buttons?: readonly TransferQuickInputButton[];
 }
 
-export interface TransferQuickPickSeparator extends theia.QuickPickItem {
-    handle: number;
-    type: 'separator';
+export interface TransferQuickPickOptions<T extends TransferQuickPickItem> {
+    title?: string;
+    placeHolder?: string;
+    matchOnDescription?: boolean;
+    matchOnDetail?: boolean;
+    matchOnLabel?: boolean;
+    autoFocusOnList?: boolean;
+    ignoreFocusLost?: boolean;
+    canPickMany?: boolean;
+    contextKey?: string;
+    activeItem?: Promise<T> | T;
+    onDidFocus?: (entry: T) => void;
 }
 
-export interface TransferQuickInputButton extends theia.QuickInputButton {
-    iconPath: theia.Uri | { light: theia.Uri, dark: theia.Uri } | ThemeIcon;
-    iconClass?: string;
+export interface TransferQuickInputButton {
     handle?: number;
+    readonly iconUrl?: string | { light: string; dark: string } | ThemeIcon;
+    readonly tooltip?: string | undefined;
 }
 
 export type TransferQuickInput = TransferQuickPick | TransferInputBox;
@@ -634,7 +702,7 @@ export interface TransferQuickPick extends BaseTransferQuickInput {
     value?: string;
     placeholder?: string;
     buttons?: TransferQuickInputButton[];
-    items?: TransferQuickPickItems[];
+    items?: TransferQuickPickItem[];
     activeItems?: ReadonlyArray<theia.QuickPickItem>;
     selectedItems?: ReadonlyArray<theia.QuickPickItem>;
     canSelectMany?: boolean;
@@ -664,8 +732,8 @@ export interface IInputBoxOptions {
 }
 
 export interface QuickOpenMain {
-    $show(instance: number, options: PickOptions<TransferQuickPickItemValue>, token: CancellationToken): Promise<number | number[] | undefined>;
-    $setItems(instance: number, items: TransferQuickPickItems[]): Promise<any>;
+    $show(instance: number, options: TransferQuickPickOptions<TransferQuickPickItem>, token: CancellationToken): Promise<number | number[] | undefined>;
+    $setItems(instance: number, items: TransferQuickPickItem[]): Promise<any>;
     $setError(instance: number, error: Error): Promise<void>;
     $input(options: theia.InputBoxOptions, validateInput: boolean, token: CancellationToken): Promise<string | undefined>;
     $createOrUpdate<T extends theia.QuickPickItem>(params: TransferQuickInput): Promise<void>;
@@ -675,10 +743,18 @@ export interface QuickOpenMain {
     $showInputBox(options: TransferInputBox, validateInput: boolean): Promise<string | undefined>;
 }
 
+export interface FindFilesOptions {
+    exclude?: string;
+    useDefaultExcludes?: boolean;
+    useDefaultSearchExcludes?: boolean;
+    maxResults?: number;
+    useIgnoreFiles?: boolean;
+    fuzzy?: boolean;
+}
+
 export interface WorkspaceMain {
     $pickWorkspaceFolder(options: WorkspaceFolderPickOptionsMain): Promise<theia.WorkspaceFolder | undefined>;
-    $startFileSearch(includePattern: string, includeFolder: string | undefined, excludePatternOrDisregardExcludes: string | false,
-        maxResults: number | undefined, token: theia.CancellationToken): PromiseLike<UriComponents[]>;
+    $startFileSearch(includePattern: string, includeFolder: string | undefined, options: FindFilesOptions, token: theia.CancellationToken): PromiseLike<UriComponents[]>;
     $findTextInFiles(query: theia.TextSearchQuery, options: theia.FindTextInFilesOptions, searchRequestId: number,
         token?: theia.CancellationToken): Promise<theia.TextSearchComplete>
     $registerTextDocumentContentProvider(scheme: string): Promise<void>;
@@ -687,6 +763,10 @@ export interface WorkspaceMain {
     $updateWorkspaceFolders(start: number, deleteCount?: number, ...rootsToAdd: string[]): Promise<void>;
     $getWorkspace(): Promise<files.FileStat | undefined>;
     $requestWorkspaceTrust(options?: theia.WorkspaceTrustRequestOptions): Promise<boolean | undefined>;
+    $resolveProxy(url: string): Promise<string | undefined>;
+    $registerCanonicalUriProvider(scheme: string): Promise<void | undefined>;
+    $unregisterCanonicalUriProvider(scheme: string): void;
+    $getCanonicalUri(uri: string, targetScheme: string, token: theia.CancellationToken): Promise<string | undefined>;
 }
 
 export interface WorkspaceExt {
@@ -695,6 +775,11 @@ export interface WorkspaceExt {
     $provideTextDocumentContent(uri: string): Promise<string | undefined | null>;
     $onTextSearchResult(searchRequestId: number, done: boolean, result?: SearchInWorkspaceResult): void;
     $onWorkspaceTrustChanged(trust: boolean | undefined): void;
+    $registerEditSessionIdentityProvider(scheme: string, provider: theia.EditSessionIdentityProvider): theia.Disposable;
+    registerCanonicalUriProvider(scheme: string, provider: theia.CanonicalUriProvider): theia.Disposable;
+    $disposeCanonicalUriProvider(scheme: string): void;
+    getCanonicalUri(uri: theia.Uri, options: theia.CanonicalUriRequestOptions, token: CancellationToken): theia.ProviderResult<theia.Uri>;
+    $provideCanonicalUri(uri: string, targetScheme: string, token: CancellationToken): Promise<string | undefined>;
 }
 
 export interface TimelineExt {
@@ -719,29 +804,56 @@ export interface DialogsMain {
     $showUploadDialog(options: UploadDialogOptionsMain): Promise<string[] | undefined>;
 }
 
+export interface RegisterTreeDataProviderOptions {
+    manageCheckboxStateManually?: boolean;
+    showCollapseAll?: boolean
+    canSelectMany?: boolean
+    dragMimeTypes?: string[]
+    dropMimeTypes?: string[]
+}
+
 export interface TreeViewRevealOptions {
-    select: boolean
-    focus: boolean
-    expand: boolean | number
+    readonly select: boolean
+    readonly focus: boolean
+    readonly expand: boolean | number
 }
 
 export interface TreeViewsMain {
-    $registerTreeDataProvider(treeViewId: string): void;
+    $registerTreeDataProvider(treeViewId: string, options?: RegisterTreeDataProviderOptions): void;
+    $readDroppedFile(contentId: string): Promise<BinaryBuffer>;
     $unregisterTreeDataProvider(treeViewId: string): void;
-    $refresh(treeViewId: string): Promise<void>;
+    $refresh(treeViewId: string, itemIds?: string[]): Promise<void>;
     $reveal(treeViewId: string, elementParentChain: string[], options: TreeViewRevealOptions): Promise<any>;
     $setMessage(treeViewId: string, message: string): void;
     $setTitle(treeViewId: string, title: string): void;
     $setDescription(treeViewId: string, description: string): void;
+    $setBadge(treeViewId: string, badge: theia.ViewBadge | undefined): void;
+}
+export class DataTransferFileDTO {
+    constructor(readonly name: string, readonly contentId: string, readonly uri?: UriComponents) { }
+
+    static is(value: string | DataTransferFileDTO): value is DataTransferFileDTO {
+        return !(typeof value === 'string');
+    }
 }
 
 export interface TreeViewsExt {
+    $checkStateChanged(treeViewId: string, itemIds: { id: string, checked: boolean }[]): Promise<void>;
+    $dragStarted(treeViewId: string, treeItemIds: string[], token: CancellationToken): Promise<UriComponents[] | undefined>;
+    $dragEnd(treeViewId: string): Promise<void>;
+    $drop(treeViewId: string, treeItemId: string | undefined, dataTransferItems: [string, string | DataTransferFileDTO][], token: CancellationToken): Promise<void>;
     $getChildren(treeViewId: string, treeItemId: string | undefined): Promise<TreeViewItem[] | undefined>;
     $hasResolveTreeItem(treeViewId: string): Promise<boolean>;
     $resolveTreeItem(treeViewId: string, treeItemId: string, token: CancellationToken): Promise<TreeViewItem | undefined>;
     $setExpanded(treeViewId: string, treeItemId: string, expanded: boolean): Promise<any>;
     $setSelection(treeViewId: string, treeItemIds: string[]): Promise<void>;
     $setVisible(treeViewId: string, visible: boolean): Promise<void>;
+}
+
+export interface TreeViewItemCheckboxInfo {
+    checked: boolean;
+    tooltip?: string;
+    accessibilityInformation?: AccessibilityInformation
 }
 
 export interface TreeViewItem {
@@ -766,6 +878,8 @@ export interface TreeViewItem {
 
     collapsibleState?: TreeViewItemCollapsibleState;
 
+    checkboxInfo?: TreeViewItemCheckboxInfo;
+
     contextValue?: string;
 
     command?: Command;
@@ -774,13 +888,13 @@ export interface TreeViewItem {
 
 }
 
-export interface TreeViewSelection {
-    treeViewId: string
-    treeItemId: string
+export interface TreeViewItemReference {
+    viewId: string
+    itemId: string
 }
-export namespace TreeViewSelection {
-    export function is(arg: unknown): arg is TreeViewSelection {
-        return !!arg && typeof arg === 'object' && 'treeViewId' in arg && 'treeItemId' in arg;
+export namespace TreeViewItemReference {
+    export function is(arg: unknown): arg is TreeViewItemReference {
+        return isObject(arg) && isString(arg.viewId) && isString(arg.itemId);
     }
 }
 
@@ -808,7 +922,8 @@ export interface WindowMain {
 }
 
 export interface WindowStateExt {
-    $onWindowStateChanged(focus: boolean): void;
+    $onDidChangeWindowFocus(focused: boolean): void;
+    $onDidChangeWindowActive(active: boolean): void;
 }
 
 export interface NotificationExt {
@@ -826,7 +941,7 @@ export interface ScmCommandArg {
 }
 export namespace ScmCommandArg {
     export function is(arg: unknown): arg is ScmCommandArg {
-        return !!arg && typeof arg === 'object' && 'sourceControlHandle' in arg;
+        return isObject(arg) && 'sourceControlHandle' in arg;
     }
 }
 
@@ -842,7 +957,7 @@ export interface ScmExt {
 
 export namespace TimelineCommandArg {
     export function is(arg: unknown): arg is TimelineCommandArg {
-        return !!arg && typeof arg === 'object' && 'timelineHandle' in arg;
+        return isObject(arg) && 'timelineHandle' in arg;
     }
 }
 export interface TimelineCommandArg {
@@ -861,7 +976,7 @@ export interface DecorationReply { [id: number]: DecorationData; }
 
 export namespace CommentsCommandArg {
     export function is(arg: unknown): arg is CommentsCommandArg {
-        return !!arg && typeof arg === 'object' && 'commentControlHandle' in arg && 'commentThreadHandle' in arg && 'text' in arg && !('commentUniqueId' in arg);
+        return isObject(arg) && 'commentControlHandle' in arg && 'commentThreadHandle' in arg && 'text' in arg && !('commentUniqueId' in arg);
     }
 }
 export interface CommentsCommandArg {
@@ -872,7 +987,7 @@ export interface CommentsCommandArg {
 
 export namespace CommentsContextCommandArg {
     export function is(arg: unknown): arg is CommentsContextCommandArg {
-        return !!arg && typeof arg === 'object' && 'commentControlHandle' in arg && 'commentThreadHandle' in arg && 'commentUniqueId' in arg && !('text' in arg);
+        return isObject(arg) && 'commentControlHandle' in arg && 'commentThreadHandle' in arg && 'commentUniqueId' in arg && !('text' in arg);
     }
 }
 export interface CommentsContextCommandArg {
@@ -883,7 +998,7 @@ export interface CommentsContextCommandArg {
 
 export namespace CommentsEditCommandArg {
     export function is(arg: unknown): arg is CommentsEditCommandArg {
-        return !!arg && typeof arg === 'object' && 'commentControlHandle' in arg && 'commentThreadHandle' in arg && 'commentUniqueId' in arg && 'text' in arg;
+        return isObject(arg) && 'commentControlHandle' in arg && 'commentThreadHandle' in arg && 'commentUniqueId' in arg && 'text' in arg;
     }
 }
 export interface CommentsEditCommandArg {
@@ -919,6 +1034,7 @@ export interface ScmMain {
     $setInputBoxValue(sourceControlHandle: number, value: string): void;
     $setInputBoxPlaceholder(sourceControlHandle: number, placeholder: string): void;
     $setInputBoxVisible(sourceControlHandle: number, visible: boolean): void;
+    $setInputBoxEnabled(sourceControlHandle: number, enabled: boolean): void;
 }
 
 export interface SourceControlProviderFeatures {
@@ -936,7 +1052,7 @@ export interface SourceControlGroupFeatures {
 export interface ScmRawResource {
     handle: number,
     sourceUri: UriComponents,
-    icons: UriComponents[],
+    icons: (IconUrl | ThemeIcon | undefined)[], /* icons: light, dark */
     tooltip: string,
     strikeThrough: boolean,
     faded: boolean,
@@ -1069,6 +1185,7 @@ export interface Selection {
 
 export interface TextEditorConfiguration {
     tabSize: number;
+    indentSize: number;
     insertSpaces: boolean;
     cursorStyle: TextEditorCursorStyle;
     lineNumbers: TextEditorLineNumbersStyle;
@@ -1076,6 +1193,7 @@ export interface TextEditorConfiguration {
 
 export interface TextEditorConfigurationUpdate {
     tabSize?: number | 'auto';
+    indentSize?: number | 'tabSize';
     insertSpaces?: boolean | 'auto';
     cursorStyle?: TextEditorCursorStyle;
     lineNumbers?: TextEditorLineNumbersStyle;
@@ -1120,7 +1238,7 @@ export interface UndoStopOptions {
 }
 
 export interface ApplyEditsOptions extends UndoStopOptions {
-    setEndOfLine: EndOfLine;
+    setEndOfLine: EndOfLine | undefined;
 }
 
 export interface ThemeColor {
@@ -1226,8 +1344,10 @@ export interface TextEditorsMain {
     $tryRevealRange(id: string, range: Range, revealType: TextEditorRevealType): Promise<void>;
     $trySetSelections(id: string, selections: Selection[]): Promise<void>;
     $tryApplyEdits(id: string, modelVersionId: number, edits: SingleEditOperation[], opts: ApplyEditsOptions): Promise<boolean>;
-    $tryApplyWorkspaceEdit(workspaceEditDto: WorkspaceEditDto): Promise<boolean>;
+    $tryApplyWorkspaceEdit(workspaceEditDto: WorkspaceEditDto, metadata?: WorkspaceEditMetadataDto): Promise<boolean>;
     $tryInsertSnippet(id: string, template: string, selections: Range[], opts: UndoStopOptions): Promise<boolean>;
+    $save(uri: UriComponents): PromiseLike<UriComponents | undefined>;
+    $saveAs(uri: UriComponents): PromiseLike<UriComponents | undefined>;
     $saveAll(includeUntitled?: boolean): Promise<boolean>;
     // $getDiffInformation(id: string): Promise<editorCommon.ILineChange[]>;
 }
@@ -1236,6 +1356,7 @@ export interface ModelAddedData {
     uri: UriComponents;
     versionId: number;
     lines: string[];
+    languageId?: string;
     EOL: string;
     modeId: string;
     isDirty: boolean;
@@ -1296,7 +1417,6 @@ export interface DocumentsMain {
     $tryShowDocument(uri: UriComponents, options?: TextDocumentShowOptions): Promise<void>;
     $tryOpenDocument(uri: UriComponents): Promise<boolean>;
     $trySaveDocument(uri: UriComponents): Promise<boolean>;
-    $tryCloseDocument(uri: UriComponents): Promise<boolean>;
 }
 
 export interface EnvMain {
@@ -1380,12 +1500,19 @@ export interface SerializedEnterAction {
     removeText?: number;
 }
 
+export interface SerializedAutoClosingPair {
+    open: string;
+    close: string;
+    notIn?: string[];
+}
+
 export interface SerializedLanguageConfiguration {
     comments?: CommentRule;
     brackets?: CharacterPair[];
     wordPattern?: SerializedRegExp;
     indentationRules?: SerializedIndentationRule;
     onEnterRules?: SerializedOnEnterRule[];
+    autoClosingPairs?: SerializedAutoClosingPair[]
 }
 
 export interface CodeActionDto {
@@ -1398,13 +1525,11 @@ export interface CodeActionDto {
     disabled?: string;
 }
 
-export interface WorkspaceEditMetadataDto {
+export interface WorkspaceEditEntryMetadataDto {
     needsConfirmation: boolean;
     label: string;
     description?: string;
-    iconPath?: {
-        id: string;
-    } | {
+    iconPath?: ThemeIcon | {
         light: UriComponents;
         dark: UriComponents;
     };
@@ -1414,15 +1539,14 @@ export interface WorkspaceFileEditDto {
     oldResource?: UriComponents;
     newResource?: UriComponents;
     options?: FileOperationOptions;
-    metadata?: WorkspaceEditMetadataDto;
+    metadata?: WorkspaceEditEntryMetadataDto;
 }
 
 export interface WorkspaceTextEditDto {
     resource: UriComponents;
     modelVersionId?: number;
-    textEdit: TextEdit;
-    metadata?: WorkspaceEditMetadataDto;
-
+    textEdit: TextEdit & { insertAsSnippet?: boolean };
+    metadata?: WorkspaceEditEntryMetadataDto;
 }
 export namespace WorkspaceTextEditDto {
     export function is(arg: WorkspaceTextEditDto | WorkspaceFileEditDto): arg is WorkspaceTextEditDto {
@@ -1433,9 +1557,51 @@ export namespace WorkspaceTextEditDto {
             && typeof arg.textEdit === 'object';
     }
 }
+export interface WorkspaceEditMetadataDto {
+    isRefactoring?: boolean;
+}
+
+export type CellEditOperationDto =
+    {
+        editType: notebookCommon.CellEditType.Metadata;
+        index: number;
+        metadata: Record<string, unknown>;
+    } |
+    {
+        editType: notebookCommon.CellEditType.DocumentMetadata;
+        metadata: Record<string, unknown>;
+    } |
+    {
+        editType: notebookCommon.CellEditType.Replace;
+        index: number;
+        count: number;
+        cells: NotebookCellDataDto[];
+    };
+
+export interface NotebookWorkspaceEditMetadataDto {
+    needsConfirmation: boolean;
+    label: string;
+    description?: string;
+}
+
+export interface WorkspaceNotebookCellEditDto {
+    metadata?: NotebookWorkspaceEditMetadataDto;
+    resource: UriComponents;
+    cellEdit: CellEditOperationDto;
+}
+
+export namespace WorkspaceNotebookCellEditDto {
+    export function is(arg: WorkspaceNotebookCellEditDto | WorkspaceFileEditDto | WorkspaceTextEditDto): arg is WorkspaceNotebookCellEditDto {
+        return !!arg
+            && 'resource' in arg
+            && 'cellEdit' in arg
+            && arg.cellEdit !== null
+            && typeof arg.cellEdit === 'object';
+    }
+}
 
 export interface WorkspaceEditDto {
-    edits: Array<WorkspaceTextEditDto | WorkspaceFileEditDto>;
+    edits: Array<WorkspaceTextEditDto | WorkspaceFileEditDto | WorkspaceNotebookCellEditDto>;
 }
 
 export interface CommandProperties {
@@ -1480,6 +1646,7 @@ export interface TaskPresentationOptionsDTO {
     panel?: number;
     showReuseMessage?: boolean;
     clear?: boolean;
+    close?: boolean;
 }
 
 export interface TaskExecutionDto {
@@ -1540,6 +1707,13 @@ export interface LanguagesExt {
         options: FormattingOptions,
         token: CancellationToken
     ): Promise<TextEdit[] | undefined>;
+    $provideDocumentDropEdits(
+        handle: number,
+        resource: UriComponents,
+        position: Position,
+        dataTransfer: DataTransferDTO,
+        token: CancellationToken
+    ): Promise<DocumentDropEdit | undefined>;
     $provideDocumentLinks(handle: number, resource: UriComponents, token: CancellationToken): Promise<DocumentLink[] | undefined>;
     $resolveDocumentLink(handle: number, link: DocumentLink, token: CancellationToken): Promise<DocumentLink | undefined>;
     $releaseDocumentLinks(handle: number, ids: number[]): void;
@@ -1620,6 +1794,7 @@ export interface LanguagesMain {
     $clearDiagnostics(id: string): void;
     $changeDiagnostics(id: string, delta: [string, MarkerData[]][]): void;
     $registerDocumentFormattingSupport(handle: number, pluginInfo: PluginInfo, selector: SerializedDocumentFilter[]): void;
+    $registerDocumentDropEditProvider(handle: number, selector: SerializedDocumentFilter[], metadata?: DocumentDropEditProviderMetadata): void
     $registerRangeFormattingSupport(handle: number, pluginInfo: PluginInfo, selector: SerializedDocumentFilter[]): void;
     $registerOnTypeFormattingProvider(handle: number, pluginInfo: PluginInfo, selector: SerializedDocumentFilter[], autoFormatTriggerCharacters: string[]): void;
     $registerDocumentLinkProvider(handle: number, pluginInfo: PluginInfo, selector: SerializedDocumentFilter[]): void;
@@ -1679,6 +1854,7 @@ export interface WebviewsMain {
     $reveal(handle: string, showOptions: theia.WebviewPanelShowOptions): void;
     $setTitle(handle: string, value: string): void;
     $setIconPath(handle: string, value: IconUrl | undefined): void;
+    $setBadge(handle: string, badge: theia.ViewBadge | undefined): void;
     $setHtml(handle: string, value: string): void;
     $setOptions(handle: string, options: theia.WebviewOptions): void;
     $postMessage(handle: string, value: any): Thenable<boolean>;
@@ -1704,17 +1880,18 @@ export interface WebviewViewsMain extends Disposable {
 
     $setWebviewViewTitle(handle: string, value: string | undefined): void;
     $setWebviewViewDescription(handle: string, value: string | undefined): void;
+    $setBadge(handle: string, badge: theia.ViewBadge | undefined): void;
 
     $show(handle: string, preserveFocus: boolean): void;
 }
 
 export interface CustomEditorsExt {
-    $resolveWebviewEditor<T>(
+    $resolveWebviewEditor(
         resource: UriComponents,
         newWebviewHandle: string,
         viewType: string,
         title: string,
-        widgetOpenerOptions: T | undefined,
+        position: number,
         options: theia.WebviewPanelOptions,
         cancellation: CancellationToken): Promise<void>;
     $createCustomDocument(resource: UriComponents, viewType: string, openContext: theia.CustomDocumentOpenContext, cancellation: CancellationToken): Promise<{ editable: boolean }>;
@@ -1737,7 +1914,6 @@ export interface CustomEditorsMain {
     $registerTextEditorProvider(viewType: string, options: theia.WebviewPanelOptions, capabilities: CustomTextEditorCapabilities): void;
     $registerCustomEditorProvider(viewType: string, options: theia.WebviewPanelOptions, supportsMultipleEditorsPerDocument: boolean): void;
     $unregisterEditorProvider(viewType: string): void;
-    $createCustomEditorPanel<T>(handle: string, title: string, widgetOpenerOptions: T | undefined, options: theia.WebviewPanelOptions & theia.WebviewOptions): Promise<void>;
     $onDidEdit(resource: UriComponents, viewType: string, editId: number, label: string | undefined): void;
     $onContentChange(resource: UriComponents, viewType: string): void;
 }
@@ -1800,6 +1976,7 @@ export interface DebugExt {
     $onSessionCustomEvent(sessionId: string, event: string, body?: any): void;
     $breakpointsDidChange(added: Breakpoint[], removed: string[], changed: Breakpoint[]): void;
     $sessionDidCreate(sessionId: string): void;
+    $sessionDidStart(sessionId: string): void;
     $sessionDidDestroy(sessionId: string): void;
     $sessionDidChange(sessionId: string | undefined): void;
     $provideDebugConfigurationsByHandle(handle: number, workspaceFolder: string | undefined): Promise<theia.DebugConfiguration[]>;
@@ -1814,6 +1991,8 @@ export interface DebugExt {
         debugConfiguration: DebugConfiguration
     ): Promise<theia.DebugConfiguration | undefined | null>;
 
+    $onDidChangeActiveFrame(frame: DebugStackFrameDTO | undefined): void;
+    $onDidChangeActiveThread(thread: DebugThreadDTO | undefined): void;
     $createDebugSession(debugConfiguration: DebugConfiguration, workspaceFolder: string | undefined): Promise<string>;
     $terminateDebugSession(sessionId: string): Promise<void>;
     $getTerminalCreationOptions(debugType: string): Promise<TerminalOptionsExt | undefined>;
@@ -1858,7 +2037,7 @@ export interface IFileChangeDto {
 }
 
 export interface FileSystemMain {
-    $registerFileSystemProvider(handle: number, scheme: string, capabilities: files.FileSystemProviderCapabilities): void;
+    $registerFileSystemProvider(handle: number, scheme: string, capabilities: files.FileSystemProviderCapabilities, readonlyMessage?: MarkdownString): void;
     $unregisterProvider(handle: number): void;
     $onFileSystemChange(handle: number, resource: IFileChangeDto[]): void;
 
@@ -1906,6 +2085,7 @@ export type CommentThreadChanges = Partial<{
     contextValue: string,
     comments: Comment[],
     collapseState: CommentThreadCollapsibleState;
+    state: CommentThreadState;
     canReply: boolean;
 }>;
 
@@ -1919,15 +2099,218 @@ export interface CommentsMain {
     $onDidCommentThreadsChange(handle: number, event: CommentThreadChangedEvent): void;
 }
 
+// #region
+
+export const enum TabInputKind {
+    UnknownInput,
+    TextInput,
+    TextDiffInput,
+    TextMergeInput,
+    NotebookInput,
+    NotebookDiffInput,
+    CustomEditorInput,
+    WebviewEditorInput,
+    TerminalEditorInput,
+    InteractiveEditorInput,
+}
+
+export interface UnknownInputDto {
+    kind: TabInputKind.UnknownInput;
+}
+
+export interface TextInputDto {
+    kind: TabInputKind.TextInput;
+    uri: UriComponents;
+}
+
+export interface TextDiffInputDto {
+    kind: TabInputKind.TextDiffInput;
+    original: UriComponents;
+    modified: UriComponents;
+}
+
+export interface TextMergeInputDto {
+    kind: TabInputKind.TextMergeInput;
+    base: UriComponents;
+    input1: UriComponents;
+    input2: UriComponents;
+    result: UriComponents;
+}
+
+export interface NotebookInputDto {
+    kind: TabInputKind.NotebookInput;
+    notebookType: string;
+    uri: UriComponents;
+}
+
+export interface NotebookDiffInputDto {
+    kind: TabInputKind.NotebookDiffInput;
+    notebookType: string;
+    original: UriComponents;
+    modified: UriComponents;
+}
+
+export interface CustomInputDto {
+    kind: TabInputKind.CustomEditorInput;
+    viewType: string;
+    uri: UriComponents;
+}
+
+export interface WebviewInputDto {
+    kind: TabInputKind.WebviewEditorInput;
+    viewType: string;
+}
+
+export interface InteractiveEditorInputDto {
+    kind: TabInputKind.InteractiveEditorInput;
+    uri: UriComponents;
+    inputBoxUri: UriComponents;
+}
+
+export interface TabInputDto {
+    kind: TabInputKind.TerminalEditorInput;
+}
+
+export type EditorGroupColumn = number;
+export type AnyInputDto = UnknownInputDto | TextInputDto | TextDiffInputDto | TextMergeInputDto | NotebookInputDto | NotebookDiffInputDto | CustomInputDto | WebviewInputDto | InteractiveEditorInputDto | TabInputDto;
+
+export interface TabGroupDto {
+    isActive: boolean;
+    viewColumn: EditorGroupColumn;
+    tabs: TabDto[];
+    groupId: number;
+}
+
+export const enum TabModelOperationKind {
+    TAB_OPEN,
+    TAB_CLOSE,
+    TAB_UPDATE,
+    TAB_MOVE
+}
+
+export interface TabOperation {
+    readonly kind: TabModelOperationKind.TAB_OPEN | TabModelOperationKind.TAB_CLOSE | TabModelOperationKind.TAB_UPDATE | TabModelOperationKind.TAB_MOVE;
+    readonly index: number;
+    readonly tabDto: TabDto;
+    readonly groupId: number;
+    readonly oldIndex?: number;
+}
+
+export interface TabDto {
+    id: string;
+    label: string;
+    input: AnyInputDto;
+    editorId?: string;
+    isActive: boolean;
+    isPinned: boolean;
+    isPreview: boolean;
+    isDirty: boolean;
+}
+
+export interface TabsExt {
+    $acceptEditorTabModel(tabGroups: TabGroupDto[]): void;
+    $acceptTabGroupUpdate(groupDto: TabGroupDto): void;
+    $acceptTabOperation(operation: TabOperation): void;
+}
+
+export interface TabsMain {
+    $moveTab(tabId: string, index: number, viewColumn: EditorGroupColumn, preserveFocus?: boolean): void;
+    $closeTab(tabIds: string[], preserveFocus?: boolean): Promise<boolean>;
+    $closeGroup(groupIds: number[], preserveFocus?: boolean): Promise<boolean>;
+}
+
+export interface TelemetryMain {
+}
+
+export interface TelemetryExt {
+}
+
+// endregion
+
+// based from https://github.com/microsoft/vscode/blob/1.72.2/src/vs/workbench/api/common/extHostTesting.ts
+export const enum TestingResourceExt {
+    Workspace,
+    TextDocument
+}
+
+// based from https://github.com/microsoft/vscode/blob/1.72.2/src/vs/workbench/api/common/extHostTesting.ts
+export interface TestingExt {
+    $onCancelTestRun(controllerId: string, runId: string): void;
+    /** Configures a test run config. */
+    $onConfigureRunProfile(controllerId: string, profileId: string): void;
+
+    /** Sets the default on a given run profile */
+    $onDidChangeDefault(controllerId: string, profileId: string, isDefault: boolean): void;
+
+    $onRunControllerTests(reqs: TestRunRequestDTO[]): void;
+
+    /** Asks the controller to refresh its tests */
+    $refreshTests(controllerId: string, token: CancellationToken): Promise<void>;
+
+    $onResolveChildren(controllerId: string, path: string[]): void;
+}
+
+// based from https://github.com/microsoft/vscode/blob/1.85.1/src/vs/workbench/api/common/extHostUrls.ts
+export interface UriExt {
+    registerUriHandler(handler: theia.UriHandler, plugin: PluginInfo): theia.Disposable;
+    $handleExternalUri(uri: UriComponents): Promise<void>;
+}
+
+export interface UriMain {
+    $registerUriHandler(extensionId: string, extensionName: string): void;
+    $unregisterUriHandler(extensionId: string): void;
+}
+
+export interface TestControllerUpdate {
+    label: string;
+    canRefresh: boolean;
+    canResolve: boolean;
+}
+
+// based from https://github.com/microsoft/vscode/blob/1.72.2/src/vs/workbench/api/common/extHostTesting.ts
+export interface TestingMain {
+    // --- test lifecycle:
+
+    /** Registers that there's a test controller with the given ID */
+    $registerTestController(controllerId: string, label: string): void;
+    /** Updates the label of an existing test controller. */
+    $updateController(controllerId: string, patch: Partial<TestControllerUpdate>): void;
+    /** Disposes of the test controller with the given ID */
+    $unregisterTestController(controllerId: string): void;
+    $notifyDelta(controllerId: string, diff: TreeDelta<string, TestItemDTO>[]): void;
+
+    // --- test run configurations:
+
+    /** Called when a new test run profile is available */
+    $notifyTestRunProfileCreated(controllerId: string, profile: TestRunProfileDTO): void;
+    /** Updates an existing test run profile */
+    $updateTestRunProfile(controllerId: string, profileId: string, update: Partial<TestRunProfileDTO>): void;
+    /** Removes a previously-published test run profile */
+    $removeTestRunProfile(controllerId: string, profileId: string): void;
+
+    // Test runs
+
+    $notifyTestRunCreated(controllerId: string, run: TestRunDTO, preserveFocus: boolean): void;
+    $notifyTestStateChanged(controllerId: string, runId: string, stateChanges: TestStateChangeDTO[], outputChanges: TestOutputDTO[]): void;
+    $notifyTestRunEnded(controllerId: string, runId: string): void;
+}
+
 export const PLUGIN_RPC_CONTEXT = {
-    AUTHENTICATION_MAIN: <ProxyIdentifier<AuthenticationMain>>createProxyIdentifier<AuthenticationMain>('AuthenticationMain'),
-    COMMAND_REGISTRY_MAIN: <ProxyIdentifier<CommandRegistryMain>>createProxyIdentifier<CommandRegistryMain>('CommandRegistryMain'),
+    LOGGER_MAIN: createProxyIdentifier<LoggerMain>('LoggerMain'),
+    AUTHENTICATION_MAIN: createProxyIdentifier<AuthenticationMain>('AuthenticationMain'),
+    COMMAND_REGISTRY_MAIN: createProxyIdentifier<CommandRegistryMain>('CommandRegistryMain'),
     QUICK_OPEN_MAIN: createProxyIdentifier<QuickOpenMain>('QuickOpenMain'),
     DIALOGS_MAIN: createProxyIdentifier<DialogsMain>('DialogsMain'),
     WORKSPACE_MAIN: createProxyIdentifier<WorkspaceMain>('WorkspaceMain'),
     MESSAGE_REGISTRY_MAIN: <ProxyIdentifier<MessageRegistryMain>>createProxyIdentifier<MessageRegistryMain>('MessageRegistryMain'),
     TEXT_EDITORS_MAIN: createProxyIdentifier<TextEditorsMain>('TextEditorsMain'),
     DOCUMENTS_MAIN: createProxyIdentifier<DocumentsMain>('DocumentsMain'),
+    NOTEBOOKS_MAIN: createProxyIdentifier<NotebooksMain>('NotebooksMain'),
+    NOTEBOOK_DOCUMENTS_MAIN: createProxyIdentifier<NotebookDocumentsMain>('NotebookDocumentsMain'),
+    NOTEBOOK_EDITORS_MAIN: createProxyIdentifier<NotebookEditorsMain>('NotebookEditorsMain'),
+    NOTEBOOK_DOCUMENTS_AND_EDITORS_MAIN: createProxyIdentifier<NotebookDocumentsAndEditorsMain>('NotebooksAndEditorsMain'),
+    NOTEBOOK_RENDERERS_MAIN: createProxyIdentifier<NotebookRenderersMain>('NotebookRenderersMain'),
+    NOTEBOOK_KERNELS_MAIN: createProxyIdentifier<NotebookKernelsMain>('NotebookKernelsMain'),
     STATUS_BAR_MESSAGE_REGISTRY_MAIN: <ProxyIdentifier<StatusBarMessageRegistryMain>>createProxyIdentifier<StatusBarMessageRegistryMain>('StatusBarMessageRegistryMain'),
     ENV_MAIN: createProxyIdentifier<EnvMain>('EnvMain'),
     NOTIFICATION_MAIN: createProxyIdentifier<NotificationMain>('NotificationMain'),
@@ -1948,11 +2331,16 @@ export const PLUGIN_RPC_CONTEXT = {
     SECRETS_MAIN: createProxyIdentifier<SecretsMain>('SecretsMain'),
     DECORATIONS_MAIN: createProxyIdentifier<DecorationsMain>('DecorationsMain'),
     WINDOW_MAIN: createProxyIdentifier<WindowMain>('WindowMain'),
-    CLIPBOARD_MAIN: <ProxyIdentifier<ClipboardMain>>createProxyIdentifier<ClipboardMain>('ClipboardMain'),
-    LABEL_SERVICE_MAIN: <ProxyIdentifier<LabelServiceMain>>createProxyIdentifier<LabelServiceMain>('LabelServiceMain'),
-    TIMELINE_MAIN: <ProxyIdentifier<TimelineMain>>createProxyIdentifier<TimelineMain>('TimelineMain'),
-    THEMING_MAIN: <ProxyIdentifier<ThemingMain>>createProxyIdentifier<ThemingMain>('ThemingMain'),
-    COMMENTS_MAIN: <ProxyIdentifier<CommentsMain>>createProxyIdentifier<CommentsMain>('CommentsMain')
+    CLIPBOARD_MAIN: createProxyIdentifier<ClipboardMain>('ClipboardMain'),
+    LABEL_SERVICE_MAIN: createProxyIdentifier<LabelServiceMain>('LabelServiceMain'),
+    TIMELINE_MAIN: createProxyIdentifier<TimelineMain>('TimelineMain'),
+    THEMING_MAIN: createProxyIdentifier<ThemingMain>('ThemingMain'),
+    COMMENTS_MAIN: createProxyIdentifier<CommentsMain>('CommentsMain'),
+    TABS_MAIN: createProxyIdentifier<TabsMain>('TabsMain'),
+    TELEMETRY_MAIN: createProxyIdentifier<TelemetryMain>('TelemetryMain'),
+    LOCALIZATION_MAIN: createProxyIdentifier<LocalizationMain>('LocalizationMain'),
+    TESTING_MAIN: createProxyIdentifier<TestingMain>('TestingMain'),
+    URI_MAIN: createProxyIdentifier<UriMain>('UriMain')
 };
 
 export const MAIN_RPC_CONTEXT = {
@@ -1966,6 +2354,11 @@ export const MAIN_RPC_CONTEXT = {
     TEXT_EDITORS_EXT: createProxyIdentifier<TextEditorsExt>('TextEditorsExt'),
     EDITORS_AND_DOCUMENTS_EXT: createProxyIdentifier<EditorsAndDocumentsExt>('EditorsAndDocumentsExt'),
     DOCUMENTS_EXT: createProxyIdentifier<DocumentsExt>('DocumentsExt'),
+    NOTEBOOKS_EXT: createProxyIdentifier<NotebooksExt>('NotebooksExt'),
+    NOTEBOOK_DOCUMENTS_EXT: createProxyIdentifier<NotebookDocumentsExt>('NotebookDocumentsExt'),
+    NOTEBOOK_EDITORS_EXT: createProxyIdentifier<NotebookEditorsExt>('NotebookEditorsExt'),
+    NOTEBOOK_RENDERERS_EXT: createProxyIdentifier<NotebookRenderersExt>('NotebooksRenderersExt'),
+    NOTEBOOK_KERNELS_EXT: createProxyIdentifier<NotebookKernelsExt>('NotebookKernelsExt'),
     TERMINAL_EXT: createProxyIdentifier<TerminalServiceExt>('TerminalServiceExt'),
     OUTPUT_CHANNEL_REGISTRY_EXT: createProxyIdentifier<OutputChannelRegistryExt>('OutputChannelRegistryExt'),
     TREE_VIEWS_EXT: createProxyIdentifier<TreeViewsExt>('TreeViewsExt'),
@@ -1986,13 +2379,17 @@ export const MAIN_RPC_CONTEXT = {
     LABEL_SERVICE_EXT: createProxyIdentifier<LabelServiceExt>('LabelServiceExt'),
     TIMELINE_EXT: createProxyIdentifier<TimelineExt>('TimeLineExt'),
     THEMING_EXT: createProxyIdentifier<ThemingExt>('ThemingExt'),
-    COMMENTS_EXT: createProxyIdentifier<CommentsExt>('CommentsExt')
+    COMMENTS_EXT: createProxyIdentifier<CommentsExt>('CommentsExt'),
+    TABS_EXT: createProxyIdentifier<TabsExt>('TabsExt'),
+    TELEMETRY_EXT: createProxyIdentifier<TelemetryExt>('TelemetryExt)'),
+    TESTING_EXT: createProxyIdentifier<TestingExt>('TestingExt'),
+    URI_EXT: createProxyIdentifier<UriExt>('UriExt')
 };
 
 export interface TasksExt {
     $initLoadedTasks(executions: TaskExecutionDto[]): Promise<void>;
-    $provideTasks(handle: number): Promise<TaskDto[] | undefined>;
-    $resolveTask(handle: number, task: TaskDto, token?: CancellationToken): Promise<TaskDto | undefined>;
+    $provideTasks(handle: number): Promise<TaskDto[]>;
+    $resolveTask(handle: number, task: TaskDto, token?: CancellationToken): Promise<TaskDto>;
     $onDidStartTask(execution: TaskExecutionDto, terminalId: number): void;
     $onDidEndTask(id: number): void;
     $onDidStartTaskProcess(processId: number | undefined, execution: TaskExecutionDto): void;
@@ -2010,18 +2407,305 @@ export interface TasksMain {
 }
 
 export interface AuthenticationExt {
-    $getSessions(id: string, scopes?: string[]): Promise<ReadonlyArray<theia.AuthenticationSession>>;
-    $createSession(id: string, scopes: string[]): Promise<theia.AuthenticationSession>;
+    $getSessions(providerId: string, scopes: string[] | undefined, options: theia.AuthenticationProviderSessionOptions): Promise<ReadonlyArray<theia.AuthenticationSession>>;
+    $createSession(id: string, scopes: string[], options: theia.AuthenticationProviderSessionOptions): Promise<theia.AuthenticationSession>;
     $removeSession(id: string, sessionId: string): Promise<void>;
     $onDidChangeAuthenticationSessions(provider: theia.AuthenticationProviderInformation): Promise<void>;
 }
 
 export interface AuthenticationMain {
+    $getAccounts(providerId: string): Thenable<readonly theia.AuthenticationSessionAccountInformation[]>;
     $registerAuthenticationProvider(id: string, label: string, supportsMultipleAccounts: boolean): void;
     $unregisterAuthenticationProvider(id: string): void;
     $onDidChangeSessions(providerId: string, event: AuthenticationProviderAuthenticationSessionsChangeEvent): void;
     $getSession(providerId: string, scopes: readonly string[], extensionId: string, extensionName: string,
         options: theia.AuthenticationGetSessionOptions): Promise<theia.AuthenticationSession | undefined>;
+}
+
+export interface NotebookOutputItemDto {
+    readonly mime: string;
+    readonly valueBytes: BinaryBuffer;
+}
+
+export interface NotebookOutputDto {
+    outputId: string;
+    items: NotebookOutputItemDto[];
+    metadata?: Record<string, unknown>;
+}
+
+export interface NotebookCellDataDto {
+    source: string;
+    language: string;
+    cellKind: notebookCommon.CellKind;
+    outputs: NotebookOutputDto[];
+    metadata?: notebookCommon.NotebookCellMetadata;
+    internalMetadata?: notebookCommon.NotebookCellInternalMetadata;
+}
+
+export interface NotebookDataDto {
+    readonly cells: NotebookCellDataDto[];
+    readonly metadata: notebookCommon.NotebookDocumentMetadata;
+}
+
+export interface NotebookCellDto {
+    handle: number;
+    uri: UriComponents;
+    eol: string;
+    source: string[];
+    language: string;
+    mime?: string;
+    cellKind: notebookCommon.CellKind;
+    outputs: NotebookOutputDto[];
+    metadata?: notebookCommon.NotebookCellMetadata;
+    internalMetadata?: notebookCommon.NotebookCellInternalMetadata;
+}
+
+export interface NotebookModelAddedData {
+    uri: UriComponents;
+    versionId: number;
+    cells: NotebookCellDto[];
+    viewType: string;
+    metadata?: notebookCommon.NotebookDocumentMetadata;
+}
+
+export interface NotebookEditorAddData {
+    id: string;
+    documentUri: UriComponents;
+    selections: CellRange[];
+    visibleRanges: CellRange[];
+    viewColumn?: number;
+}
+
+export interface NotebookDocumentsAndEditorsDelta {
+    removedDocuments?: UriComponents[];
+    addedDocuments?: NotebookModelAddedData[];
+    removedEditors?: string[];
+    addedEditors?: NotebookEditorAddData[];
+    newActiveEditor?: string | null;
+    visibleEditors?: string[];
+}
+
+export type NotebookCellStatusBarEntryDto = notebookCommon.NotebookCellStatusBarItem;
+
+export interface NotebookCellStatusBarListDto {
+    items: NotebookCellStatusBarEntryDto[];
+    cacheId: number;
+}
+
+export type NotebookRawContentEventDto =
+    // notebookCommon.NotebookCellsInitializeEvent<NotebookCellDto>
+    | {
+
+        readonly kind: notebookCommon.NotebookCellsChangeType.ModelChange;
+        readonly changes: notebookCommon.NotebookCellTextModelSplice<NotebookCellDto>[];
+    }
+    | {
+        readonly kind: notebookCommon.NotebookCellsChangeType.Move;
+        readonly index: number;
+        readonly length: number;
+        readonly newIdx: number;
+    }
+    | {
+        readonly kind: notebookCommon.NotebookCellsChangeType.Output;
+        readonly index: number;
+        readonly outputs: NotebookOutputDto[];
+    }
+    | {
+        readonly kind: notebookCommon.NotebookCellsChangeType.OutputItem;
+        readonly index: number;
+        readonly outputId: string;
+        readonly outputItems: NotebookOutputItemDto[];
+        readonly append: boolean;
+    }
+    | {
+        readonly kind: notebookCommon.NotebookCellsChangeType.ChangeDocumentMetadata
+        readonly metadata: notebookCommon.NotebookDocumentMetadata;
+    }
+    | notebookCommon.NotebookCellsChangeLanguageEvent
+    | notebookCommon.NotebookCellsChangeMetadataEvent
+    | notebookCommon.NotebookCellsChangeInternalMetadataEvent
+    | notebookCommon.NotebookCellContentChangeEvent
+    ;
+
+export interface NotebookCellsChangedEventDto {
+    readonly rawEvents: NotebookRawContentEventDto[];
+    readonly versionId: number;
+};
+
+export interface NotebookSelectionChangeEvent {
+    selections: CellRange[];
+}
+
+export interface NotebookVisibleRangesEvent {
+    ranges: CellRange[];
+}
+
+export interface NotebookEditorPropertiesChangeData {
+    visibleRanges?: NotebookVisibleRangesEvent;
+    selections?: NotebookSelectionChangeEvent;
+}
+
+export enum NotebookEditorRevealType {
+    Default = 0,
+    InCenter = 1,
+    InCenterIfOutsideViewport = 2,
+    AtTop = 3
+}
+
+export interface NotebookDocumentShowOptions {
+    position?: EditorGroupColumn;
+    preserveFocus?: boolean;
+    pinned?: boolean;
+    selections?: CellRange[];
+}
+
+export interface NotebookKernelDto {
+    id: string;
+    notebookType: string;
+    extensionId: string;
+    extensionLocation: UriComponents;
+    label: string;
+    detail?: string;
+    description?: string;
+    supportedLanguages?: string[];
+    supportsInterrupt?: boolean;
+    supportsExecutionOrder?: boolean;
+    preloads?: { uri: UriComponents; provides: readonly string[] }[];
+    rendererScripts?: NotebookRendererScript[];
+}
+
+export type CellExecuteUpdateDto = CellExecuteOutputEditDto | CellExecuteOutputItemEditDto | CellExecutionStateUpdateDto;
+
+export interface CellExecuteOutputEditDto {
+    editType: CellExecutionUpdateType.Output;
+    cellHandle: number;
+    append?: boolean;
+    outputs: NotebookOutputDto[];
+}
+
+export interface CellExecuteOutputItemEditDto {
+    editType: CellExecutionUpdateType.OutputItems;
+    append?: boolean;
+    outputId: string;
+    items: NotebookOutputItemDto[];
+}
+
+export interface CellExecutionStateUpdateDto {
+    editType: CellExecutionUpdateType.ExecutionState;
+    executionOrder?: number;
+    runStartTime?: number;
+    didPause?: boolean;
+    isPaused?: boolean;
+}
+
+export interface CellExecutionCompleteDto {
+    runEndTime?: number;
+    lastRunSuccess?: boolean;
+}
+
+export interface NotebookKernelSourceActionDto {
+    readonly label: string;
+    readonly description?: string;
+    readonly detail?: string;
+    readonly command?: string | Command;
+    readonly documentation?: UriComponents | string;
+}
+
+export interface NotebookEditorAddData {
+    id: string;
+    documentUri: UriComponents;
+    selections: CellRange[];
+    visibleRanges: CellRange[];
+    viewColumn?: number;
+}
+
+export interface NotebooksExt extends NotebookDocumentsAndEditorsExt {
+    $provideNotebookCellStatusBarItems(handle: number, uri: UriComponents, index: number, token: CancellationToken): Promise<NotebookCellStatusBarListDto | undefined>;
+    $releaseNotebookCellStatusBarItems(id: number): void;
+
+    $dataToNotebook(handle: number, data: BinaryBuffer, token: CancellationToken): Promise<NotebookDataDto>;
+    $notebookToData(handle: number, data: NotebookDataDto, token: CancellationToken): Promise<BinaryBuffer>;
+}
+
+export interface NotebooksMain extends Disposable {
+    $registerNotebookSerializer(handle: number, viewType: string, options: notebookCommon.TransientOptions): void;
+    $unregisterNotebookSerializer(handle: number): void;
+
+    $registerNotebookCellStatusBarItemProvider(handle: number, eventHandle: number | undefined, viewType: string): Promise<void>;
+    $unregisterNotebookCellStatusBarItemProvider(handle: number, eventHandle: number | undefined): Promise<void>;
+    $emitCellStatusBarEvent(eventHandle: number): void;
+}
+
+export interface NotebookKernelsExt {
+    $acceptNotebookAssociation(handle: number, uri: UriComponents, value: boolean): void;
+    $executeCells(handle: number, uri: UriComponents, handles: number[]): Promise<void>;
+    $cancelCells(handle: number, uri: UriComponents, handles: number[]): Promise<void>;
+    $acceptKernelMessageFromRenderer(handle: number, editorId: string, message: any): void;
+    $cellExecutionChanged(uri: UriComponents, cellHandle: number, state: NotebookCellExecutionState | undefined): void;
+    $provideKernelSourceActions(handle: number, token: CancellationToken): Promise<NotebookKernelSourceActionDto[]>;
+}
+
+export interface NotebookKernelsMain extends Disposable {
+    $postMessage(handle: number, editorId: string | undefined, message: any): Promise<boolean>;
+    $addKernel(handle: number, data: NotebookKernelDto): Promise<void>;
+    $updateKernel(handle: number, data: Partial<NotebookKernelDto>): void;
+    $removeKernel(handle: number): void;
+    $updateNotebookPriority(handle: number, uri: UriComponents, value: number | undefined): void;
+
+    $createExecution(handle: number, controllerId: string, uri: UriComponents, cellHandle: number): void;
+    $updateExecution(handle: number, data: CellExecuteUpdateDto[]): void;
+    $completeExecution(handle: number, data: CellExecutionCompleteDto): void;
+
+    $createNotebookExecution(handle: number, controllerId: string, uri: UriComponents): void;
+    $beginNotebookExecution(handle: number): void;
+    $completeNotebookExecution(handle: number): void;
+
+    $addKernelDetectionTask(handle: number, notebookType: string): Promise<void>;
+    $removeKernelDetectionTask(handle: number): void;
+
+    $addKernelSourceActionProvider(handle: number, eventHandle: number, notebookType: string): Promise<void>;
+    $removeKernelSourceActionProvider(handle: number, eventHandle: number): void;
+    $emitNotebookKernelSourceActionsChangeEvent(eventHandle: number): void;
+}
+
+export interface NotebookDocumentsMain extends Disposable {
+    $tryCreateNotebook(options: { viewType: string; content?: NotebookDataDto }): Promise<UriComponents>;
+    $tryOpenNotebook(uriComponents: UriComponents): Promise<UriComponents>;
+    $trySaveNotebook(uri: UriComponents): Promise<boolean>;
+}
+
+export interface NotebookDocumentsExt {
+    $acceptModelChanged(uriComponents: UriComponents, event: NotebookCellsChangedEventDto, isDirty: boolean, newMetadata?: notebookCommon.NotebookDocumentMetadata): void;
+    $acceptDirtyStateChanged(uriComponents: UriComponents, isDirty: boolean): void;
+    $acceptModelSaved(uriComponents: UriComponents): void;
+}
+
+export interface NotebookDocumentsAndEditorsExt {
+    $acceptDocumentsAndEditorsDelta(delta: NotebookDocumentsAndEditorsDelta): Promise<void>;
+    $acceptActiveCellEditorChange(newActiveEditor: string | null): void;
+}
+
+export interface NotebookDocumentsAndEditorsMain extends Disposable {
+}
+
+export type NotebookEditorViewColumnInfo = Record<string, number>;
+
+export interface NotebookEditorsExt {
+    $acceptEditorPropertiesChanged(id: string, data: NotebookEditorPropertiesChangeData): void;
+    $acceptEditorViewColumns(data: NotebookEditorViewColumnInfo): void;
+}
+
+export interface NotebookEditorsMain extends Disposable {
+    $tryShowNotebookDocument(uriComponents: UriComponents, viewType: string, options: NotebookDocumentShowOptions): Promise<string>;
+    $tryRevealRange(id: string, range: CellRange, revealType: NotebookEditorRevealType): Promise<void>;
+    $trySetSelections(id: string, range: CellRange[]): void;
+}
+export interface NotebookRenderersExt {
+    $postRendererMessage(editorId: string, rendererId: string, message: unknown): void;
+}
+
+export interface NotebookRenderersMain extends Disposable {
+    $postMessage(editorId: string | undefined, rendererId: string, message: unknown): Promise<boolean>;
 }
 
 export interface RawColorInfo {
@@ -2057,4 +2741,34 @@ export interface IdentifiableInlineCompletions extends InlineCompletions<Identif
 
 export interface IdentifiableInlineCompletion extends InlineCompletion {
     idx: number;
+}
+
+export const LocalizationExt = Symbol('LocalizationExt');
+export interface LocalizationExt {
+    translateMessage(pluginId: string, details: StringDetails): string;
+    getBundle(pluginId: string): Record<string, string> | undefined;
+    getBundleUri(pluginId: string): theia.Uri | undefined;
+    initializeLocalizedMessages(plugin: Plugin, currentLanguage: string): Promise<void>;
+}
+
+export interface StringDetails {
+    message: string;
+    args?: Record<string | number, any>;
+    comment?: string | string[];
+}
+
+export interface LocalizationMain {
+    $fetchBundle(id: string): Promise<LanguagePackBundle | undefined>;
+}
+
+export enum LogLevel {
+    Trace = 1,
+    Debug = 2,
+    Info = 3,
+    Warn = 4,
+    Error = 5
+}
+
+export interface LoggerMain {
+    $log(level: LogLevel, name: string | undefined, message: string, params: any[]): void;
 }

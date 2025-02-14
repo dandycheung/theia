@@ -11,12 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from '@theia/core/shared/inversify';
 import { WebviewWidget, WebviewWidgetIdentifier, WebviewWidgetExternalEndpoint } from './webview';
 import { WebviewEnvironment } from './webview-environment';
+import { hashValue } from '@theia/core/lib/common/uuid';
 
 export class WebviewWidgetFactory {
 
@@ -30,7 +31,7 @@ export class WebviewWidgetFactory {
 
     async createWidget(identifier: WebviewWidgetIdentifier): Promise<WebviewWidget> {
         const externalEndpoint = await this.container.get(WebviewEnvironment).externalEndpoint();
-        let endpoint = externalEndpoint.replace('{{uuid}}', identifier.id);
+        let endpoint = externalEndpoint.replace('{{uuid}}', identifier.viewId ? hashValue(identifier.viewId) : identifier.id);
         if (endpoint[endpoint.length - 1] === '/') {
             endpoint = endpoint.slice(0, endpoint.length - 1);
         }

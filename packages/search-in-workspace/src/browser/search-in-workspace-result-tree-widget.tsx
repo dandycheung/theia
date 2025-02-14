@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
@@ -33,10 +33,10 @@ import {
     codicon,
     TopDownTreeIterator
 } from '@theia/core/lib/browser';
-import { CancellationTokenSource, Emitter, Event, isWindows, ProgressService } from '@theia/core';
+import { CancellationTokenSource, Emitter, EOL, Event, ProgressService } from '@theia/core';
 import {
     EditorManager, EditorDecoration, TrackedRangeStickiness, OverviewRulerLane,
-    EditorWidget, EditorOpenerOptions, FindMatch
+    EditorWidget, EditorOpenerOptions, FindMatch, Position
 } from '@theia/editor/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { FileResourceResolver, FileSystemPreferences } from '@theia/filesystem/lib/browser';
@@ -281,6 +281,79 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
         return true;
     }
 
+    selectNextResult(): void {
+        if (!this.model.getFocusedNode()) {
+            return this.selectFirstResult();
+        }
+        let foundNextResult = false;
+        while (!foundNextResult) {
+            const nextNode = this.model.getNextNode();
+            if (!nextNode) {
+                return this.selectFirstResult();
+            } else if (SearchInWorkspaceResultLineNode.is(nextNode)) {
+                foundNextResult = true;
+                this.selectExpandOpenResultNode(nextNode);
+            } else {
+                this.model.selectNext();
+            }
+        }
+    }
+
+    selectPreviousResult(): void {
+        if (!this.model.getFocusedNode()) {
+            return this.selectLastResult();
+        }
+        let foundSelectedNode = false;
+        while (!foundSelectedNode) {
+            const prevNode = this.model.getPrevNode();
+            if (!prevNode) {
+                return this.selectLastResult();
+            } else if (SearchInWorkspaceResultLineNode.is(prevNode)) {
+                foundSelectedNode = true;
+                this.selectExpandOpenResultNode(prevNode);
+            } else if (prevNode.id === 'ResultTree') {
+                return this.selectLastResult();
+            } else {
+                this.model.selectPrev();
+            }
+        }
+    }
+
+    protected selectExpandOpenResultNode(node: SearchInWorkspaceResultLineNode): void {
+        this.model.expandNode(node.parent.parent);
+        this.model.expandNode(node.parent);
+        this.model.selectNode(node);
+        this.model.openNode(node);
+    }
+
+    protected selectFirstResult(): void {
+        for (const rootFolder of this.resultTree.values()) {
+            for (const file of rootFolder.children) {
+                for (const result of file.children) {
+                    if (SelectableTreeNode.is(result)) {
+                        return this.selectExpandOpenResultNode(result);
+                    }
+                }
+            }
+        }
+    }
+
+    protected selectLastResult(): void {
+        const rootFolders = Array.from(this.resultTree.values());
+        for (let i = rootFolders.length - 1; i >= 0; i--) {
+            const rootFolder = rootFolders[i];
+            for (let j = rootFolder.children.length - 1; j >= 0; j--) {
+                const file = rootFolder.children[j];
+                for (let k = file.children.length - 1; k >= 0; k--) {
+                    const result = file.children[k];
+                    if (SelectableTreeNode.is(result)) {
+                        return this.selectExpandOpenResultNode(result);
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * Find matches for the given editor.
      * @param searchTerm the search term.
@@ -303,12 +376,16 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
 
         const matches: SearchMatch[] = [];
         results.forEach(r => {
-            const lineText: string = widget.editor.document.getLineContent(r.range.start.line);
+            const numberOfLines = searchTerm.split('\n').length;
+            const lineTexts = [];
+            for (let i = 0; i < numberOfLines; i++) {
+                lineTexts.push(widget.editor.document.getLineContent(r.range.start.line + i));
+            }
             matches.push({
                 line: r.range.start.line,
                 character: r.range.start.character,
-                length: r.range.end.character - r.range.start.character,
-                lineText
+                length: searchTerm.length,
+                lineText: lineTexts.join('\n')
             });
         });
 
@@ -630,7 +707,7 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
     }
 
     protected updateCurrentEditorDecorations(): void {
-        this.shell.allTabBars.map(tb => {
+        this.shell.allTabBars.forEach(tb => {
             const currentTitle = tb.currentTitle;
             if (currentTitle && currentTitle.owner instanceof EditorWidget) {
                 const widget = currentTitle.owner;
@@ -718,6 +795,10 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
         };
     }
 
+    protected override getDepthPadding(depth: number): number {
+        return super.getDepthPadding(depth) + 5;
+    }
+
     protected override renderCaption(node: TreeNode, props: NodeProps): React.ReactNode {
         if (SearchInWorkspaceRootFolderNode.is(node)) {
             return this.renderRootFolderNode(node);
@@ -737,7 +818,8 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
     }
 
     protected doReplace(node: TreeNode, e: React.MouseEvent<HTMLElement>): void {
-        this.replace(node);
+        const selection = SelectableTreeNode.isSelected(node) ? (this.selectionService.selection as SelectableTreeNode[]) : [node];
+        selection.forEach(n => this.replace(n));
         e.stopPropagation();
     }
 
@@ -842,7 +924,7 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
         const fileNode = node.parent;
         const rightPositionedNodes = fileNode.children.filter(rl => rl.line === node.line && rl.character > node.character);
         const diff = this._replaceTerm.length - this.searchTerm.length;
-        rightPositionedNodes.map(r => r.character += diff);
+        rightPositionedNodes.forEach(r => r.character += diff);
     }
 
     /**
@@ -868,6 +950,7 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
             // Open the file only if the function is called to replace all matches under a specific node.
             const widget: EditorWidget = replaceOne ? await this.doOpen(toReplace[0]) : await this.doGetWidget(toReplace[0]);
             const source: string = widget.editor.document.getText();
+
             const replaceOperations = toReplace.map(resultLineNode => ({
                 text: replacementText,
                 range: {
@@ -875,12 +958,10 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
                         line: resultLineNode.line - 1,
                         character: resultLineNode.character - 1
                     },
-                    end: {
-                        line: resultLineNode.line - 1,
-                        character: resultLineNode.character - 1 + resultLineNode.length
-                    }
+                    end: this.findEndCharacterPosition(resultLineNode),
                 }
             }));
+
             // Replace the text.
             await widget.editor.replaceText({
                 source,
@@ -899,7 +980,8 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
 
     protected readonly remove = (node: TreeNode, e: React.MouseEvent<HTMLElement>) => this.doRemove(node, e);
     protected doRemove(node: TreeNode, e: React.MouseEvent<HTMLElement>): void {
-        this.removeNode(node);
+        const selection = SelectableTreeNode.isSelected(node) ? (this.selectionService.selection as SelectableTreeNode[]) : [node];
+        selection.forEach(n => this.removeNode(n));
         e.stopPropagation();
     }
 
@@ -947,6 +1029,23 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
                 this.removeFileNode(fileNode);
             }
         }
+    }
+
+    private findEndCharacterPosition(node: SearchInWorkspaceResultLineNode): Position {
+        const lineText = typeof node.lineText === 'string' ? node.lineText : node.lineText.text;
+        const lines = lineText.split('\n');
+        const line = node.line + lines.length - 2;
+        let character = node.character - 1 + node.length;
+        if (lines.length > 1) {
+            character = node.length - lines[0].length + node.character - lines.length;
+            if (lines.length > 2) {
+                for (const lineNum of Array(lines.length - 2).keys()) {
+                    character -= lines[lineNum + 1].length;
+                }
+            }
+        }
+
+        return { line, character };
     }
 
     protected renderRootFolderNode(node: SearchInWorkspaceRootFolderNode): React.ReactNode {
@@ -1011,28 +1110,33 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
             wordBreak.lastIndex++;
         }
 
-        const before = lineText.slice(start, character - 1).trimLeft();
+        const before = lineText.slice(start, character - 1).trimStart();
+        const lineCount = lineText.split('\n').length;
 
-        return <div className={`resultLine noWrapInfo noselect ${node.selected ? 'selected' : ''}`} title={lineText.trim()}>
-            {this.searchInWorkspacePreferences['search.lineNumbers'] && <span className='theia-siw-lineNumber'>{node.line}</span>}
-            <span>
-                {before}
-            </span>
-            {this.renderMatchLinePart(node)}
-            <span>
-                {lineText.slice(node.character + node.length - 1, 250 - before.length + node.length)}
-            </span>
-        </div>;
+        return <>
+            <div className={`resultLine noWrapInfo noselect ${node.selected ? 'selected' : ''}`} title={lineText.trim()}>
+                {this.searchInWorkspacePreferences['search.lineNumbers'] && <span className='theia-siw-lineNumber'>{node.line}</span>}
+                <span>
+                    {before}
+                </span>
+                {this.renderMatchLinePart(node)}
+                {lineCount > 1 || <span>
+                    {lineText.slice(node.character + node.length - 1, 250 - before.length + node.length)}
+                </span>}
+            </div>
+            {lineCount > 1 && <div className='match-line-num'>+{lineCount - 1}</div>}
+        </>;
     }
 
     protected renderMatchLinePart(node: SearchInWorkspaceResultLineNode): React.ReactNode {
-        const replaceTerm = this.isReplacing ? <span className='replace-term'>{this._replaceTerm}</span> : '';
+        const replaceTermLines = this._replaceTerm.split('\n');
+        const replaceTerm = this.isReplacing ? <span className='replace-term'>{replaceTermLines[0]}</span> : '';
         const className = `match${this.isReplacing ? ' strike-through' : ''}`;
-        const match = typeof node.lineText === 'string' ?
-            node.lineText.substr(node.character - 1, node.length)
-            : node.lineText.text.substr(node.lineText.character - 1, node.length);
+        const text = typeof node.lineText === 'string' ? node.lineText : node.lineText.text;
+        const match = text.substring(node.character - 1, node.character + node.length - 1);
+        const matchLines = match.split('\n');
         return <React.Fragment>
-            <span className={className}>{match}</span>
+            <span className={className}>{matchLines[0]}</span>
             {replaceTerm}
         </React.Fragment>;
     }
@@ -1065,10 +1169,7 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
                     line: node.line - 1,
                     character: node.character - 1
                 },
-                end: {
-                    line: node.line - 1,
-                    character: node.character - 1 + node.length
-                }
+                end: this.findEndCharacterPosition(node),
             },
             mode: preview ? 'reveal' : 'activate',
             preview,
@@ -1094,16 +1195,8 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
             content = await resource.readContents();
         }
 
-        const lines = content.split('\n');
-        node.children.map(l => {
-            const leftPositionedNodes = node.children.filter(rl => rl.line === l.line && rl.character < l.character);
-            const diff = (this._replaceTerm.length - this.searchTerm.length) * leftPositionedNodes.length;
-            const start = lines[l.line - 1].substr(0, l.character - 1 + diff);
-            const end = lines[l.line - 1].substr(l.character - 1 + diff + l.length);
-            lines[l.line - 1] = start + this._replaceTerm + end;
-        });
-
-        return fileUri.withScheme(MEMORY_TEXT).withQuery(lines.join('\n'));
+        const searchTermRegExp = new RegExp(this.searchTerm, 'g');
+        return fileUri.withScheme(MEMORY_TEXT).withQuery(content.replace(searchTermRegExp, this._replaceTerm));
     }
 
     protected decorateEditor(node: SearchInWorkspaceFileNode | undefined, editorWidget: EditorWidget): void {
@@ -1122,7 +1215,7 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
     protected createEditorDecorations(resultNode: SearchInWorkspaceFileNode | undefined): EditorDecoration[] {
         const decorations: EditorDecoration[] = [];
         if (resultNode) {
-            resultNode.children.map(res => {
+            resultNode.children.forEach(res => {
                 decorations.push({
                     range: {
                         start: {
@@ -1208,7 +1301,7 @@ export class SearchInWorkspaceResultTreeWidget extends TreeWidget {
                 strings.push(string);
             }
         }
-        return strings.join(isWindows ? '\r\n' : '\n');
+        return strings.join(EOL);
     }
 }
 

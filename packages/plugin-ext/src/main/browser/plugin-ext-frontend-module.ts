@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../../src/main/style/status-bar.css';
@@ -21,9 +21,12 @@ import '../../../src/main/browser/style/comments.css';
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
     FrontendApplicationContribution, WidgetFactory, bindViewContribution,
-    ViewContainerIdentifier, ViewContainer, createTreeContainer, TreeWidget, LabelProviderContribution
+    ViewContainerIdentifier, ViewContainer, createTreeContainer, TreeWidget, LabelProviderContribution, LabelProvider,
+    UndoRedoHandler, DiffUris, Navigatable, SplitWidget,
+    noopWidgetStatusBarContribution,
+    WidgetStatusBarContribution
 } from '@theia/core/lib/browser';
-import { MaybePromise, CommandContribution, ResourceResolver, bindContributionProvider } from '@theia/core/lib/common';
+import { MaybePromise, CommandContribution, ResourceResolver, bindContributionProvider, URI, generateUuid } from '@theia/core/lib/common';
 import { WebSocketConnectionProvider } from '@theia/core/lib/browser/messaging';
 import { HostedPluginSupport } from '../../hosted/browser/hosted-plugin';
 import { HostedPluginWatcher } from '../../hosted/browser/hosted-plugin-watcher';
@@ -47,10 +50,9 @@ import { PluginDebugService } from './debug/plugin-debug-service';
 import { DebugService } from '@theia/debug/lib/common/debug-service';
 import { PluginSharedStyle } from './plugin-shared-style';
 import { SelectionProviderCommandContribution } from './selection-provider-command';
-import { ViewColumnService } from './view-column-service';
 import { ViewContextKeyService } from './view/view-context-key-service';
 import { PluginViewWidget, PluginViewWidgetIdentifier } from './view/plugin-view-widget';
-import { TreeViewWidgetIdentifier, VIEW_ITEM_CONTEXT_MENU, PluginTree, TreeViewWidget, PluginTreeModel } from './view/tree-view-widget';
+import { TreeViewWidgetOptions, VIEW_ITEM_CONTEXT_MENU, PluginTree, TreeViewWidget, PluginTreeModel } from './view/tree-view-widget';
 import { RPCProtocol } from '../../common/rpc-protocol';
 import { LanguagesMainFactory, OutputChannelRegistryFactory } from '../../common';
 import { LanguagesMainImpl } from './languages-main';
@@ -67,12 +69,10 @@ import { CommentsService, PluginCommentService } from './comments/comments-servi
 import { CommentingRangeDecorator } from './comments/comments-decorator';
 import { CommentsContribution } from './comments/comments-contribution';
 import { CommentsContextKeyService } from './comments/comments-context-key-service';
-import { CustomEditorContribution } from './custom-editors/custom-editor-contribution';
 import { PluginCustomEditorRegistry } from './custom-editors/plugin-custom-editor-registry';
 import { CustomEditorWidgetFactory } from '../browser/custom-editors/custom-editor-widget-factory';
 import { CustomEditorWidget } from './custom-editors/custom-editor-widget';
 import { CustomEditorService } from './custom-editors/custom-editor-service';
-import { UndoRedoService } from './custom-editors/undo-redo-service';
 import { WebviewFrontendSecurityWarnings } from './webview/webview-frontend-security-warnings';
 import { PluginAuthenticationServiceImpl } from './plugin-authentication-service';
 import { AuthenticationService } from '@theia/core/lib/browser/authentication-service';
@@ -80,6 +80,17 @@ import { bindTreeViewDecoratorUtilities, TreeViewDecoratorService } from './view
 import { CodeEditorWidgetUtil } from './menus/vscode-theia-menu-mappings';
 import { PluginMenuCommandAdapter } from './menus/plugin-menu-command-adapter';
 import './theme-icon-override';
+import { PluginIconService } from './plugin-icon-service';
+import { PluginTerminalRegistry } from './plugin-terminal-registry';
+import { DnDFileContentStore } from './view/dnd-file-content-store';
+import { WebviewContextKeys } from './webview/webview-context-keys';
+import { LanguagePackService, languagePackServicePath } from '../../common/language-pack-service';
+import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
+import { CellOutputWebviewFactory } from '@theia/notebook/lib/browser';
+import { CellOutputWebviewImpl, createCellOutputWebviewContainer } from './notebooks/renderers/cell-output-webview';
+import { ArgumentProcessorContribution } from './command-registry-main';
+import { WebviewSecondaryWindowSupport } from './webview/webview-secondary-window-support';
+import { CustomEditorUndoRedoHandler } from './custom-editors/custom-editor-undo-redo-handler';
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
 
@@ -106,6 +117,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(OpenUriCommandHandler).toSelf().inSingletonScope();
     bind(PluginApiFrontendContribution).toSelf().inSingletonScope();
     bind(CommandContribution).toService(PluginApiFrontendContribution);
+    bind(TabBarToolbarContribution).toService(PluginApiFrontendContribution);
 
     bind(EditorModelService).toSelf().inSingletonScope();
 
@@ -143,16 +155,18 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bindTreeViewDecoratorUtilities(bind);
     bind(PluginTreeViewNodeLabelProvider).toSelf().inSingletonScope();
     bind(LabelProviderContribution).toService(PluginTreeViewNodeLabelProvider);
+    bind(DnDFileContentStore).toSelf().inSingletonScope();
     bind(WidgetFactory).toDynamicValue(({ container }) => ({
         id: PLUGIN_VIEW_DATA_FACTORY_ID,
-        createWidget: (identifier: TreeViewWidgetIdentifier) => {
+        createWidget: (options: TreeViewWidgetOptions) => {
             const props = {
                 contextMenuPath: VIEW_ITEM_CONTEXT_MENU,
                 expandOnlyOnExpansionToggleClick: true,
                 expansionTogglePadding: 22,
                 globalSelection: true,
                 leftPadding: 8,
-                search: true
+                search: true,
+                multiSelect: options.multiSelect
             };
             const child = createTreeContainer(container, {
                 props,
@@ -161,7 +175,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
                 widget: TreeViewWidget,
                 decoratorService: TreeViewDecoratorService
             });
-            child.bind(TreeViewWidgetIdentifier).toConstantValue(identifier);
+            child.bind(TreeViewWidgetOptions).toConstantValue(options);
             return child.get(TreeWidget);
         }
     })).inSingletonScope();
@@ -173,17 +187,38 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(WebviewWidget).toSelf();
     bind(WebviewWidgetFactory).toDynamicValue(ctx => new WebviewWidgetFactory(ctx.container)).inSingletonScope();
     bind(WidgetFactory).toService(WebviewWidgetFactory);
-
-    bind(CustomEditorContribution).toSelf().inSingletonScope();
-    bind(CommandContribution).toService(CustomEditorContribution);
+    bind(WebviewContextKeys).toSelf().inSingletonScope();
+    bind(WebviewSecondaryWindowSupport).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(WebviewSecondaryWindowSupport);
+    bind(FrontendApplicationContribution).toService(WebviewContextKeys);
+    bind(WidgetStatusBarContribution).toConstantValue(noopWidgetStatusBarContribution(WebviewWidget));
 
     bind(PluginCustomEditorRegistry).toSelf().inSingletonScope();
     bind(CustomEditorService).toSelf().inSingletonScope();
     bind(CustomEditorWidget).toSelf();
     bind(CustomEditorWidgetFactory).toDynamicValue(ctx => new CustomEditorWidgetFactory(ctx.container)).inSingletonScope();
     bind(WidgetFactory).toService(CustomEditorWidgetFactory);
+    bind(CustomEditorUndoRedoHandler).toSelf().inSingletonScope();
+    bind(UndoRedoHandler).toService(CustomEditorUndoRedoHandler);
 
-    bind(UndoRedoService).toSelf().inSingletonScope();
+    bind(WidgetFactory).toDynamicValue(ctx => ({
+        id: CustomEditorWidget.SIDE_BY_SIDE_FACTORY_ID,
+        createWidget: (arg: { uri: string, viewType: string }) => {
+            const uri = new URI(arg.uri);
+            const [leftUri, rightUri] = DiffUris.decode(uri);
+            const navigatable: Navigatable = {
+                getResourceUri: () => rightUri,
+                createMoveToUri: resourceUri => DiffUris.encode(leftUri, rightUri.withPath(resourceUri.path))
+            };
+            const widget = new SplitWidget({ navigatable });
+            widget.id = arg.viewType + '.side-by-side:' + generateUuid();
+            const labelProvider = ctx.container.get(LabelProvider);
+            widget.title.label = labelProvider.getName(uri);
+            widget.title.iconClass = labelProvider.getIcon(uri);
+            widget.title.closable = true;
+            return widget;
+        }
+    })).inSingletonScope();
 
     bind(PluginViewWidget).toSelf();
     bind(WidgetFactory).toDynamicValue(({ container }) => ({
@@ -228,8 +263,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(PluginDebugSessionContributionRegistry).toSelf().inSingletonScope();
     rebind(DebugSessionContributionRegistry).toService(PluginDebugSessionContributionRegistry);
 
-    bind(ViewColumnService).toSelf().inSingletonScope();
-
     bind(CommentsService).to(PluginCommentService).inSingletonScope();
     bind(CommentingRangeDecorator).toSelf().inSingletonScope();
     bind(CommentsContribution).toSelf().inSingletonScope();
@@ -238,6 +271,22 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(WebviewFrontendSecurityWarnings).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(WebviewFrontendSecurityWarnings);
 
+    bind(PluginIconService).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(PluginIconService);
+
     bind(PluginAuthenticationServiceImpl).toSelf().inSingletonScope();
     rebind(AuthenticationService).toService(PluginAuthenticationServiceImpl);
+
+    bind(PluginTerminalRegistry).toSelf().inSingletonScope();
+
+    bind(LanguagePackService).toDynamicValue(ctx => {
+        const provider = ctx.container.get(WebSocketConnectionProvider);
+        return provider.createProxy<LanguagePackService>(languagePackServicePath);
+    }).inSingletonScope();
+
+    bind(CellOutputWebviewFactory).toFactory(ctx => () =>
+        createCellOutputWebviewContainer(ctx.container).get(CellOutputWebviewImpl)
+    );
+    bindContributionProvider(bind, ArgumentProcessorContribution);
+
 });

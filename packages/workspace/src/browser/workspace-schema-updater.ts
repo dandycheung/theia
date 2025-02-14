@@ -11,15 +11,16 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { JsonSchemaContribution, JsonSchemaRegisterContext } from '@theia/core/lib/browser/json-schema-store';
-import { InMemoryResources } from '@theia/core/lib/common';
+import { JsonSchemaContribution, JsonSchemaDataStore, JsonSchemaRegisterContext } from '@theia/core/lib/browser/json-schema-store';
+import { isArray, isObject } from '@theia/core/lib/common';
 import { IJSONSchema } from '@theia/core/lib/common/json-schema';
 import URI from '@theia/core/lib/common/uri';
 import { Deferred } from '@theia/core/lib/common/promise-util';
+import { WorkspaceFileService } from '../common';
 
 export interface SchemaUpdateMessage {
     key: string,
@@ -38,25 +39,26 @@ export class WorkspaceSchemaUpdater implements JsonSchemaContribution {
     protected readonly editQueue: SchemaUpdateMessage[] = [];
     protected safeToHandleQueue = new Deferred();
 
-    @inject(InMemoryResources) protected readonly inmemoryResources: InMemoryResources;
+    @inject(JsonSchemaDataStore) protected readonly jsonSchemaData: JsonSchemaDataStore;
+    @inject(WorkspaceFileService) protected readonly workspaceFileService: WorkspaceFileService;
 
     @postConstruct()
     protected init(): void {
-        this.inmemoryResources.add(this.uri, JSON.stringify(workspaceSchema));
+        this.jsonSchemaData.setSchema(this.uri, workspaceSchema);
         this.safeToHandleQueue.resolve();
     }
 
     registerSchemas(context: JsonSchemaRegisterContext): void {
         context.registerSchema({
-            fileMatch: ['*.theia-workspace', '*.code-workspace'],
+            fileMatch: this.workspaceFileService.getWorkspaceFileExtensions(true),
             url: this.uri.toString()
         });
     }
 
     protected async retrieveCurrent(): Promise<WorkspaceSchema> {
-        const current = await this.inmemoryResources.resolve(this.uri).readContents();
+        const current = this.jsonSchemaData.getSchema(this.uri);
 
-        const content = JSON.parse(current);
+        const content = JSON.parse(current || '');
 
         if (!WorkspaceSchema.is(content)) {
             throw new Error('Failed to retrieve current workspace schema.');
@@ -87,7 +89,7 @@ export class WorkspaceSchemaUpdater implements JsonSchemaContribution {
                 this.removeKey(nextMessage, cache);
             }
         }
-        this.inmemoryResources.update(this.uri, JSON.stringify(cache));
+        this.jsonSchemaData.setSchema(this.uri, cache);
         this.safeToHandleQueue.resolve();
     }
 
@@ -114,12 +116,11 @@ export class WorkspaceSchemaUpdater implements JsonSchemaContribution {
 export type WorkspaceSchema = Required<Pick<IJSONSchema, 'properties' | 'required'>>;
 
 export namespace WorkspaceSchema {
-    export const is = (candidate: unknown): candidate is WorkspaceSchema => !!candidate
-        && typeof candidate === 'object'
-        && 'properties' in candidate
-        && typeof (candidate as WorkspaceSchema).properties === 'object'
-        && 'required' in candidate
-        && Array.isArray((candidate as WorkspaceSchema).required);
+    export function is(candidate: unknown): candidate is WorkspaceSchema {
+        return isObject<WorkspaceSchema>(candidate)
+            && typeof candidate.properties === 'object'
+            && isArray(candidate.required);
+    }
 }
 
 export const workspaceSchemaId = 'vscode://schemas/workspace';

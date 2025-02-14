@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from '@theia/core/shared/inversify';
@@ -30,7 +30,7 @@ import { PluginTheiaFileHandler } from './handlers/plugin-theia-file-handler';
 import { PluginTheiaDirectoryHandler } from './handlers/plugin-theia-directory-handler';
 import { GithubPluginDeployerResolver } from './plugin-github-resolver';
 import { HttpPluginDeployerResolver } from './plugin-http-resolver';
-import { ConnectionHandler, JsonRpcConnectionHandler, bindContributionProvider } from '@theia/core';
+import { ConnectionHandler, RpcConnectionHandler, bindContributionProvider } from '@theia/core';
 import { PluginPathsService, pluginPathsServicePath } from '../common/plugin-paths-protocol';
 import { PluginPathsServiceImpl } from './paths/plugin-paths-service';
 import { PluginServerHandler } from './plugin-server-handler';
@@ -39,8 +39,13 @@ import { PluginTheiaEnvironment } from '../common/plugin-theia-environment';
 import { PluginTheiaDeployerParticipant } from './plugin-theia-deployer-participant';
 import { WebviewBackendSecurityWarnings } from './webview-backend-security-warnings';
 import { PluginUninstallationManager } from './plugin-uninstallation-manager';
-import { LocalizationBackendContribution } from '@theia/core/lib/node/i18n/localization-backend-contribution';
-import { PluginLocalizationBackendContribution } from './plugin-localization-backend-contribution';
+import { LocalizationServerImpl } from '@theia/core/lib/node/i18n/localization-server';
+import { PluginLocalizationServer } from './plugin-localization-server';
+import { PluginMgmtCliContribution } from './plugin-mgmt-cli-contribution';
+import { PluginRemoteCliContribution } from './plugin-remote-cli-contribution';
+import { RemoteCliContribution } from '@theia/core/lib/node/remote/remote-cli-contribution';
+import { PluginRemoteCopyContribution } from './plugin-remote-copy-contribution';
+import { RemoteCopyContribution } from '@theia/core/lib/node/remote/remote-copy-contribution';
 
 export function bindMainBackend(bind: interfaces.Bind, unbind: interfaces.Unbind, isBound: interfaces.IsBound, rebind: interfaces.Rebind): void {
     bind(PluginApiContribution).toSelf().inSingletonScope();
@@ -71,13 +76,13 @@ export function bindMainBackend(bind: interfaces.Bind, unbind: interfaces.Unbind
 
     bind(PluginPathsService).to(PluginPathsServiceImpl).inSingletonScope();
     bind(ConnectionHandler).toDynamicValue(ctx =>
-        new JsonRpcConnectionHandler(pluginPathsServicePath, () =>
+        new RpcConnectionHandler(pluginPathsServicePath, () =>
             ctx.container.get(PluginPathsService)
         )
     ).inSingletonScope();
 
     bind(ConnectionHandler).toDynamicValue(ctx =>
-        new JsonRpcConnectionHandler(pluginServerJsonRpcPath, () =>
+        new RpcConnectionHandler(pluginServerJsonRpcPath, () =>
             ctx.container.get(PluginServer)
         )
     ).inSingletonScope();
@@ -85,9 +90,17 @@ export function bindMainBackend(bind: interfaces.Bind, unbind: interfaces.Unbind
     bind(PluginCliContribution).toSelf().inSingletonScope();
     bind(CliContribution).toService(PluginCliContribution);
 
+    bind(PluginMgmtCliContribution).toSelf().inSingletonScope();
+    bind(CliContribution).toService(PluginMgmtCliContribution);
+
+    bind(PluginRemoteCliContribution).toSelf().inSingletonScope();
+    bind(RemoteCliContribution).toService(PluginRemoteCliContribution);
+    bind(PluginRemoteCopyContribution).toSelf().inSingletonScope();
+    bind(RemoteCopyContribution).toService(PluginRemoteCopyContribution);
+
     bind(WebviewBackendSecurityWarnings).toSelf().inSingletonScope();
     bind(BackendApplicationContribution).toService(WebviewBackendSecurityWarnings);
 
-    rebind(LocalizationBackendContribution).to(PluginLocalizationBackendContribution).inSingletonScope();
+    rebind(LocalizationServerImpl).to(PluginLocalizationServer).inSingletonScope();
 
 }

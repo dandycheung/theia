@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from '@theia/core/shared/react';
@@ -25,6 +25,7 @@ export class DebugWatchExpression extends ExpressionItem {
 
     readonly id: number;
     protected isError: boolean;
+    protected isNotAvailable: boolean;
 
     constructor(protected readonly options: {
         id: number,
@@ -42,28 +43,48 @@ export class DebugWatchExpression extends ExpressionItem {
     }
 
     protected override setResult(body?: DebugProtocol.EvaluateResponse['body'], error?: string): void {
-        if (!this.options.session()) {
-            return;
+        const session = this.options.session();
+        this.isNotAvailable = false;
+        this.isError = false;
+
+        // not available must be set regardless of the session's availability.
+        // not available is used when there is no session or the current stack frame is not available.
+        if (error === ExpressionItem.notAvailable) {
+            super.setResult(undefined, error);
+            this.isNotAvailable = true;
+        } else if (session) {
+            super.setResult(body, error);
+            this.isError = !!error;
         }
-        super.setResult(body, error);
-        this.isError = !!error;
         this.options.onDidChange();
     }
 
     override render(): React.ReactNode {
-        return <div className='theia-debug-console-variable'>
+        const valueClass = this.valueClass();
+        return <div className='theia-debug-console-variable theia-debug-watch-expression'>
             <div className={TREE_NODE_SEGMENT_GROW_CLASS}>
                 <span title={this.type || this._expression} className='name'>{this._expression}: </span>
-                <span title={this._value} ref={this.setValueRef} className={this.isError ? 'watch-error' : ''}>{this._value}</span>
+                <span title={this._value} ref={this.setValueRef} className={valueClass}>{this._value}</span>
             </div>
             <div className={codicon('close', true)} title={nls.localizeByDefault('Remove Expression')} onClick={this.options.remove} />
         </div>;
     }
 
+    protected valueClass(): string {
+        if (this.isError) {
+            return 'watch-error';
+        }
+        if (this.isNotAvailable) {
+            return 'watch-not-available';
+        }
+        return '';
+    }
+
     async open(): Promise<void> {
         const input = new SingleTextInputDialog({
-            title: 'Edit Watch Expression',
-            initialValue: this.expression
+            title: nls.localizeByDefault('Edit Expression'),
+            initialValue: this.expression,
+            placeholder: nls.localizeByDefault('Expression to watch')
         });
         const newValue = await input.open();
         if (newValue !== undefined) {

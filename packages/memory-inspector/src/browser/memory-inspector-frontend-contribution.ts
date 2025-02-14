@@ -11,7 +11,7 @@
  * with the GNU Classpath Exception which is available at
  * https://www.gnu.org/software/classpath/license.html.
  *
- * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
  ********************************************************************************/
 
 import { AbstractViewContribution, FrontendApplicationContribution, Widget } from '@theia/core/lib/browser';
@@ -25,7 +25,6 @@ import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import { DebugScope, DebugVariable } from '@theia/debug/lib/browser/console/debug-console-items';
 import { DebugFrontendApplicationContribution } from '@theia/debug/lib/browser/debug-frontend-application-contribution';
 import { DebugVariablesWidget } from '@theia/debug/lib/browser/view/debug-variables-widget';
-import * as Long from 'long';
 import { MemoryEditableTableWidget } from './editable-widget/memory-editable-table-widget';
 import { MemoryProviderService } from './memory-provider/memory-provider-service';
 import { MemoryTableWidget } from './memory-widget/memory-table-widget';
@@ -41,6 +40,7 @@ import { VariableRange } from './utils/memory-widget-variable-utils';
 import { MemoryDockPanel } from './wrapper-widgets/memory-dock-panel';
 import { MemoryLayoutWidget } from './wrapper-widgets/memory-layout-widget';
 import { nls } from '@theia/core/lib/common/nls';
+import Long from 'long';
 
 const ONE_HALF_OPACITY = 0.5;
 

@@ -11,10 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { bindContributionProvider, ILogger } from '@theia/core/lib/common';
+import { bindContributionProvider } from '@theia/core/lib/common';
 import { ContainerModule } from '@theia/core/shared/inversify';
 import {
     DebugPath,
@@ -50,8 +50,4 @@ export default new ContainerModule(bind => {
     bind(DebugAdapterFactory).to(LaunchBasedDebugAdapterFactory).inSingletonScope();
     bind(DebugAdapterSessionManager).toSelf().inSingletonScope();
     bind(MessagingService.Contribution).toService(DebugAdapterSessionManager);
-
-    bind(ILogger).toDynamicValue(({ container }) =>
-        container.get<ILogger>(ILogger).child('debug')
-    ).inSingletonScope().whenTargetNamed('debug');
 });

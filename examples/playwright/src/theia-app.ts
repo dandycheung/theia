@@ -1,5 +1,5 @@
 // *****************************************************************************
-// Copyright (C) 2021 logi.cals GmbH, EclipseSource and others.
+// Copyright (C) 2021-2023 logi.cals GmbH, EclipseSource and others.
 //
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License v. 2.0 which is available at
@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Page } from '@playwright/test';
@@ -21,6 +21,7 @@ import { TheiaMenuBar } from './theia-main-menu';
 import { TheiaPreferenceScope, TheiaPreferenceView } from './theia-preference-view';
 import { TheiaQuickCommandPalette } from './theia-quick-command-palette';
 import { TheiaStatusBar } from './theia-status-bar';
+import { TheiaTerminal } from './theia-terminal';
 import { TheiaView } from './theia-view';
 import { TheiaWorkspace } from './theia-workspace';
 
@@ -36,45 +37,42 @@ export const DefaultTheiaAppData: TheiaAppData = {
 
 export class TheiaApp {
 
-    readonly statusBar = new TheiaStatusBar(this);
-    readonly quickCommandPalette = new TheiaQuickCommandPalette(this);
-    readonly menuBar = new TheiaMenuBar(this);
-    public workspace: TheiaWorkspace;
+    statusBar: TheiaStatusBar;
+    quickCommandPalette: TheiaQuickCommandPalette;
+    menuBar: TheiaMenuBar;
 
-    static async load(page: Page, initialWorkspace?: TheiaWorkspace): Promise<TheiaApp> {
-        return this.loadApp(page, TheiaApp, initialWorkspace);
+    protected appData = DefaultTheiaAppData;
+
+    public constructor(
+        public page: Page,
+        public workspace: TheiaWorkspace,
+        public isElectron: boolean,
+    ) {
+        this.statusBar = this.createStatusBar();
+        this.quickCommandPalette = this.createQuickCommandPalette();
+        this.menuBar = this.createMenuBar();
     }
 
-    static async loadApp<T extends TheiaApp>(page: Page, appFactory: { new(page: Page, initialWorkspace?: TheiaWorkspace): T }, initialWorkspace?: TheiaWorkspace): Promise<T> {
-        const app = new appFactory(page, initialWorkspace);
-        await app.load();
-        return app;
+    protected createStatusBar(): TheiaStatusBar {
+        return new TheiaStatusBar(this);
     }
 
-    public constructor(public page: Page, initialWorkspace?: TheiaWorkspace, protected appData = DefaultTheiaAppData) {
-        this.workspace = initialWorkspace ? initialWorkspace : new TheiaWorkspace();
-        this.workspace.initialize();
+    protected createQuickCommandPalette(): TheiaQuickCommandPalette {
+        return new TheiaQuickCommandPalette(this);
     }
 
-    protected async load(): Promise<void> {
-        await this.loadOrReload(this.page, '/#' + this.workspace.urlEncodedPath);
+    protected createMenuBar(): TheiaMenuBar {
+        return new TheiaMenuBar(this);
+    }
+
+    async isShellVisible(): Promise<boolean> {
+        return this.page.isVisible(this.appData.shellSelector);
+    }
+
+    async waitForShellAndInitialized(): Promise<void> {
         await this.page.waitForSelector(this.appData.loadingSelector, { state: 'detached' });
         await this.page.waitForSelector(this.appData.shellSelector);
         await this.waitForInitialized();
-    }
-
-    protected async loadOrReload(page: Page, url: string): Promise<void> {
-        if (page.url() === url) {
-            await page.reload();
-        } else {
-            const wasLoadedAlready = await page.isVisible(this.appData.shellSelector);
-            await page.goto(url);
-            if (wasLoadedAlready) {
-                // Theia doesn't refresh on URL change only
-                // So we need to reload if the app was already loaded before
-                await page.reload();
-            }
-        }
     }
 
     async isMainContentPanelVisible(): Promise<boolean> {
@@ -102,13 +100,15 @@ export class TheiaApp {
         return view;
     }
 
-    async openEditor<T extends TheiaEditor>(filePath: string, editorFactory: { new(filePath: string, app: TheiaApp): T },
+    async openEditor<T extends TheiaEditor>(filePath: string,
+        editorFactory: { new(fp: string, app: TheiaApp): T },
         editorName?: string, expectFileNodes = true): Promise<T> {
         const explorer = await this.openView(TheiaExplorerView);
         if (!explorer) {
             throw Error('TheiaExplorerView could not be opened.');
         }
         if (expectFileNodes) {
+            await explorer.waitForVisibleFileNodes();
             const fileStatElements = await explorer.visibleFileStatNodes(DOT_FILES_FILTER);
             if (fileStatElements.length < 1) {
                 throw Error('TheiaExplorerView is empty.');
@@ -136,7 +136,7 @@ export class TheiaApp {
         return editor;
     }
 
-    async activateExistingEditor<T extends TheiaEditor>(filePath: string, editorFactory: { new(filePath: string, app: TheiaApp): T }): Promise<T> {
+    async activateExistingEditor<T extends TheiaEditor>(filePath: string, editorFactory: { new(fp: string, app: TheiaApp): T }): Promise<T> {
         const editor = new editorFactory(filePath, this);
         if (!await editor.isTabVisible()) {
             throw new Error(`Could not find opened editor for file ${filePath}`);
@@ -144,6 +144,41 @@ export class TheiaApp {
         await editor.activate();
         await editor.waitForVisible();
         return editor;
+    }
+
+    async openTerminal<T extends TheiaTerminal>(terminalFactory: { new(id: string, app: TheiaApp): T }): Promise<T> {
+        const mainMenu = await this.menuBar.openMenu('Terminal');
+        const menuItem = await mainMenu.menuItemByName('New Terminal');
+        if (!menuItem) {
+            throw Error('Menu item \'New Terminal\' could not be found.');
+        }
+
+        const newTabIds = await this.runAndWaitForNewTabs(() => menuItem.click());
+        if (newTabIds.length > 1) {
+            console.warn('More than one new tab detected after opening the terminal');
+        }
+
+        return new terminalFactory(newTabIds[0], this);
+    }
+
+    protected async runAndWaitForNewTabs(command: () => Promise<void>): Promise<string[]> {
+        const tabIdsBefore = await this.visibleTabIds();
+        await command();
+        return (await this.waitForNewTabs(tabIdsBefore)).filter(item => !tabIdsBefore.includes(item));
+    }
+
+    protected async waitForNewTabs(tabIds: string[]): Promise<string[]> {
+        let tabIdsCurrent: string[];
+        while ((tabIdsCurrent = (await this.visibleTabIds())).length <= tabIds.length) {
+            console.debug('Awaiting a new tab to appear');
+        }
+        return tabIdsCurrent;
+    }
+
+    protected async visibleTabIds(): Promise<string[]> {
+        const tabs = await this.page.$$('.p-TabBar-tab');
+        const tabIds = (await Promise.all(tabs.map(tab => tab.getAttribute('id')))).filter(id => !!id);
+        return tabIds as string[];
     }
 
     /** Specific Theia apps may add additional conditions to wait for. */

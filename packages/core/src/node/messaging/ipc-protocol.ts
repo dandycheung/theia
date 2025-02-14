@@ -12,7 +12,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Channel } from '../../common/message-rpc/channel';
@@ -51,7 +51,7 @@ export function checkParentAlive(): void {
                 } catch {
                     process.exit();
                 }
-            }, 5000);
+            }, 5000).unref(); // we don't want this timeout to keep the process alive
         }
     }
 }

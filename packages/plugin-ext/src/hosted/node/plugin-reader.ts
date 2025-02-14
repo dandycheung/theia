@@ -11,12 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as path from 'path';
 import * as express from '@theia/core/shared/express';
 import * as escape_html from 'escape-html';
+import { realpath } from 'fs/promises';
 import { ILogger } from '@theia/core';
 import { inject, injectable, optional, multiInject } from '@theia/core/shared/inversify';
 import { BackendApplicationContribution } from '@theia/core/lib/node/backend-application';
@@ -93,11 +94,12 @@ export class HostedPluginReader implements BackendApplicationContribution {
         if (!pluginPath) {
             return undefined;
         }
-        const manifest = await loadManifest(pluginPath);
+        const resolvedPluginPath = await realpath(pluginPath);
+        const manifest = await loadManifest(resolvedPluginPath);
         if (!manifest) {
             return undefined;
         }
-        manifest.packagePath = pluginPath;
+        manifest.packagePath = resolvedPluginPath;
         return manifest;
     }
 
@@ -105,6 +107,9 @@ export class HostedPluginReader implements BackendApplicationContribution {
         const pluginMetadata = this.scanner.getPluginMetadata(plugin);
         if (pluginMetadata.model.entryPoint.backend) {
             pluginMetadata.model.entryPoint.backend = path.resolve(plugin.packagePath, pluginMetadata.model.entryPoint.backend);
+        }
+        if (pluginMetadata.model.entryPoint.headless) {
+            pluginMetadata.model.entryPoint.headless = path.resolve(plugin.packagePath, pluginMetadata.model.entryPoint.headless);
         }
         if (pluginMetadata) {
             // Add post processor
@@ -118,7 +123,7 @@ export class HostedPluginReader implements BackendApplicationContribution {
         return pluginMetadata;
     }
 
-    readContribution(plugin: PluginPackage): PluginContribution | undefined {
+    async readContribution(plugin: PluginPackage): Promise<PluginContribution | undefined> {
         const scanner = this.scanner.getScanner(plugin);
         return scanner.getContribution(plugin);
     }

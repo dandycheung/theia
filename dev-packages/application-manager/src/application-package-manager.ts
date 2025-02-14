@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as path from 'path';
@@ -73,10 +73,12 @@ export class ApplicationPackageManager {
     }
 
     async clean(): Promise<void> {
+        const webpackGenerator = new WebpackGenerator(this.pck);
         await Promise.all([
             this.remove(this.pck.lib()),
             this.remove(this.pck.srcGen()),
-            this.remove(new WebpackGenerator(this.pck).genConfigPath)
+            this.remove(webpackGenerator.genConfigPath),
+            this.remove(webpackGenerator.genNodeConfigPath)
         ]);
     }
 
@@ -104,8 +106,8 @@ export class ApplicationPackageManager {
     }
 
     async copy(): Promise<void> {
-        await fs.ensureDir(this.pck.lib());
-        await fs.copy(this.pck.frontend('index.html'), this.pck.lib('index.html'));
+        await fs.ensureDir(this.pck.lib('frontend'));
+        await fs.copy(this.pck.frontend('index.html'), this.pck.lib('frontend', 'index.html'));
     }
 
     async build(args: string[] = [], options: GeneratorOptions = {}): Promise<void> {
@@ -117,8 +119,30 @@ export class ApplicationPackageManager {
     start(args: string[] = []): cp.ChildProcess {
         if (this.pck.isElectron()) {
             return this.startElectron(args);
+        } else if (this.pck.isBrowserOnly()) {
+            return this.startBrowserOnly(args);
         }
         return this.startBrowser(args);
+    }
+
+    startBrowserOnly(args: string[]): cp.ChildProcess {
+        const { command, mainArgs, options } = this.adjustBrowserOnlyArgs(args);
+        return this.__process.spawnBin(command, mainArgs, options);
+    }
+
+    adjustBrowserOnlyArgs(args: string[]): Readonly<{ command: string, mainArgs: string[]; options: cp.SpawnOptions }> {
+        let { mainArgs, options } = this.adjustArgs(args);
+
+        // first parameter: path to generated frontend
+        // second parameter: disable cache to support watching
+        mainArgs = ['lib/frontend', '-c-1', ...mainArgs];
+
+        const portIndex = mainArgs.findIndex(v => v.startsWith('--port'));
+        if (portIndex === -1) {
+            mainArgs.push('--port=3000');
+        }
+
+        return { command: 'http-server', mainArgs, options };
     }
 
     startElectron(args: string[]): cp.ChildProcess {
@@ -127,12 +151,17 @@ export class ApplicationPackageManager {
         let appPath = this.pck.projectPath;
 
         if (!this.pck.pck.main) {
-            appPath = this.pck.frontend('electron-main.js');
+            // Try the bundled electron app first
+            appPath = this.pck.lib('backend', 'electron-main.js');
+            if (!fs.existsSync(appPath)) {
+                // Fallback to the generated electron app in src-gen
+                appPath = this.pck.backend('electron-main.js');
+            }
 
             console.warn(
                 `WARNING: ${this.pck.packagePath} does not have a "main" entry.\n` +
                 'Please add the following line:\n' +
-                '    "main": "src-gen/frontend/electron-main.js"'
+                '    "main": "lib/backend/electron-main.js"'
             );
         }
 
@@ -146,7 +175,13 @@ export class ApplicationPackageManager {
         // The backend must be a process group leader on UNIX in order to kill the tree later.
         // See https://nodejs.org/api/child_process.html#child_process_options_detached
         options.detached = process.platform !== 'win32';
-        return this.__process.fork(this.pck.backend('main.js'), mainArgs, options);
+        // Try the bundled backend app first
+        let mainPath = this.pck.lib('backend', 'main.js');
+        if (!fs.existsSync(mainPath)) {
+            // Fallback to the generated backend file in src-gen
+            mainPath = this.pck.backend('main.js');
+        }
+        return this.__process.fork(mainPath, mainArgs, options);
     }
 
     /**

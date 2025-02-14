@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as fs from '@theia/core/shared/fs-extra';
@@ -24,7 +24,7 @@ import { clone } from 'dugite-extra/lib/command/clone';
 import { fetch } from 'dugite-extra/lib/command/fetch';
 import { stash } from 'dugite-extra/lib/command/stash';
 import { merge } from 'dugite-extra/lib/command/merge';
-import { FileUri } from '@theia/core/lib/node/file-uri';
+import { FileUri } from '@theia/core/lib/common/file-uri';
 import { getStatus } from 'dugite-extra/lib/command/status';
 import { createCommit } from 'dugite-extra/lib/command/commit';
 import { stage, unstage } from 'dugite-extra/lib/command/stage';
@@ -47,6 +47,8 @@ import { GitLocator } from './git-locator/git-locator-protocol';
 import { GitExecProvider } from './git-exec-provider';
 import { GitEnvProvider } from './env/git-env-provider';
 import { GitInit } from './init/git-init';
+
+import upath = require('upath');
 
 /**
  * Parsing and converting raw Git output into Git model instances.
@@ -266,7 +268,7 @@ export namespace GitBlameParser {
         } else if (firstPart === 'summary') {
             let summary = parts.slice(1).join(' ');
             if (summary.startsWith('"') && summary.endsWith('"')) {
-                summary = summary.substr(1, summary.length - 2);
+                summary = summary.substring(1, summary.length - 1);
             }
             entry.summary = uncommitted ? 'uncommitted' : summary;
         } else if (firstPart === 'previous') {
@@ -548,7 +550,9 @@ export class DugiteGit implements Git {
         const path = this.getFsPath(uri);
         const [exec, env] = await Promise.all([this.execProvider.exec(), this.gitEnv.promise]);
         if (encoding === 'binary') {
-            return (await getBlobContents(repositoryPath, commitish, path, { exec, env })).toString();
+            // note: contrary to what its jsdoc says, getBlobContents expects a (normalized) relative path
+            const relativePath = upath.normalizeSafe(Path.relative(repositoryPath, path));
+            return (await getBlobContents(repositoryPath, commitish, relativePath, { exec, env })).toString('binary');
         }
         return (await getTextContents(repositoryPath, commitish, path, { exec, env })).toString();
     }
@@ -726,7 +730,7 @@ export class DugiteGit implements Git {
             if (nl > 0) {
                 nl = revOutput.indexOf('\n', nl + 1);
             }
-            return revOutput.substr(Math.max(0, nl)).trim();
+            return revOutput.substring(Math.max(0, nl)).trim();
         };
         const blame = await this.blameParser.parse(uri, output, commitBodyReader);
         return blame;
@@ -766,7 +770,8 @@ export class DugiteGit implements Git {
         const out = result.stdout;
         if (out && out.length !== 0) {
             try {
-                return fs.realpathSync(out.trim());
+                const realpath = await fs.realpath(out.trim());
+                return realpath;
             } catch (e) {
                 this.logger.error(e);
                 return undefined;

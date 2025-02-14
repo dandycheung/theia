@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces, injectable, inject, postConstruct } from 'inversify';
@@ -29,8 +29,8 @@ import { MAIN_AREA_ID, BOTTOM_AREA_ID } from './shell/theia-dock-panel';
 import { FrontendApplicationStateService } from './frontend-application-state';
 import { ContextMenuRenderer, Anchor } from './context-menu-renderer';
 import { parseCssMagnitude } from './browser';
-import { TabBarToolbarRegistry, TabBarToolbarFactory, TabBarToolbar, TabBarDelegator, TabBarToolbarItem } from './shell/tab-bar-toolbar';
-import { isEmpty, nls } from '../common';
+import { TabBarToolbarRegistry, TabBarToolbarFactory, TabBarToolbar, TabBarDelegator, RenderedToolbarItem } from './shell/tab-bar-toolbar';
+import { isEmpty, isObject, nls } from '../common';
 import { WidgetManager } from './widget-manager';
 import { Key } from './keys';
 import { ProgressBarFactory } from './progress-bar-factory';
@@ -59,18 +59,34 @@ export interface DescriptionWidget {
 
 export interface BadgeWidget {
     badge?: number;
+    badgeTooltip?: string;
     onDidChangeBadge: CommonEvent<void>;
+    onDidChangeBadgeTooltip: CommonEvent<void>;
 }
 
 export namespace DescriptionWidget {
     export function is(arg: unknown): arg is DescriptionWidget {
-        return !!arg && typeof arg === 'object' && 'onDidChangeDescription' in arg;
+        return isObject(arg) && 'onDidChangeDescription' in arg;
     }
 }
 
 export namespace BadgeWidget {
     export function is(arg: unknown): arg is BadgeWidget {
-        return !!arg && typeof arg === 'object' && 'onDidChangeBadge' in arg;
+        return isObject(arg) && 'onDidChangeBadge' in arg && 'onDidChangeBadgeTooltip' in arg;
+    }
+}
+
+/**
+ * A widget that may change it's internal structure dynamically.
+ * Current use is to update the toolbar when a contributed view is constructed "lazily".
+ */
+export interface DynamicToolbarWidget {
+    onDidChangeToolbarItems: CommonEvent<void>;
+}
+
+export namespace DynamicToolbarWidget {
+    export function is(arg: unknown): arg is DynamicToolbarWidget {
+        return isObject(arg) && 'onDidChangeToolbarItems' in arg;
     }
 }
 
@@ -308,7 +324,7 @@ export class ViewContainer extends BaseWidget implements StatefulWidget, Applica
         return 'view';
     }
 
-    protected registerToolbarItem(commandId: string, options?: Partial<Omit<TabBarToolbarItem, 'id' | 'command'>>): void {
+    protected registerToolbarItem(commandId: string, options?: Partial<Omit<RenderedToolbarItem, 'id' | 'command'>>): void {
         const newId = `${this.id}-tabbar-toolbar-${commandId}`;
         const existingHandler = this.commandRegistry.getAllHandlers(commandId)[0];
         const existingCommand = this.commandRegistry.getCommand(commandId);
@@ -927,6 +943,8 @@ export class ViewContainerPart extends BaseWidget {
     readonly onDidChangeDescription = this.onDidChangeDescriptionEmitter.event;
     protected readonly onDidChangeBadgeEmitter = new Emitter<void>();
     readonly onDidChangeBadge = this.onDidChangeBadgeEmitter.event;
+    protected readonly onDidChangeBadgeTooltipEmitter = new Emitter<void>();
+    readonly onDidChangeBadgeTooltip = this.onDidChangeBadgeTooltipEmitter.event;
 
     protected readonly toolbar: TabBarToolbar;
 
@@ -962,7 +980,15 @@ export class ViewContainerPart extends BaseWidget {
         }
 
         if (BadgeWidget.is(this.wrapped)) {
-            this.wrapped?.onDidChangeBadge(() => this.onDidChangeBadgeEmitter.fire(), undefined, this.toDispose);
+            this.wrapped.onDidChangeBadge(() => this.onDidChangeBadgeEmitter.fire(), undefined, this.toDispose);
+            this.wrapped.onDidChangeBadgeTooltip(() => this.onDidChangeBadgeTooltipEmitter.fire(), undefined, this.toDispose);
+        }
+
+        if (DynamicToolbarWidget.is(this.wrapped)) {
+            this.wrapped.onDidChangeToolbarItems(() => {
+                this.toolbar.updateTarget(this.wrapped);
+                this.viewContainer?.update();
+            });
         }
 
         const { header, body, disposable } = this.createContent();
@@ -982,6 +1008,7 @@ export class ViewContainerPart extends BaseWidget {
             this.onTitleChangedEmitter,
             this.onDidChangeDescriptionEmitter,
             this.onDidChangeBadgeEmitter,
+            this.onDidChangeBadgeTooltipEmitter,
             this.registerContextMenu(),
             this.onDidFocusEmitter,
             // focus event does not bubble, capture it
@@ -1170,14 +1197,17 @@ export class ViewContainerPart extends BaseWidget {
             description.innerText = DescriptionWidget.is(this.wrapped) && !this.collapsed && this.wrapped.description || '';
         };
         const updateBadge = () => {
-            const visibleToolBarItems = this.toolbarRegistry.visibleItems(this.wrapped).length > 0;
-            const badge = BadgeWidget.is(this.wrapped) && this.wrapped.badge;
-            if (typeof badge === 'number' && !visibleToolBarItems) {
-                badgeSpan.innerText = badge.toString();
-                badgeContainer.style.display = badgeContainerDisplay;
-            } else {
-                badgeContainer.style.display = 'none';
+            if (BadgeWidget.is(this.wrapped)) {
+                const visibleToolBarItems = this.toolbarRegistry.visibleItems(this.wrapped).length > 0;
+                const badge = this.wrapped.badge;
+                if (badge && !visibleToolBarItems) {
+                    badgeSpan.innerText = badge.toString();
+                    badgeSpan.title = this.wrapped.badgeTooltip || '';
+                    badgeContainer.style.display = badgeContainerDisplay;
+                    return;
+                }
             }
+            badgeContainer.style.display = 'none';
         };
 
         updateTitle();
@@ -1191,6 +1221,7 @@ export class ViewContainerPart extends BaseWidget {
             this.onDidMove(updateTitle),
             this.onDidChangeDescription(updateDescription),
             this.onDidChangeBadge(updateBadge),
+            this.onDidChangeBadgeTooltip(updateBadge),
             this.onCollapsed(updateDescription)
         ]);
         header.appendChild(title);
@@ -1203,7 +1234,19 @@ export class ViewContainerPart extends BaseWidget {
         };
     }
 
+    protected handleResize(): void {
+        const handleMouseEnter = () => {
+            this.node?.classList.add('no-pointer-events');
+            setTimeout(() => {
+                this.node?.classList.remove('no-pointer-events');
+                this.node?.removeEventListener('mouseenter', handleMouseEnter);
+            }, 100);
+        };
+        this.node?.addEventListener('mouseenter', handleMouseEnter);
+    }
+
     protected override onResize(msg: Widget.ResizeMessage): void {
+        this.handleResize();
         if (this.wrapped.isAttached && !this.collapsed) {
             MessageLoop.sendMessage(this.wrapped, Widget.ResizeMessage.UnknownSize);
         }

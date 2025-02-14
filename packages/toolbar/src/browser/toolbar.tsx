@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from '@theia/core/shared/react';
 import { Anchor, ContextMenuAccess, KeybindingRegistry, PreferenceService, Widget, WidgetManager } from '@theia/core/lib/browser';
 import { LabelIcon } from '@theia/core/lib/browser/label-parser';
-import { TabBarToolbar, TabBarToolbarFactory, TabBarToolbarItem } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
+import { ReactTabBarToolbarItem, RenderedToolbarItem, TabBarToolbar, TabBarToolbarFactory } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { MenuPath, ProgressService } from '@theia/core';
 import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
@@ -51,7 +51,12 @@ export class ToolbarImpl extends TabBarToolbar {
     protected isBusyDeferred = new Deferred<void>();
 
     @postConstruct()
-    async init(): Promise<void> {
+    protected override init(): void {
+        super.init();
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         this.hide();
         await this.model.ready.promise;
 
@@ -77,13 +82,20 @@ export class ToolbarImpl extends TabBarToolbar {
     protected updateInlineItems(): void {
         this.inline.clear();
         const { items } = this.model.toolbarItems;
+
+        const contextKeys = new Set<string>();
         for (const column of Object.keys(items)) {
             for (const group of items[column as ToolbarAlignment]) {
                 for (const item of group) {
                     this.inline.set(item.id, item);
+
+                    if (item.when) {
+                        this.contextKeyService.parseKeys(item.when)?.forEach(key => contextKeys.add(key));
+                    }
                 }
             }
         }
+        this.updateContextKeyListener(contextKeys);
     }
 
     protected handleContextMenu = (e: React.MouseEvent<HTMLDivElement>): ContextMenuAccess => this.doHandleContextMenu(e);
@@ -161,9 +173,9 @@ export class ToolbarImpl extends TabBarToolbar {
                 tabIndex={0}
                 ref={this.assignRef}
             >
-                {this.renderColumnWrapper(ToolbarAlignment.LEFT, leftGroups)}
-                {this.renderColumnWrapper(ToolbarAlignment.CENTER, centerGroups)}
-                {this.renderColumnWrapper(ToolbarAlignment.RIGHT, rightGroups)}
+                {leftGroups ? this.renderColumnWrapper(ToolbarAlignment.LEFT, leftGroups) : <></>}
+                {centerGroups ? this.renderColumnWrapper(ToolbarAlignment.CENTER, centerGroups) : <></>}
+                {rightGroups ? this.renderColumnWrapper(ToolbarAlignment.RIGHT, rightGroups) : <></>}
             </div>
         );
     }
@@ -214,6 +226,7 @@ export class ToolbarImpl extends TabBarToolbar {
                 data-column={`${alignment}`}
                 data-center-position={position}
                 onDrop={this.handleOnDrop}
+                onDragOver={this.handleOnDragEnter}
                 onDragEnter={this.handleOnDragEnter}
                 onDragLeave={this.handleOnDragLeave}
                 key={`column-space-${alignment}-${position}`}
@@ -225,8 +238,12 @@ export class ToolbarImpl extends TabBarToolbar {
         const stringifiedPosition = JSON.stringify(position);
         let toolbarItemClassNames = '';
         let renderBody: React.ReactNode;
-        if (TabBarToolbarItem.is(item)) {
-            toolbarItemClassNames = [TabBarToolbar.Styles.TAB_BAR_TOOLBAR_ITEM, 'enabled'].join(' ');
+
+        if (!ReactTabBarToolbarItem.is(item)) {
+            toolbarItemClassNames = TabBarToolbar.Styles.TAB_BAR_TOOLBAR_ITEM;
+            if (this.evaluateWhenClause(item.when)) {
+                toolbarItemClassNames += ' enabled';
+            }
             renderBody = this.renderItem(item);
         } else {
             const contribution = this.model.getContributionByID(item.id);
@@ -248,7 +265,7 @@ export class ToolbarImpl extends TabBarToolbar {
                 onMouseOut={this.onMouseUpEvent}
                 draggable={true}
                 onDragStart={this.handleOnDragStart}
-                onClick={this.executeCommand}
+                onClick={e => this.executeCommand(e, item)}
                 onDragOver={this.handleOnDragEnter}
                 onDragLeave={this.handleOnDragLeave}
                 onContextMenu={this.handleContextMenu}
@@ -262,7 +279,7 @@ export class ToolbarImpl extends TabBarToolbar {
     }
 
     protected override renderItem(
-        item: TabBarToolbarItem,
+        item: RenderedToolbarItem,
     ): React.ReactNode {
         const classNames = [];
         if (item.text) {
@@ -273,7 +290,7 @@ export class ToolbarImpl extends TabBarToolbar {
                 }
             }
         }
-        const command = this.commands.getCommand(item.command);
+        const command = this.commands.getCommand(item.command!);
         const iconClass = (typeof item.icon === 'function' && item.icon()) || item.icon || command?.iconClass;
         if (iconClass) {
             classNames.push(iconClass);
@@ -294,20 +311,6 @@ export class ToolbarImpl extends TabBarToolbar {
                 title={itemTooltip}
             />
         );
-    }
-
-    protected resolveKeybindingForCommand(commandID: string | undefined): string {
-        if (!commandID) {
-            return '';
-        }
-        const keybindings = this.keybindingRegistry.getKeybindingsForCommand(commandID);
-        if (keybindings.length > 0) {
-            const binding = keybindings[0];
-            const bindingKeySequence = this.keybindingRegistry.resolveKeybinding(binding);
-            const keyCode = bindingKeySequence[0];
-            return ` (${this.keybindingRegistry.acceleratorForKeyCode(keyCode, '+')})`;
-        }
-        return '';
     }
 
     protected handleOnDragStart = (e: React.DragEvent<HTMLDivElement>): void => this.doHandleOnDragStart(e);

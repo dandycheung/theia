@@ -11,28 +11,27 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { inject, injectable, optional } from '@theia/core/shared/inversify';
-import { MenuPath, CommandRegistry, Disposable, DisposableCollection, ActionMenuNode, MenuCommandAdapterRegistry, Emitter } from '@theia/core';
+import { MenuPath, CommandRegistry, Disposable, DisposableCollection, ActionMenuNode, MenuCommandAdapterRegistry, Emitter, nls } from '@theia/core';
 import { MenuModelRegistry } from '@theia/core/lib/common';
 import { TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { DeployedPlugin, IconUrl, Menu } from '../../../common';
 import { ScmWidget } from '@theia/scm/lib/browser/scm-widget';
-import { PluginViewWidget } from '../view/plugin-view-widget';
 import { QuickCommandService } from '@theia/core/lib/browser';
 import {
     CodeEditorWidgetUtil, codeToTheiaMappings, ContributionPoint,
-    PLUGIN_EDITOR_TITLE_MENU, PLUGIN_SCM_TITLE_MENU, PLUGIN_VIEW_TITLE_MENU
+    PLUGIN_EDITOR_TITLE_MENU, PLUGIN_EDITOR_TITLE_RUN_MENU, PLUGIN_SCM_TITLE_MENU, PLUGIN_VIEW_TITLE_MENU
 } from './vscode-theia-menu-mappings';
 import { PluginMenuCommandAdapter, ReferenceCountingSet } from './plugin-menu-command-adapter';
 import { ContextKeyExpr } from '@theia/monaco-editor-core/esm/vs/platform/contextkey/common/contextkey';
 import { ContextKeyService } from '@theia/core/lib/browser/context-key-service';
 import { PluginSharedStyle } from '../plugin-shared-style';
-import { ThemeIcon } from '@theia/monaco-editor-core/esm/vs/platform/theme/common/themeService';
+import { ThemeIcon } from '@theia/monaco-editor-core/esm/vs/base/common/themables';
 
 @injectable()
 export class MenusContributionPointHandler {
@@ -56,8 +55,13 @@ export class MenusContributionPointHandler {
         this.initialized = true;
         this.commandAdapterRegistry.registerAdapter(this.commandAdapter);
         this.tabBarToolbar.registerMenuDelegate(PLUGIN_EDITOR_TITLE_MENU, widget => this.codeEditorWidgetUtil.is(widget));
+        this.tabBarToolbar.registerItem({
+            id: this.tabBarToolbar.toElementId(PLUGIN_EDITOR_TITLE_RUN_MENU), menuPath: PLUGIN_EDITOR_TITLE_RUN_MENU,
+            icon: 'debug-alt', text: nls.localizeByDefault('Run or Debug...'),
+            command: '', group: 'navigation', isVisible: widget => this.codeEditorWidgetUtil.is(widget)
+        });
         this.tabBarToolbar.registerMenuDelegate(PLUGIN_SCM_TITLE_MENU, widget => widget instanceof ScmWidget);
-        this.tabBarToolbar.registerMenuDelegate(PLUGIN_VIEW_TITLE_MENU, widget => widget instanceof PluginViewWidget);
+        this.tabBarToolbar.registerMenuDelegate(PLUGIN_VIEW_TITLE_MENU, widget => !this.codeEditorWidgetUtil.is(widget));
         this.tabBarToolbar.registerItem({ id: 'plugin-menu-contribution-title-contribution', command: '_never_', onDidChange: this.onDidChangeTitleContributionEmitter.event });
         this.contextKeyService.onDidChange(event => {
             if (event.affects(this.titleContributionContextKeys)) {
@@ -95,19 +99,25 @@ export class MenusContributionPointHandler {
                         const targets = this.getMatchingMenu(contributionPoint as ContributionPoint) ?? [contributionPoint];
                         const { group, order } = this.parseGroup(item.group);
                         const { submenu, command } = item;
-                        if (submenu) {
-                            targets.forEach(target => toDispose.push(this.menuRegistry.linkSubmenu(target, submenu!, { order, when: item.when }, group)));
-                        } else if (command) {
+                        if (submenu && command) {
+                            console.warn(
+                                `Menu item ${command} from plugin ${plugin.metadata.model.id} contributed both submenu and command. Only command will be registered.`
+                            );
+                        }
+                        if (command) {
                             toDispose.push(this.commandAdapter.addCommand(command));
                             targets.forEach(target => {
+
                                 const node = new ActionMenuNode({
                                     commandId: command,
                                     when: item.when,
-                                    order,
+                                    order
                                 }, this.commands);
                                 const parent = this.menuRegistry.getMenuNode(target, group);
                                 toDispose.push(parent.addNode(node));
                             });
+                        } else if (submenu) {
+                            targets.forEach(target => toDispose.push(this.menuRegistry.linkSubmenu(target, submenu!, { order, when: item.when }, group)));
                         }
                     }
                 } catch (error) {

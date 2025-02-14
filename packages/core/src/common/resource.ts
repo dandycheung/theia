@@ -11,10 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { injectable, inject, named } from 'inversify';
+import { injectable, inject, named, postConstruct } from 'inversify';
 import { TextDocumentContentChangeEvent } from 'vscode-languageserver-protocol';
 import URI from '../common/uri';
 import { ContributionProvider } from './contribution-provider';
@@ -25,6 +25,7 @@ import { CancellationToken } from './cancellation';
 import { ApplicationError } from './application-error';
 import { ReadableStream, Readable } from './stream';
 import { SyncReferenceCollection, Reference } from './reference';
+import { MarkdownString } from './markdown-rendering';
 
 export interface ResourceVersion {
 }
@@ -55,7 +56,12 @@ export interface Resource extends Disposable {
      * Undefined if a resource did not read content yet.
      */
     readonly encoding?: string | undefined;
-    readonly isReadonly?: boolean;
+
+    readonly onDidChangeReadOnly?: Event<boolean | MarkdownString>;
+
+    readonly readOnly?: boolean | MarkdownString;
+
+    readonly initiallyDirty?: boolean;
     /**
      * Reads latest content of this resource.
      *
@@ -173,6 +179,11 @@ export namespace ResourceError {
 export const ResourceResolver = Symbol('ResourceResolver');
 export interface ResourceResolver {
     /**
+     * Resolvers will be ordered by descending priority.
+     * Default: 0
+     */
+    priority?: number;
+    /**
      * Reject if a resource cannot be provided.
      */
     resolve(uri: URI): MaybePromise<Resource>;
@@ -188,6 +199,11 @@ export class DefaultResourceProvider {
         @inject(ContributionProvider) @named(ResourceResolver)
         protected readonly resolversProvider: ContributionProvider<ResourceResolver>
     ) { }
+
+    @postConstruct()
+    init(): void {
+        this.resolversProvider.getContributions().sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+    }
 
     /**
      * Reject if a resource cannot be provided.
@@ -374,11 +390,13 @@ export class UntitledResourceResolver implements ResourceResolver {
 export class UntitledResource implements Resource {
 
     protected readonly onDidChangeContentsEmitter = new Emitter<void>();
+    initiallyDirty: boolean;
     get onDidChangeContents(): Event<void> {
         return this.onDidChangeContentsEmitter.event;
     }
 
     constructor(private resources: Map<string, UntitledResource>, public uri: URI, private content?: string) {
+        this.initiallyDirty = (content !== undefined && content.length > 0);
         this.resources.set(this.uri.toString(), this);
     }
 

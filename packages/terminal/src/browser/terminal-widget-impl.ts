@@ -11,23 +11,30 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { Terminal, RendererType } from 'xterm';
+import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { inject, injectable, named, postConstruct } from '@theia/core/shared/inversify';
-import { ContributionProvider, Disposable, Event, Emitter, ILogger, DisposableCollection, RpcProtocol, RequestHandler } from '@theia/core';
-import { Widget, Message, WebSocketConnectionProvider, StatefulWidget, isFirefox, MessageLoop, KeyCode, codicon, ExtractableWidget } from '@theia/core/lib/browser';
+import { ContributionProvider, Disposable, Event, Emitter, ILogger, DisposableCollection, Channel, OS, generateUuid } from '@theia/core';
+import {
+    Widget, Message, StatefulWidget, isFirefox, MessageLoop, KeyCode, ExtractableWidget, ContextMenuRenderer,
+    DecorationStyle
+} from '@theia/core/lib/browser';
 import { isOSX } from '@theia/core/lib/common';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { ShellTerminalServerProxy, IShellTerminalPreferences } from '../common/shell-terminal-protocol';
 import { terminalsPath } from '../common/terminal-protocol';
-import { IBaseTerminalServer, TerminalProcessInfo } from '../common/base-terminal-protocol';
+import { IBaseTerminalServer, TerminalProcessInfo, TerminalExitReason } from '../common/base-terminal-protocol';
 import { TerminalWatcher } from '../common/terminal-watcher';
-import { TerminalWidgetOptions, TerminalWidget, TerminalDimensions, TerminalExitStatus } from './base/terminal-widget';
+import {
+    TerminalWidgetOptions, TerminalWidget, TerminalDimensions, TerminalExitStatus, TerminalLocationOptions,
+    TerminalLocation,
+    TerminalBuffer
+} from './base/terminal-widget';
 import { Deferred } from '@theia/core/lib/common/promise-util';
-import { TerminalPreferences, TerminalRendererType, isTerminalRendererType, DEFAULT_TERMINAL_RENDERER_TYPE, CursorStyle } from './terminal-preferences';
+import { TerminalPreferences } from './terminal-preferences';
 import URI from '@theia/core/lib/common/uri';
 import { TerminalService } from './base/terminal-service';
 import { TerminalSearchWidgetFactory, TerminalSearchWidget } from './search/terminal-search-widget';
@@ -36,6 +43,13 @@ import { TerminalThemeService } from './terminal-theme-service';
 import { CommandLineOptions, ShellCommandBuilder } from '@theia/process/lib/common/shell-command-builder';
 import { Key } from '@theia/core/lib/browser/keys';
 import { nls } from '@theia/core/lib/common/nls';
+import { TerminalMenus } from './terminal-frontend-contribution';
+import debounce = require('p-debounce');
+import { MarkdownString, MarkdownStringImpl } from '@theia/core/lib/common/markdown-rendering/markdown-string';
+import { EnhancedPreviewWidget } from '@theia/core/lib/browser/widgets/enhanced-preview-widget';
+import { MarkdownRenderer, MarkdownRendererFactory } from '@theia/core/lib/browser/markdown-rendering/markdown-renderer';
+import { RemoteConnectionProvider, ServiceConnectionProvider } from '@theia/core/lib/browser/messaging/service-connection-provider';
+import { ColorRegistry } from '@theia/core/lib/browser/color-registry';
 
 export const TERMINAL_WIDGET_FACTORY_ID = 'terminal';
 
@@ -49,10 +63,28 @@ export interface TerminalContribution {
     onCreate(term: TerminalWidgetImpl): void;
 }
 
+class TerminalBufferImpl implements TerminalBuffer {
+    constructor(private readonly term: Terminal) {
+    }
+
+    get length(): number {
+        return this.term.buffer.active.length;
+    };
+    getLines(start: number, length: number): string[] {
+        const result: string[] = [];
+        for (let i = 0; i < length && this.length - 1 - i >= 0; i++) {
+            result.push(this.term.buffer.active.getLine(this.length - 1 - i)!.translateToString());
+        }
+        return result;
+    }
+
+}
+
 @injectable()
-export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget, ExtractableWidget {
+export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget, ExtractableWidget, EnhancedPreviewWidget {
     readonly isExtractable: boolean = true;
     secondaryWindow: Window | undefined;
+    location: TerminalLocationOptions;
 
     static LABEL = nls.localizeByDefault('Terminal');
 
@@ -66,17 +98,19 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
     protected searchBox: TerminalSearchWidget;
     protected restored = false;
     protected closeOnDispose = true;
-    protected waitForConnection: Deferred<RpcProtocol> | undefined;
+    protected waitForConnection: Deferred<Channel> | undefined;
     protected linkHover: HTMLDivElement;
     protected linkHoverButton: HTMLAnchorElement;
     protected lastTouchEnd: TouchEvent | undefined;
     protected lastMousePosition: { x: number, y: number } | undefined;
     protected isAttachedCloseListener: boolean = false;
     protected shown = false;
+    protected enhancedPreviewNode: Node | undefined;
+    protected styleElement: HTMLStyleElement | undefined;
     override lastCwd = new URI();
 
     @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService;
-    @inject(WebSocketConnectionProvider) protected readonly webSocketConnectionProvider: WebSocketConnectionProvider;
+    @inject(RemoteConnectionProvider) protected readonly connectionProvider: ServiceConnectionProvider;
     @inject(TerminalWidgetOptions) options: TerminalWidgetOptions;
     @inject(ShellTerminalServerProxy) protected readonly shellTerminalServer: ShellTerminalServerProxy;
     @inject(TerminalWatcher) protected readonly terminalWatcher: TerminalWatcher;
@@ -88,7 +122,16 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
     @inject(TerminalSearchWidgetFactory) protected readonly terminalSearchBoxFactory: TerminalSearchWidgetFactory;
     @inject(TerminalCopyOnSelectionHandler) protected readonly copyOnSelectionHandler: TerminalCopyOnSelectionHandler;
     @inject(TerminalThemeService) protected readonly themeService: TerminalThemeService;
+    @inject(ColorRegistry) protected readonly colorRegistry: ColorRegistry;
     @inject(ShellCommandBuilder) protected readonly shellCommandBuilder: ShellCommandBuilder;
+    @inject(ContextMenuRenderer) protected readonly contextMenuRenderer: ContextMenuRenderer;
+    @inject(MarkdownRendererFactory) protected readonly markdownRendererFactory: MarkdownRendererFactory;
+
+    protected _markdownRenderer: MarkdownRenderer | undefined;
+    protected get markdownRenderer(): MarkdownRenderer {
+        this._markdownRenderer ||= this.markdownRendererFactory();
+        return this._markdownRenderer;
+    }
 
     protected readonly onDidOpenEmitter = new Emitter<void>();
     readonly onDidOpen: Event<void> = this.onDidOpenEmitter.event;
@@ -102,6 +145,9 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
     protected readonly onDataEmitter = new Emitter<string>();
     readonly onData: Event<string> = this.onDataEmitter.event;
 
+    protected readonly onOutputEmitter = new Emitter<string>();
+    readonly onOutput: Event<string> = this.onOutputEmitter.event;
+
     protected readonly onKeyEmitter = new Emitter<{ key: string, domEvent: KeyboardEvent }>();
     readonly onKey: Event<{ key: string, domEvent: KeyboardEvent }> = this.onKeyEmitter.event;
 
@@ -113,10 +159,15 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
 
     protected readonly toDisposeOnConnect = new DisposableCollection();
 
+    private _buffer: TerminalBuffer;
+    override get buffer(): TerminalBuffer {
+        return this._buffer;
+    }
+
     @postConstruct()
     protected init(): void {
         this.setTitle(this.options.title || TerminalWidgetImpl.LABEL);
-        this.title.iconClass = codicon('terminal');
+        this.setIconClass();
 
         if (this.options.kind) {
             this.terminalKind = this.options.kind;
@@ -128,12 +179,14 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
             ));
         }
 
+        this.location = this.options.location || TerminalLocation.Panel;
+
         this.title.closable = true;
         this.addClass('terminal-container');
 
         this.term = new Terminal({
             cursorBlink: this.preferences['terminal.integrated.cursorBlinking'],
-            cursorStyle: this.getCursorStyle(),
+            cursorStyle: this.preferences['terminal.integrated.cursorStyle'] === 'line' ? 'bar' : this.preferences['terminal.integrated.cursorStyle'],
             cursorWidth: this.preferences['terminal.integrated.cursorWidth'],
             fontFamily: this.preferences['terminal.integrated.fontFamily'],
             fontSize: this.preferences['terminal.integrated.fontSize'],
@@ -144,9 +197,9 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
             lineHeight: this.preferences['terminal.integrated.lineHeight'],
             scrollback: this.preferences['terminal.integrated.scrollback'],
             fastScrollSensitivity: this.preferences['terminal.integrated.fastScrollSensitivity'],
-            rendererType: this.getTerminalRendererType(this.preferences['terminal.integrated.rendererType']),
             theme: this.themeService.theme
         });
+        this._buffer = new TerminalBufferImpl(this.term);
 
         this.fitAddon = new FitAddon();
         this.term.loadAddon(this.fitAddon);
@@ -154,34 +207,15 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         this.initializeLinkHover();
 
         this.toDispose.push(this.preferences.onPreferenceChanged(change => {
-            const lastSeparator = change.preferenceName.lastIndexOf('.');
-            if (lastSeparator > 0) {
-                let preferenceName = change.preferenceName.substr(lastSeparator + 1);
-                let preferenceValue = change.newValue;
-
-                if (preferenceName === 'rendererType') {
-                    const newRendererType = preferenceValue as string;
-                    if (newRendererType !== this.getTerminalRendererType(newRendererType)) {
-                        // Given terminal renderer type is not supported or invalid
-                        preferenceValue = DEFAULT_TERMINAL_RENDERER_TYPE;
-                    }
-                } else if (preferenceName === 'cursorBlinking') {
-                    // Convert the terminal preference into a valid `xterm` option
-                    preferenceName = 'cursorBlink';
-                } else if (preferenceName === 'cursorStyle') {
-                    preferenceValue = this.getCursorStyle();
-                }
-                try {
-                    this.term.setOption(preferenceName, preferenceValue);
-                } catch (e) {
-                    console.debug(`xterm configuration: '${preferenceName}' with value '${preferenceValue}' is not valid.`);
-                }
-                this.needsResize = true;
-                this.update();
-            }
+            this.updateConfig();
+            this.needsResize = true;
+            this.update();
         }));
 
-        this.toDispose.push(this.themeService.onDidChange(() => this.term.setOption('theme', this.themeService.theme)));
+        this.toDispose.push(this.themeService.onDidChange(() => {
+            this.term.options.theme = this.themeService.theme;
+            this.setIconClass();
+        }));
         this.attachCustomKeyEventHandler();
         const titleChangeListenerDispose = this.term.onTitleChange((title: string) => {
             if (this.options.useServerTitle) {
@@ -190,17 +224,25 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         });
         this.toDispose.push(titleChangeListenerDispose);
 
-        this.toDispose.push(this.terminalWatcher.onTerminalError(({ terminalId, error }) => {
+        this.toDispose.push(this.terminalWatcher.onTerminalError(({ terminalId, error, attached }) => {
             if (terminalId === this.terminalId) {
-                this.exitStatus = { code: undefined };
-                this.dispose();
+                this.exitStatus = { code: undefined, reason: TerminalExitReason.Process };
                 this.logger.error(`The terminal process terminated. Cause: ${error}`);
+                if (!attached) {
+                    this.dispose();
+                }
             }
         }));
-        this.toDispose.push(this.terminalWatcher.onTerminalExit(({ terminalId, code }) => {
+        this.toDispose.push(this.terminalWatcher.onTerminalExit(({ terminalId, code, reason, attached }) => {
             if (terminalId === this.terminalId) {
-                this.exitStatus = { code };
-                this.dispose();
+                if (reason) {
+                    this.exitStatus = { code, reason };
+                } else {
+                    this.exitStatus = { code, reason: TerminalExitReason.Process };
+                }
+                if (!attached) {
+                    this.dispose();
+                }
             }
         }));
         this.toDispose.push(this.toDisposeOnConnect);
@@ -236,6 +278,14 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
             this.node.removeEventListener('mousemove', mouseListener);
         });
 
+        const contextMenuListener = (event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            this.contextMenuRenderer.render({ menuPath: TerminalMenus.TERMINAL_CONTEXT_MENU, anchor: event });
+        };
+        this.node.addEventListener('contextmenu', contextMenuListener);
+        this.onDispose(() => this.node.removeEventListener('contextmenu', contextMenuListener));
+
         this.toDispose.push(this.term.onSelectionChange(() => {
             if (this.copyOnSelection) {
                 this.copyOnSelectionHandler.copy(this.term.getSelection());
@@ -270,25 +320,63 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         return this.terminalKind;
     }
 
-    /**
-     * Get the cursor style compatible with `xterm`.
-     * @returns CursorStyle
-     */
-    private getCursorStyle(): CursorStyle {
-        const value = this.preferences['terminal.integrated.cursorStyle'];
-        return value === 'line' ? 'bar' : value;
+    updateConfig(): void {
+        this.setCursorBlink(this.preferences.get('terminal.integrated.cursorBlinking'));
+        this.setCursorStyle(this.preferences.get('terminal.integrated.cursorStyle'));
+        this.setCursorWidth(this.preferences.get('terminal.integrated.cursorWidth'));
+        this.term.options.fontFamily = this.preferences.get('terminal.integrated.fontFamily');
+        this.term.options.fontSize = this.preferences.get('terminal.integrated.fontSize');
+        this.term.options.fontWeight = this.preferences.get('terminal.integrated.fontWeight');
+        this.term.options.fontWeightBold = this.preferences.get('terminal.integrated.fontWeightBold');
+        this.term.options.drawBoldTextInBrightColors = this.preferences.get('terminal.integrated.drawBoldTextInBrightColors');
+        this.term.options.letterSpacing = this.preferences.get('terminal.integrated.letterSpacing');
+        this.term.options.lineHeight = this.preferences.get('terminal.integrated.lineHeight');
+        this.term.options.scrollback = this.preferences.get('terminal.integrated.scrollback');
+        this.term.options.fastScrollSensitivity = this.preferences.get('terminal.integrated.fastScrollSensitivity');
     }
 
-    /**
-     * Returns given renderer type if it is valid and supported or default renderer otherwise.
-     *
-     * @param terminalRendererType desired terminal renderer type
-     */
-    private getTerminalRendererType(terminalRendererType?: string | TerminalRendererType): RendererType {
-        if (terminalRendererType && isTerminalRendererType(terminalRendererType)) {
-            return terminalRendererType;
+    protected setIconClass(): void {
+        this.styleElement?.remove();
+        if (this.options.iconClass) {
+            const iconClass = this.options.iconClass;
+            if (typeof iconClass === 'string') {
+                this.title.iconClass = iconClass;
+            } else {
+                const iconClasses: string[] = [];
+                iconClasses.push(iconClass.id);
+                if (iconClass.color) {
+                    this.styleElement = DecorationStyle.createStyleElement(`${this.terminalId}-terminal-style`);
+                    const classId = 'terminal-icon-' + generateUuid().replace(/-/g, '');
+                    const color = this.colorRegistry.getCurrentColor(iconClass.color.id);
+                    this.styleElement.textContent = `
+                        .${classId}::before {
+                            color: ${color};
+                        }
+                    `;
+                    iconClasses.push(classId);
+                }
+                this.title.iconClass = iconClasses.join(' ');
+            }
         }
-        return DEFAULT_TERMINAL_RENDERER_TYPE;
+    }
+
+    private setCursorBlink(blink: boolean): void {
+        if (this.term.options.cursorBlink !== blink) {
+            this.term.options.cursorBlink = blink;
+            this.term.refresh(0, this.term.rows - 1);
+        }
+    }
+
+    private setCursorStyle(style: 'block' | 'underline' | 'bar' | 'line'): void {
+        if (this.term.options.cursorStyle !== style) {
+            this.term.options.cursorStyle = (style === 'line') ? 'bar' : style;
+        }
+    }
+
+    private setCursorWidth(width: number): void {
+        if (this.term.options.cursorWidth !== width) {
+            this.term.options.cursorWidth = width;
+        }
     }
 
     protected initializeLinkHover(): void {
@@ -354,6 +442,11 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         return this.searchBox;
     }
 
+    protected override onCloseRequest(msg: Message): void {
+        this.exitStatus = { code: undefined, reason: TerminalExitReason.User };
+        super.onCloseRequest(msg);
+    }
+
     get dimensions(): TerminalDimensions {
         return {
             cols: this.term.cols,
@@ -389,6 +482,13 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         return this.shellTerminalServer.getProcessInfo(this.terminalId);
     }
 
+    get envVarCollectionDescriptionsByExtension(): Promise<Map<string, (string | MarkdownString | undefined)[]>> {
+        if (!IBaseTerminalServer.validateId(this.terminalId)) {
+            return Promise.reject(new Error('terminal is not started'));
+        }
+        return this.shellTerminalServer.getEnvVarCollectionDescriptionsByExtension(this.terminalId);
+    }
+
     get terminalId(): number {
         return this._terminalId;
     }
@@ -404,6 +504,11 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         return this.options.hideFromUser ?? false;
     }
 
+    get transient(): boolean {
+        // The terminal is transient if session persistence is disabled or it's explicitly marked as transient
+        return !this.preferences['terminal.integrated.enablePersistentSessions'] || !!this.options.isTransient;
+    }
+
     onDispose(onDispose: () => void): void {
         this.toDispose.push(Disposable.create(onDispose));
     }
@@ -412,21 +517,25 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         this.term.clear();
     }
 
+    selectAll(): void {
+        this.term.selectAll();
+    }
+
     async hasChildProcesses(): Promise<boolean> {
         return this.shellTerminalServer.hasChildProcesses(await this.processId);
     }
 
     storeState(): object {
         this.closeOnDispose = false;
-        if (this.options.isPseudoTerminal) {
+        if (this.transient || this.options.isPseudoTerminal) {
             return {};
         }
         return { terminalId: this.terminalId, titleLabel: this.title.label };
     }
 
     restoreState(oldState: object): void {
-        // pseudo terminal can not restore
-        if (this.options.isPseudoTerminal) {
+        // transient terminals and pseudo terminals are not restored
+        if (this.transient || this.options.isPseudoTerminal) {
             this.dispose();
             return;
         }
@@ -460,6 +569,8 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
     protected async attachTerminal(id: number): Promise<number> {
         const terminalId = await this.shellTerminalServer.attach(id);
         if (IBaseTerminalServer.validateId(terminalId)) {
+            // reset exit status if a new terminal process is attached
+            this.exitStatus = undefined;
             return terminalId;
         }
         this.logger.warn(`Failed attaching to terminal id ${id}, the terminal is most likely gone. Starting up a new terminal instead.`);
@@ -479,9 +590,8 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         const { cols, rows } = this.term;
 
         const terminalId = await this.shellTerminalServer.create({
-            shellPreferences: this.shellPreferences,
-            shell: this.options.shellPath,
-            args: this.options.shellArgs,
+            shell: this.options.shellPath || this.shellPreferences.shell[OS.backend.type()],
+            args: this.options.shellArgs || this.shellPreferences.shellArgs[OS.backend.type()],
             env: this.options.env,
             strictEnv: this.options.strictEnv,
             isPseudo: this.options.isPseudoTerminal,
@@ -545,8 +655,6 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         if (this.needsResize) {
             this.resizeTerminal();
             this.needsResize = false;
-
-            this.resizeTerminalProcess();
         }
     }
 
@@ -563,23 +671,18 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         }
         this.toDisposeOnConnect.dispose();
         this.toDispose.push(this.toDisposeOnConnect);
-        const waitForConnection = this.waitForConnection = new Deferred<RpcProtocol>();
-        this.webSocketConnectionProvider.listen({
-            path: `${terminalsPath}/${this.terminalId}`,
-            onConnection: connection => {
-                const requestHandler: RequestHandler = _method => this.logger.warn('Received an unhandled RPC request from the terminal process');
-
-                const rpc = new RpcProtocol(connection, requestHandler);
-                rpc.onNotification(event => {
-                    if (event.method === 'onData') {
-                        this.write(event.args[0]);
-                    }
+        const waitForConnection = this.waitForConnection = new Deferred<Channel>();
+        this.connectionProvider.listen(
+            `${terminalsPath}/${this.terminalId}`,
+            (path, connection) => {
+                connection.onMessage(e => {
+                    this.write(e().readString());
                 });
 
                 // Excludes the device status code emitted by Xterm.js
                 const sendData = (data?: string) => {
                     if (data && !this.deviceStatusCodes.has(data) && !this.disableEnterWhenAttachCloseListener()) {
-                        return rpc.sendRequest('write', [data]);
+                        connection.getWriteBuffer().writeString(data).commit();
                     }
                 };
 
@@ -590,10 +693,9 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
                 connection.onClose(() => disposable.dispose());
 
                 if (waitForConnection) {
-                    waitForConnection.resolve(rpc);
+                    waitForConnection.resolve(connection);
                 }
-            }
-        }, { reconnecting: false });
+            }, false);
     }
     protected async reconnectTerminalProcess(): Promise<void> {
         if (this.options.isPseudoTerminal) {
@@ -612,16 +714,34 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         }
         this.term.open(this.node);
 
+        interface ViewportType {
+            register(d: Disposable): void;
+            _refreshAnimationFrame: number | null;
+            _coreBrowserService: {
+                window: Window;
+            }
+        }
+
+        // Workaround for https://github.com/xtermjs/xterm.js/issues/4775. Can be removed for releases > 5.3.0
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const viewPort: ViewportType = (this.term as any)._core.viewport;
+        viewPort.register(Disposable.create(() => {
+            if (typeof viewPort._refreshAnimationFrame === 'number') {
+                viewPort._coreBrowserService.window.cancelAnimationFrame(viewPort._refreshAnimationFrame);
+            }
+        }));
+
         if (isFirefox) {
             // monkey patching intersection observer handling for secondary window support
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const renderService: any = (this.term as any)._core._renderService;
-            const originalFunc: (entry: IntersectionObserverEntry) => void = renderService._onIntersectionChange.bind(renderService);
+
+            const originalFunc: (entry: IntersectionObserverEntry) => void = renderService._handleIntersectionChange.bind(renderService);
             const replacement = function (entry: IntersectionObserverEntry): void {
                 if (entry.target.ownerDocument !== document) {
                     // in Firefox, the intersection observer always reports the widget as non-intersecting if the dom element
                     // is in a different document from when the IntersectionObserver started observing. Since we know
-                    // that the widget is always "visible" when in a secondary window, so we mark the entry as "intersecting"
+                    // that the widget is always "visible" when in a secondary window, so we refresh the rows ourselves
                     const patchedEvent: IntersectionObserverEntry = {
                         ...entry,
                         isIntersecting: true,
@@ -632,7 +752,7 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
                 }
             };
 
-            renderService._onIntersectionChange = replacement;
+            renderService._handleIntersectionChange = replacement.bind(renderService);
         }
 
         if (this.initialData) {
@@ -640,18 +760,12 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
         }
         this.termOpened = true;
         this.initialData = '';
-
-        if (isFirefox) {
-            // The software scrollbars don't work with xterm.js, so we disable the scrollbar if we are on firefox.
-            if (this.term.element) {
-                (this.term.element.children.item(0) as HTMLElement).style.overflow = 'hidden';
-            }
-        }
     }
 
     write(data: string): void {
         if (this.termOpened) {
             this.term.write(data);
+            this.onOutputEmitter.fire(data);
         } else {
             this.initialData += data;
         }
@@ -664,13 +778,13 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
     sendText(text: string): void {
         if (this.waitForConnection) {
             this.waitForConnection.promise.then(connection =>
-                connection.sendRequest('write', [text])
+                connection.getWriteBuffer().writeString(text).commit()
             );
         }
     }
 
     async executeCommand(commandOptions: CommandLineOptions): Promise<void> {
-        this.sendText(this.shellCommandBuilder.buildCommand(await this.processInfo, commandOptions) + '\n');
+        this.sendText(this.shellCommandBuilder.buildCommand(await this.processInfo, commandOptions) + OS.backend.EOL);
     }
 
     scrollLineUp(): void {
@@ -703,6 +817,7 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
 
     writeLine(text: string): void {
         this.term.writeln(text);
+        this.onOutputEmitter.fire(text + '\n');
     }
 
     get onTerminalDidClose(): Event<TerminalWidget> {
@@ -714,19 +829,34 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
             // Close the backend terminal only when explicitly closing the terminal
             // a refresh for example won't close it.
             this.shellTerminalServer.close(this.terminalId);
-            this.exitStatus = { code: undefined };
+            // Exit status is set when terminal is closed by user or by process, so most likely an extension closed it.
+            this.exitStatus = { code: undefined, reason: TerminalExitReason.Extension };
         }
         if (this.exitStatus) {
             this.onTermDidClose.fire(this);
         }
+        if (this.enhancedPreviewNode) {
+            // don't use preview node anymore. rendered markdown will be disposed on super call
+            this.enhancedPreviewNode = undefined;
+        }
+        this.styleElement?.remove();
         super.dispose();
     }
 
-    protected resizeTerminal(): void {
+    protected resizeTerminal = debounce(() => this.doResizeTerminal(), 50);
+
+    protected doResizeTerminal(): void {
+        if (this.isDisposed) {
+            return;
+        }
         const geo = this.fitAddon.proposeDimensions();
-        const cols = geo.cols;
-        const rows = geo.rows - 1; // subtract one row for margin
-        this.term.resize(cols, rows);
+        if (geo) {
+            const cols = geo.cols;
+            const rows = geo.rows - 1; // subtract one row for margin
+            this.term.resize(cols, rows);
+
+            this.resizeTerminalProcess();
+        }
     }
 
     protected resizeTerminalProcess(): void {
@@ -734,7 +864,9 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
             return;
         }
         if (!IBaseTerminalServer.validateId(this.terminalId)
-            || !this.terminalService.getById(this.id)) {
+            || this.exitStatus
+            || !this.terminalService.getById(this.id)
+        ) {
             return;
         }
         const { cols, rows } = this.term;
@@ -816,5 +948,49 @@ export class TerminalWidgetImpl extends TerminalWidget implements StatefulWidget
 
     private disableEnterWhenAttachCloseListener(): boolean {
         return this.isAttachedCloseListener;
+    }
+
+    getEnhancedPreviewNode(): Node | undefined {
+        if (this.enhancedPreviewNode) {
+            return this.enhancedPreviewNode;
+        }
+
+        this.enhancedPreviewNode = document.createElement('div');
+
+        Promise.all([this.envVarCollectionDescriptionsByExtension, this.processId, this.processInfo])
+            .then((values: [Map<string, (string | MarkdownString | undefined)[]>, number, TerminalProcessInfo]) => {
+                const extensions = values[0];
+                const processId = values[1];
+                const processInfo = values[2];
+
+                const markdown = new MarkdownStringImpl();
+                markdown.appendMarkdown('Process ID: ' + processId + '\\\n');
+                markdown.appendMarkdown('Command line: ' +
+                    processInfo.executable +
+                    ' ' +
+                    processInfo.arguments.join(' ') +
+                    '\n\n---\n\n');
+                markdown.appendMarkdown('The following extensions have contributed to this terminal\'s environment:\n');
+                extensions.forEach((arr, key) => {
+                    arr.forEach(value => {
+                        if (value === undefined) {
+                            markdown.appendMarkdown('* ' + key + '\n');
+                        } else if (typeof value === 'string') {
+                            markdown.appendMarkdown('* ' + key + ': ' + value + '\n');
+                        } else {
+                            markdown.appendMarkdown('* ' + key + ': ' + value.value + '\n');
+                        }
+                    });
+                });
+
+                const enhancedPreviewNode = this.enhancedPreviewNode;
+                if (!this.isDisposed && enhancedPreviewNode) {
+                    const result = this.markdownRenderer.render(markdown);
+                    this.toDispose.push(result);
+                    enhancedPreviewNode.appendChild(result.element);
+                }
+            });
+
+        return this.enhancedPreviewNode;
     }
 }

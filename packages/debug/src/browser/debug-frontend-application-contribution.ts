@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import {
@@ -19,8 +19,8 @@ import {
 } from '@theia/core/lib/browser';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import * as monaco from '@theia/monaco-editor-core';
-import { MenuModelRegistry, CommandRegistry, MAIN_MENU_BAR, Command, Emitter, Mutable } from '@theia/core/lib/common';
-import { EditorKeybindingContexts, EditorManager } from '@theia/editor/lib/browser';
+import { MenuModelRegistry, CommandRegistry, MAIN_MENU_BAR, Command, Emitter, Mutable, CompoundMenuNodeRole } from '@theia/core/lib/common';
+import { EDITOR_CONTEXT_MENU, EDITOR_LINENUMBER_CONTEXT_MENU, EditorManager } from '@theia/editor/lib/browser';
 import { DebugSessionManager } from './debug-session-manager';
 import { DebugWidget } from './view/debug-widget';
 import { FunctionBreakpoint } from './breakpoint/breakpoint-marker';
@@ -36,14 +36,13 @@ import { DebugStackFrame } from './model/debug-stack-frame';
 import { DebugVariablesWidget } from './view/debug-variables-widget';
 import { DebugVariable } from './console/debug-console-items';
 import { DebugSessionWidget } from './view/debug-session-widget';
-import { DebugKeybindingContexts } from './debug-keybinding-contexts';
 import { DebugEditorModel } from './editor/debug-editor-model';
 import { DebugEditorService } from './editor/debug-editor-service';
 import { DebugConsoleContribution } from './console/debug-console-contribution';
 import { DebugService } from '../common/debug-service';
 import { DebugSchemaUpdater } from './debug-schema-updater';
 import { DebugPreferences } from './debug-preferences';
-import { TabBarToolbarContribution, TabBarToolbarRegistry, TabBarToolbarItem } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
+import { TabBarToolbarContribution, TabBarToolbarRegistry, RenderedToolbarItem } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { DebugWatchWidget } from './view/debug-watch-widget';
 import { DebugWatchExpression } from './view/debug-watch-expression';
 import { DebugWatchManager } from './debug-watch-manager';
@@ -54,6 +53,8 @@ import { DebugFunctionBreakpoint } from './model/debug-function-breakpoint';
 import { DebugBreakpoint } from './model/debug-breakpoint';
 import { nls } from '@theia/core/lib/common/nls';
 import { DebugInstructionBreakpoint } from './model/debug-instruction-breakpoint';
+import { DebugConfiguration } from '../common/debug-configuration';
+import { DebugExceptionBreakpoint } from './view/debug-exception-breakpoint';
 
 export namespace DebugMenus {
     export const DEBUG = [...MAIN_MENU_BAR, '6_debug'];
@@ -211,6 +212,11 @@ export namespace DebugCommands {
         originalLabel: 'Edit Logpoint...',
         label: nlsEditBreakpoint('Logpoint')
     }, '', DEBUG_CATEGORY_KEY);
+    export const EDIT_BREAKPOINT_CONDITION = Command.toLocalizedCommand({
+        id: 'debug.breakpoint.editCondition',
+        category: DEBUG_CATEGORY,
+        label: 'Edit Condition...'
+    }, '', DEBUG_CATEGORY_KEY);
     export const REMOVE_BREAKPOINT = Command.toLocalizedCommand({
         id: 'debug.breakpoint.remove',
         category: DEBUG_CATEGORY,
@@ -233,8 +239,12 @@ export namespace DebugCommands {
     });
     export const SHOW_HOVER = Command.toDefaultLocalizedCommand({
         id: 'editor.debug.action.showDebugHover',
+        label: 'Debug: Show Hover'
+    });
+    export const JUMP_TO_CURSOR = Command.toDefaultLocalizedCommand({
+        id: 'editor.debug.action.jumpToCursor',
         category: DEBUG_CATEGORY,
-        label: 'Show Hover'
+        label: 'Jump to Cursor'
     });
 
     export const RESTART_FRAME = Command.toDefaultLocalizedCommand({
@@ -371,6 +381,9 @@ export namespace DebugEditorContextCommands {
     export const DISABLE_LOGPOINT = {
         id: 'debug.editor.context.logpoint.disable'
     };
+    export const JUMP_TO_CURSOR = {
+        id: 'debug.editor.context.jumpToCursor'
+    };
 }
 export namespace DebugBreakpointWidgetCommands {
     export const ACCEPT = {
@@ -449,14 +462,16 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
                     activate: false,
                 });
             }
-            if (!noDebug && (openDebug === 'openOnSessionStart' || (openDebug === 'openOnFirstSessionStart' && this.firstSessionStart))) {
+            const shouldOpenDebug = openDebug === 'openOnSessionStart' || (openDebug === 'openOnFirstSessionStart' && this.firstSessionStart);
+            // Do not open debug view when suppressed via configuration
+            if (!noDebug && !this.getOption(session, 'suppressDebugView') && shouldOpenDebug) {
                 this.openSession(session);
             }
             this.firstSessionStart = false;
         });
         this.manager.onDidStopDebugSession(session => {
             const { openDebug } = session.configuration;
-            if (openDebug === 'openOnDebugBreak') {
+            if (!this.getOption(session, 'suppressDebugView') && openDebug === 'openOnDebugBreak') {
                 this.openSession(session);
             }
         });
@@ -466,8 +481,8 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
 
         this.schemaUpdater.update();
         this.configurations.load();
-        await this.breakpointManager.load();
-        await this.watchManager.load();
+        this.breakpointManager.load();
+        this.watchManager.load();
     }
 
     onStop(): void {
@@ -483,8 +498,8 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
                 action: async () => {
                     if (this.manager.currentSession) {
                         const msg = this.manager.sessions.length === 1
-                            ? nls.localize('theia/debug/debugSessionActive', 'There is an active debug session, are you sure you want to stop it?')
-                            : nls.localize('theia/debug/debugSessionActiveMultiple', 'There are active debug sessions, are you sure you want to stop them?');
+                            ? nls.localizeByDefault('There is an active debug session, are you sure you want to stop it?')
+                            : nls.localizeByDefault('There are active debug sessions, are you sure you want to stop them?');
                         const safeToExit = await new ConfirmDialog({
                             title: '',
                             msg,
@@ -593,7 +608,8 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
 
         registerMenuActions(DebugBreakpointsWidget.EDIT_MENU,
             DebugCommands.EDIT_BREAKPOINT,
-            DebugCommands.EDIT_LOGPOINT
+            DebugCommands.EDIT_LOGPOINT,
+            DebugCommands.EDIT_BREAKPOINT_CONDITION
         );
         registerMenuActions(DebugBreakpointsWidget.REMOVE_MENU,
             DebugCommands.REMOVE_BREAKPOINT,
@@ -603,6 +619,11 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
         registerMenuActions(DebugBreakpointsWidget.ENABLE_MENU,
             DebugCommands.ENABLE_ALL_BREAKPOINTS,
             DebugCommands.DISABLE_ALL_BREAKPOINTS
+        );
+
+        const DEBUG_EDITOR_CONTEXT_MENU_GROUP = [...EDITOR_CONTEXT_MENU, '2_debug'];
+        registerMenuActions(DEBUG_EDITOR_CONTEXT_MENU_GROUP,
+            DebugCommands.JUMP_TO_CURSOR
         );
 
         registerMenuActions(DebugEditorModel.CONTEXT_MENU,
@@ -616,8 +637,10 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
             { ...DebugEditorContextCommands.REMOVE_LOGPOINT, label: DebugCommands.REMOVE_LOGPOINT.label },
             { ...DebugEditorContextCommands.EDIT_LOGPOINT, label: DebugCommands.EDIT_LOGPOINT.label },
             { ...DebugEditorContextCommands.ENABLE_LOGPOINT, label: nlsEnableBreakpoint('Logpoint') },
-            { ...DebugEditorContextCommands.DISABLE_LOGPOINT, label: nlsDisableBreakpoint('Logpoint') }
+            { ...DebugEditorContextCommands.DISABLE_LOGPOINT, label: nlsDisableBreakpoint('Logpoint') },
+            { ...DebugEditorContextCommands.JUMP_TO_CURSOR, label: nls.localizeByDefault('Jump to Cursor') }
         );
+        menus.linkSubmenu(EDITOR_LINENUMBER_CONTEXT_MENU, DebugEditorModel.CONTEXT_MENU, { role: CompoundMenuNodeRole.Group });
     }
 
     override registerCommands(registry: CommandRegistry): void {
@@ -784,6 +807,16 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
             isEnabled: () => !!this.selectedLogpoint,
             isVisible: () => !!this.selectedLogpoint
         });
+        registry.registerCommand(DebugCommands.EDIT_BREAKPOINT_CONDITION, {
+            execute: async () => {
+                const { selectedExceptionBreakpoint } = this;
+                if (selectedExceptionBreakpoint) {
+                    await selectedExceptionBreakpoint.editCondition();
+                }
+            },
+            isEnabled: () => !!this.selectedExceptionBreakpoint?.data.raw.supportsCondition,
+            isVisible: () => !!this.selectedExceptionBreakpoint?.data.raw.supportsCondition
+        });
         registry.registerCommand(DebugCommands.REMOVE_BREAKPOINT, {
             execute: () => {
                 const selectedBreakpoint = this.selectedSettableBreakpoint;
@@ -818,6 +851,20 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
             isEnabled: () => this.editors.canShowHover()
         });
 
+        registry.registerCommand(DebugCommands.JUMP_TO_CURSOR, {
+            execute: () => {
+                const model = this.editors.model;
+                if (model && this.manager.currentThread) {
+                    this.manager.currentThread.jumpToCursor(
+                        model.editor.getResourceUri(),
+                        model.position
+                    );
+                }
+            },
+            isEnabled: () => !!this.manager.currentThread && this.manager.currentThread.supportsGoto,
+            isVisible: () => !!this.manager.currentThread && this.manager.currentThread.supportsGoto
+        });
+
         registry.registerCommand(DebugCommands.RESTART_FRAME, {
             execute: () => this.selectedFrame && this.selectedFrame.restart(),
             isEnabled: () => !!this.selectedFrame
@@ -837,7 +884,7 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
 
         registry.registerCommand(DebugCommands.SET_VARIABLE_VALUE, {
             execute: () => this.selectedVariable && this.selectedVariable.open(),
-            isEnabled: () => !!this.selectedVariable && this.selectedVariable.supportSetVariable,
+            isEnabled: () => !!this.selectedVariable && this.selectedVariable.supportSetVariable && !this.selectedVariable.readOnly,
             isVisible: () => !!this.selectedVariable && this.selectedVariable.supportSetVariable
         });
         registry.registerCommand(DebugCommands.COPY_VARIABLE_VALUE, {
@@ -863,59 +910,68 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
 
         // Debug context menu commands
         registry.registerCommand(DebugEditorContextCommands.ADD_BREAKPOINT, {
-            execute: position => this.isPosition(position) && this.editors.toggleBreakpoint(position),
-            isEnabled: position => this.isPosition(position) && !this.editors.anyBreakpoint(position),
-            isVisible: position => this.isPosition(position) && !this.editors.anyBreakpoint(position)
+            execute: position => this.isPosition(position) && this.editors.toggleBreakpoint(this.asPosition(position)),
+            isEnabled: position => this.isPosition(position) && !this.editors.anyBreakpoint(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !this.editors.anyBreakpoint(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.ADD_CONDITIONAL_BREAKPOINT, {
-            execute: position => this.isPosition(position) && this.editors.addBreakpoint('condition', position),
-            isEnabled: position => this.isPosition(position) && !this.editors.anyBreakpoint(position),
-            isVisible: position => this.isPosition(position) && !this.editors.anyBreakpoint(position)
+            execute: position => this.isPosition(position) && this.editors.addBreakpoint('condition', this.asPosition(position)),
+            isEnabled: position => this.isPosition(position) && !this.editors.anyBreakpoint(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !this.editors.anyBreakpoint(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.ADD_LOGPOINT, {
-            execute: position => this.isPosition(position) && this.editors.addBreakpoint('logMessage', position),
-            isEnabled: position => this.isPosition(position) && !this.editors.anyBreakpoint(position),
-            isVisible: position => this.isPosition(position) && !this.editors.anyBreakpoint(position)
+            execute: position => this.isPosition(position) && this.editors.addBreakpoint('logMessage', this.asPosition(position)),
+            isEnabled: position => this.isPosition(position) && !this.editors.anyBreakpoint(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !this.editors.anyBreakpoint(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.REMOVE_BREAKPOINT, {
-            execute: position => this.isPosition(position) && this.editors.toggleBreakpoint(position),
-            isEnabled: position => this.isPosition(position) && !!this.editors.getBreakpoint(position),
-            isVisible: position => this.isPosition(position) && !!this.editors.getBreakpoint(position)
+            execute: position => this.isPosition(position) && this.editors.toggleBreakpoint(this.asPosition(position)),
+            isEnabled: position => this.isPosition(position) && !!this.editors.getBreakpoint(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !!this.editors.getBreakpoint(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.EDIT_BREAKPOINT, {
-            execute: position => this.isPosition(position) && this.editors.editBreakpoint(position),
-            isEnabled: position => this.isPosition(position) && !!this.editors.getBreakpoint(position),
-            isVisible: position => this.isPosition(position) && !!this.editors.getBreakpoint(position)
+            execute: position => this.isPosition(position) && this.editors.editBreakpoint(this.asPosition(position)),
+            isEnabled: position => this.isPosition(position) && !!this.editors.getBreakpoint(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !!this.editors.getBreakpoint(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.ENABLE_BREAKPOINT, {
-            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(position, true),
-            isEnabled: position => this.isPosition(position) && this.editors.getBreakpointEnabled(position) === false,
-            isVisible: position => this.isPosition(position) && this.editors.getBreakpointEnabled(position) === false
+            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(this.asPosition(position), true),
+            isEnabled: position => this.isPosition(position) && this.editors.getBreakpointEnabled(this.asPosition(position)) === false,
+            isVisible: position => this.isPosition(position) && this.editors.getBreakpointEnabled(this.asPosition(position)) === false
         });
         registry.registerCommand(DebugEditorContextCommands.DISABLE_BREAKPOINT, {
-            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(position, false),
-            isEnabled: position => this.isPosition(position) && !!this.editors.getBreakpointEnabled(position),
-            isVisible: position => this.isPosition(position) && !!this.editors.getBreakpointEnabled(position)
+            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(this.asPosition(position), false),
+            isEnabled: position => this.isPosition(position) && !!this.editors.getBreakpointEnabled(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !!this.editors.getBreakpointEnabled(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.REMOVE_LOGPOINT, {
-            execute: position => this.isPosition(position) && this.editors.toggleBreakpoint(position),
-            isEnabled: position => this.isPosition(position) && !!this.editors.getLogpoint(position),
-            isVisible: position => this.isPosition(position) && !!this.editors.getLogpoint(position)
+            execute: position => this.isPosition(position) && this.editors.toggleBreakpoint(this.asPosition(position)),
+            isEnabled: position => this.isPosition(position) && !!this.editors.getLogpoint(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !!this.editors.getLogpoint(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.EDIT_LOGPOINT, {
-            execute: position => this.isPosition(position) && this.editors.editBreakpoint(position),
-            isEnabled: position => this.isPosition(position) && !!this.editors.getLogpoint(position),
-            isVisible: position => this.isPosition(position) && !!this.editors.getLogpoint(position)
+            execute: position => this.isPosition(position) && this.editors.editBreakpoint(this.asPosition(position)),
+            isEnabled: position => this.isPosition(position) && !!this.editors.getLogpoint(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !!this.editors.getLogpoint(this.asPosition(position))
         });
         registry.registerCommand(DebugEditorContextCommands.ENABLE_LOGPOINT, {
-            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(position, true),
-            isEnabled: position => this.isPosition(position) && this.editors.getLogpointEnabled(position) === false,
-            isVisible: position => this.isPosition(position) && this.editors.getLogpointEnabled(position) === false
+            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(this.asPosition(position), true),
+            isEnabled: position => this.isPosition(position) && this.editors.getLogpointEnabled(this.asPosition(position)) === false,
+            isVisible: position => this.isPosition(position) && this.editors.getLogpointEnabled(this.asPosition(position)) === false
         });
         registry.registerCommand(DebugEditorContextCommands.DISABLE_LOGPOINT, {
-            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(position, false),
-            isEnabled: position => this.isPosition(position) && !!this.editors.getLogpointEnabled(position),
-            isVisible: position => this.isPosition(position) && !!this.editors.getLogpointEnabled(position)
+            execute: position => this.isPosition(position) && this.editors.setBreakpointEnabled(this.asPosition(position), false),
+            isEnabled: position => this.isPosition(position) && !!this.editors.getLogpointEnabled(this.asPosition(position)),
+            isVisible: position => this.isPosition(position) && !!this.editors.getLogpointEnabled(this.asPosition(position))
+        });
+        registry.registerCommand(DebugEditorContextCommands.JUMP_TO_CURSOR, {
+            execute: position => {
+                if (this.isPosition(position) && this.editors.currentUri && this.manager.currentThread) {
+                    this.manager.currentThread.jumpToCursor(this.editors.currentUri, this.asPosition(position));
+                }
+            },
+            isEnabled: () => !!this.manager.currentThread && this.manager.currentThread.supportsGoto,
+            isVisible: () => !!this.manager.currentThread && this.manager.currentThread.supportsGoto
         });
 
         registry.registerCommand(DebugBreakpointWidgetCommands.ACCEPT, {
@@ -1001,66 +1057,66 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
         keybindings.registerKeybinding({
             command: DebugCommands.STOP.id,
             keybinding: 'shift+f5',
-            context: DebugKeybindingContexts.inDebugMode
+            when: 'inDebugMode'
         });
 
         keybindings.registerKeybinding({
             command: DebugCommands.RESTART.id,
             keybinding: 'shift+ctrlcmd+f5',
-            context: DebugKeybindingContexts.inDebugMode
+            when: 'inDebugMode'
         });
         keybindings.registerKeybinding({
             command: DebugCommands.STEP_OVER.id,
             keybinding: 'f10',
-            context: DebugKeybindingContexts.inDebugMode
+            when: 'inDebugMode'
         });
         keybindings.registerKeybinding({
             command: DebugCommands.STEP_INTO.id,
             keybinding: 'f11',
-            context: DebugKeybindingContexts.inDebugMode
+            when: 'inDebugMode'
         });
         keybindings.registerKeybinding({
             command: DebugCommands.STEP_OUT.id,
             keybinding: 'shift+f11',
-            context: DebugKeybindingContexts.inDebugMode
+            when: 'inDebugMode'
         });
         keybindings.registerKeybinding({
             command: DebugCommands.CONTINUE.id,
             keybinding: 'f5',
-            context: DebugKeybindingContexts.inDebugMode
+            when: 'inDebugMode'
         });
         keybindings.registerKeybinding({
             command: DebugCommands.PAUSE.id,
             keybinding: 'f6',
-            context: DebugKeybindingContexts.inDebugMode
+            when: 'inDebugMode'
         });
 
         keybindings.registerKeybinding({
             command: DebugCommands.TOGGLE_BREAKPOINT.id,
             keybinding: 'f9',
-            context: EditorKeybindingContexts.editorTextFocus
+            when: 'editorTextFocus'
         });
         keybindings.registerKeybinding({
             command: DebugCommands.INLINE_BREAKPOINT.id,
             keybinding: 'shift+f9',
-            context: EditorKeybindingContexts.editorTextFocus
+            when: 'editorTextFocus'
         });
 
         keybindings.registerKeybinding({
             command: DebugBreakpointWidgetCommands.ACCEPT.id,
             keybinding: 'enter',
-            context: DebugKeybindingContexts.breakpointWidgetInputFocus
+            when: 'breakpointWidgetFocus'
         });
         keybindings.registerKeybinding({
             command: DebugBreakpointWidgetCommands.CLOSE.id,
             keybinding: 'esc',
-            context: DebugKeybindingContexts.breakpointWidgetInputStrictFocus
+            when: 'isBreakpointWidgetVisible || breakpointWidgetFocus'
         });
     }
 
     registerToolbarItems(toolbar: TabBarToolbarRegistry): void {
         const onDidChangeToggleBreakpointsEnabled = new Emitter<void>();
-        const toggleBreakpointsEnabled: Mutable<TabBarToolbarItem> = {
+        const toggleBreakpointsEnabled: Mutable<RenderedToolbarItem> = {
             id: DebugCommands.TOGGLE_BREAKPOINTS_ENABLED.id,
             command: DebugCommands.TOGGLE_BREAKPOINTS_ENABLED.id,
             icon: codicon('activate-breakpoints'),
@@ -1213,6 +1269,11 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
             return this.selectedAnyBreakpoint;
         }
     }
+    get selectedExceptionBreakpoint(): DebugExceptionBreakpoint | undefined {
+        const { breakpoints } = this;
+        const selectedElement = breakpoints && breakpoints.selectedElement;
+        return selectedElement instanceof DebugExceptionBreakpoint ? selectedElement : undefined;
+    }
 
     get selectedSettableBreakpoint(): DebugFunctionBreakpoint | DebugInstructionBreakpoint | DebugSourceBreakpoint | undefined {
         const selected = this.selectedAnyBreakpoint;
@@ -1239,8 +1300,12 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
         return watch && watch.selectedElement instanceof DebugWatchExpression && watch.selectedElement || undefined;
     }
 
-    protected isPosition(position: monaco.Position): boolean {
-        return (position instanceof monaco.Position);
+    protected isPosition(position: unknown): boolean {
+        return monaco.Position.isIPosition(position);
+    }
+
+    protected asPosition(position: monaco.IPosition): monaco.Position {
+        return monaco.Position.lift(position);
     }
 
     registerColors(colors: ColorRegistry): void {
@@ -1494,10 +1559,30 @@ export class DebugFrontendApplicationContribution extends AbstractViewContributi
         }
 
         const session = this.manager.currentSession;
-        if (session && session.configuration.noDebug) {
-            return false;
+        if (session) {
+            if (session.configuration.noDebug) {
+                return false;
+            }
+            if (this.getOption(session, 'suppressDebugStatusbar')) {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    protected getOption(session: DebugSession | undefined, option: keyof {
+        [Property in keyof DebugConfiguration]: boolean;
+    }): boolean | undefined {
+        // If session is undefined there will be no option
+        if (!session) {
+            return false;
+        }
+        // If undefined take the value of the parent
+        if (option in session.configuration && session.configuration[option] !== undefined) {
+            return session.configuration[option];
+        }
+
+        return this.getOption(session.parentSession, option);
     }
 }

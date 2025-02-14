@@ -11,15 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import URI from './uri';
 import * as fuzzy from 'fuzzy';
 import { Event } from './event';
 import { KeySequence } from './keys';
 import { CancellationToken } from './cancellation';
-import { URI as Uri } from 'vscode-uri';
 
 export const quickPickServicePath = '/services/quickPick';
 export const QuickPickService = Symbol('QuickPickService');
@@ -57,7 +55,7 @@ export interface QuickPickItem {
     iconClasses?: string[];
     alwaysShow?: boolean;
     highlights?: QuickPickItemHighlights;
-    buttons?: readonly QuickInputButton[];
+    buttons?: QuickInputButton[];
     execute?: () => void;
 }
 
@@ -67,6 +65,7 @@ export interface QuickPickSeparator {
 }
 
 export type QuickPickItemOrSeparator = QuickPickItem | QuickPickSeparator;
+export type QuickPickInput<T = QuickPickItem> = T | QuickPickSeparator;
 
 export namespace QuickPickItem {
     export function is(item: QuickPickSeparator | QuickPickItem): item is QuickPickItem {
@@ -93,7 +92,6 @@ export interface QuickPickValue<V> extends QuickPickItem {
 }
 
 export interface QuickInputButton {
-    iconPath?: URI | Uri | { light?: URI | Uri; dark: URI | Uri } | { id: string };
     iconClass?: string;
     tooltip?: string;
     /**
@@ -102,34 +100,8 @@ export interface QuickInputButton {
     alwaysVisible?: boolean;
 }
 
-export interface NormalizedQuickInputButton extends QuickInputButton {
-    iconPath?: { light?: Uri, dark: Uri };
-}
-
-export namespace QuickInputButton {
-    export function normalize(button: undefined): undefined;
-    export function normalize(button: QuickInputButton): NormalizedQuickInputButton;
-    export function normalize(button?: QuickInputButton): NormalizedQuickInputButton | undefined {
-        if (!button) {
-            return button;
-        }
-        let iconPath: NormalizedQuickInputButton['iconPath'] = undefined;
-        if (button.iconPath instanceof URI) {
-            iconPath = { dark: button.iconPath['codeUri'] };
-        } else if (button.iconPath && 'dark' in button.iconPath) {
-            const dark = Uri.isUri(button.iconPath.dark) ? button.iconPath.dark : button.iconPath.dark['codeUri'];
-            const light = Uri.isUri(button.iconPath.light) ? button.iconPath.light : button.iconPath.light?.['codeUri'];
-            iconPath = { dark, light };
-        }
-        return {
-            ...button,
-            iconPath,
-        };
-    }
-}
-
 export interface QuickInputButtonHandle extends QuickInputButton {
-    index: number; // index of where they are in buttons array if QuickInputButton or -1 if QuickInputButtons.Back
+    handle: number; // index of where the button is in buttons array if QuickInputButton or -1 if QuickInputButtons.Back
 }
 
 export enum QuickInputHideReason {
@@ -186,10 +158,11 @@ export interface QuickPick<T extends QuickPickItemOrSeparator> extends QuickInpu
     matchOnDescription: boolean;
     matchOnDetail: boolean;
     keepScrollPosition: boolean;
+    buttons: ReadonlyArray<QuickInputButton>;
     readonly onDidAccept: Event<{ inBackground: boolean } | undefined>;
     readonly onDidChangeValue: Event<string>;
     readonly onDidTriggerButton: Event<QuickInputButton>;
-    readonly onDidTriggerItemButton: Event<QuickPickItemButtonEvent<T>>;
+    readonly onDidTriggerItemButton: Event<QuickPickItemButtonEvent<QuickPickItem>>;
     readonly onDidChangeActive: Event<T[]>;
     readonly onDidChangeSelection: Event<T[]>;
 }
@@ -216,7 +189,7 @@ export interface InputOptions {
     placeHolder?: string;
     password?: boolean;
     ignoreFocusLost?: boolean;
-    validateInput?(input: string): Promise<string | { content: string; severity: number; }  | null | undefined> | undefined;
+    validateInput?(input: string): Promise<string | { content: string; severity: number; } | null | undefined> | undefined;
 }
 
 export interface QuickPickItemButtonEvent<T extends QuickPickItemOrSeparator> {
@@ -270,6 +243,7 @@ export interface QuickPickOptions<T extends QuickPickItemOrSeparator> {
     onDidTriggerItemButton?: (ItemButtonEvent: QuickPickItemButtonContext<T>) => void
 }
 
+export const quickInputServicePath = '/services/quickInput';
 export const QuickInputService = Symbol('QuickInputService');
 export interface QuickInputService {
     readonly backButton: QuickInputButton;
@@ -278,8 +252,13 @@ export interface QuickInputService {
     open(filter: string): void;
     createInputBox(): InputBox;
     input(options?: InputOptions, token?: CancellationToken): Promise<string | undefined>;
-    pick<T extends QuickPickItem, O extends PickOptions<T>>(picks: Promise<T[]> | T[], options?: O, token?: CancellationToken):
-        Promise<(O extends { canPickMany: true } ? T[] : T) | undefined>;
+    pick<T extends QuickPickItem>(picks: Promise<QuickPickInput<T>[]> | QuickPickInput<T>[],
+        options?: PickOptions<T> & { canPickMany: true }, token?: CancellationToken): Promise<T[] | undefined>;
+    pick<T extends QuickPickItem>(picks: Promise<QuickPickInput<T>[]> | QuickPickInput<T>[],
+        options?: PickOptions<T> & { canPickMany: false }, token?: CancellationToken): Promise<T | undefined>;
+    pick<T extends QuickPickItem>(picks: Promise<QuickPickInput<T>[]> | QuickPickInput<T>[],
+        options?: Omit<PickOptions<T>, 'canPickMany'>, token?: CancellationToken): Promise<T | undefined>;
+
     showQuickPick<T extends QuickPickItem>(items: Array<T | QuickPickSeparator>, options?: QuickPickOptions<T>): Promise<T | undefined>;
     hide(): void;
     /**

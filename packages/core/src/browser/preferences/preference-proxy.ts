@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { Disposable, Event, MaybePromise } from '../../common';
+import { Disposable, Event, isObject, MaybePromise } from '../../common';
 import { PreferenceService } from './preference-service';
 import { PreferenceSchema } from './preference-contribution';
 import { PreferenceScope } from './preference-scope';
@@ -228,12 +228,12 @@ export function createPreferenceProxy<T>(preferences: PreferenceService, promise
                 if (p.startsWith(prefix)) {
                     const idx = p.indexOf('.', prefix.length);
                     if (idx !== -1 && isDeep) {
-                        const pre = p.substr(prefix.length, idx - prefix.length);
+                        const pre = p.substring(prefix.length, idx);
                         if (properties.indexOf(pre) === -1) {
                             properties.push(pre);
                         }
                     }
-                    const prop = p.substr(prefix.length);
+                    const prop = p.substring(prefix.length);
                     if (isFlat || prop.indexOf('.') === -1) {
                         properties.push(prop);
                     }
@@ -332,7 +332,7 @@ export function createPreferenceProxy<T>(preferences: PreferenceService, promise
             } while (parentSegment && value === undefined);
 
             let segment;
-            while (typeof value === 'object' && (segment = segments.pop())) {
+            while (isObject(value) && (segment = segments.pop())) {
                 value = value[segment];
             }
             return segments.length ? undefined : value;

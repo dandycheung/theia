@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
@@ -30,6 +30,7 @@ export class OutlineViewService implements WidgetFactory {
     protected readonly onDidChangeOpenStateEmitter = new Emitter<boolean>();
     protected readonly onDidSelectEmitter = new Emitter<OutlineSymbolInformationNode>();
     protected readonly onDidOpenEmitter = new Emitter<OutlineSymbolInformationNode>();
+    protected readonly onDidTapNodeEmitter = new Emitter<OutlineSymbolInformationNode>();
 
     constructor(@inject(OutlineViewWidgetFactory) protected factory: OutlineViewWidgetFactory) { }
 
@@ -49,8 +50,16 @@ export class OutlineViewService implements WidgetFactory {
         return this.onDidChangeOpenStateEmitter.event;
     }
 
+    get onDidTapNode(): Event<OutlineSymbolInformationNode> {
+        return this.onDidTapNodeEmitter.event;
+    }
+
     get open(): boolean {
         return this.widget !== undefined && this.widget.isVisible;
+    }
+
+    didTapNode(node: OutlineSymbolInformationNode): void {
+        this.onDidTapNodeEmitter.fire(node);
     }
 
     /**

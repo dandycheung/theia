@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as upath from 'upath';
@@ -22,7 +22,7 @@ import * as fs from '@theia/core/shared/fs-extra';
 import { expect } from 'chai';
 import { Git } from '../common/git';
 import { git as gitExec } from 'dugite-extra/lib/core/git';
-import { FileUri } from '@theia/core/lib/node/file-uri';
+import { FileUri } from '@theia/core/lib/common/file-uri';
 import { WorkingDirectoryStatus, Repository, GitUtils, GitFileStatus, GitFileChange } from '../common';
 import { initRepository, createTestRepository } from 'dugite-extra/lib/command/test-helper';
 import { createGit } from './test/binding-helper';

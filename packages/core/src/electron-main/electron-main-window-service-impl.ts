@@ -11,14 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { shell } from '@theia/electron/shared/electron';
 import { injectable, inject } from 'inversify';
 import { ElectronMainWindowService } from '../electron-common/electron-main-window-service';
 import { ElectronMainApplication } from './electron-main-application';
-import { NewWindowOptions } from '../common/window';
+import { NewWindowOptions, WindowSearchParams } from '../common/window';
 
 @injectable()
 export class ElectronMainWindowServiceImpl implements ElectronMainWindowService {
@@ -37,8 +37,8 @@ export class ElectronMainWindowServiceImpl implements ElectronMainWindowService 
         return undefined;
     }
 
-    openNewDefaultWindow(): void {
-        this.app.openDefaultWindow();
+    openNewDefaultWindow(params?: WindowSearchParams): void {
+        this.app.openDefaultWindow(params);
     }
 
 }

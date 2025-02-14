@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ContainerModule, interfaces } from '@theia/core/shared/inversify';
@@ -26,6 +26,13 @@ import { bindSampleToolbarContribution } from './toolbar/sample-toolbar-contribu
 
 import '../../src/browser/style/branding.css';
 import { bindMonacoPreferenceExtractor } from './monaco-editor-preferences/monaco-editor-preference-extractor';
+import { rebindOVSXClientFactory } from '../common/vsx/sample-ovsx-client-factory';
+import { bindSampleAppInfo } from './vsx/sample-frontend-app-info';
+import { bindTestSample } from './test/sample-test-contribution';
+import { bindSampleFileSystemCapabilitiesCommands } from './file-system/sample-file-system-capabilities';
+import { bindChatNodeToolbarActionContribution } from './chat/chat-node-toolbar-action-contribution';
+import { bindAskAndContinueChatAgentContribution } from './chat/ask-and-continue-chat-agent-contribution';
+import { bindChangeSetChatAgentContribution } from './chat/change-set-chat-agent-contribution';
 
 export default new ContainerModule((
     bind: interfaces.Bind,
@@ -33,6 +40,9 @@ export default new ContainerModule((
     isBound: interfaces.IsBound,
     rebind: interfaces.Rebind,
 ) => {
+    bindAskAndContinueChatAgentContribution(bind);
+    bindChangeSetChatAgentContribution(bind);
+    bindChatNodeToolbarActionContribution(bind);
     bindDynamicLabelProvider(bind);
     bindSampleUnclosableView(bind);
     bindSampleOutputChannelWithSeverity(bind);
@@ -42,4 +52,8 @@ export default new ContainerModule((
     bindSampleFilteredCommandContribution(bind);
     bindSampleToolbarContribution(bind, rebind);
     bindMonacoPreferenceExtractor(bind);
+    bindSampleAppInfo(bind);
+    bindTestSample(bind);
+    bindSampleFileSystemCapabilitiesCommands(bind);
+    rebindOVSXClientFactory(rebind);
 });

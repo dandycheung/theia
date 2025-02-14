@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { Event, Emitter } from '@theia/core';
 import { MonacoEditorModel, WillSaveMonacoModelEvent } from '@theia/monaco/lib/browser/monaco-editor-model';
@@ -74,6 +74,15 @@ export class EditorModelService {
 
     getModels(): MonacoEditorModel[] {
         return this.monacoModelService.models;
+    }
+
+    async save(uri: URI): Promise<boolean> {
+        const model = this.monacoModelService.get(uri.toString());
+        if (model) {
+            await model.save();
+            return true;
+        }
+        return false;
     }
 
     async saveAll(includeUntitled?: boolean): Promise<boolean> {

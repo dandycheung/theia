@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable } from 'inversify';
@@ -34,13 +34,14 @@ export class BrowserContextMenuRenderer extends ContextMenuRenderer {
         super();
     }
 
-    protected doRender({ menuPath, anchor, args, onHide, context, contextKeyService }: RenderContextMenuOptions): ContextMenuAccess {
-        const contextMenu = this.menuFactory.createContextMenu(menuPath, args, context, contextKeyService);
+    protected doRender({ menuPath, anchor, args, onHide, context, contextKeyService, skipSingleRootNode }: RenderContextMenuOptions): ContextMenuAccess {
+        const contextMenu = this.menuFactory.createContextMenu(menuPath, args, context, contextKeyService, skipSingleRootNode);
         const { x, y } = coordinateFromAnchor(anchor);
         if (onHide) {
             contextMenu.aboutToClose.connect(() => onHide!());
         }
-        contextMenu.open(x, y);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        contextMenu.open(x, y, undefined, context);
         return new BrowserContextMenuAccess(contextMenu);
     }
 

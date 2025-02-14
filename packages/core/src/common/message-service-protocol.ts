@@ -11,11 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable } from 'inversify';
 import { CancellationToken } from './cancellation';
+import { nls } from './nls';
 
 export const messageServicePath = '/services/messageService';
 
@@ -52,7 +53,7 @@ export interface ProgressMessage extends Message {
     readonly options?: ProgressMessageOptions;
 }
 export namespace ProgressMessage {
-    export const Cancel = 'Cancel';
+    export const Cancel = nls.localizeByDefault('Cancel');
     export function isCancelable(message: ProgressMessage): boolean {
         return !!message.options?.cancelable;
     }

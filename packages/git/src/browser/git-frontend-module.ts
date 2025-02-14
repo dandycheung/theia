@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../src/browser/style/index.css';
@@ -43,6 +43,9 @@ import { ScmHistorySupport } from '@theia/scm-extra/lib/browser/history/scm-hist
 import { ScmHistoryProvider } from '@theia/scm-extra/lib/browser/history';
 import { GitHistorySupport } from './history/git-history-support';
 import { GitDecorationProvider } from './git-decoration-provider';
+import { GitFileSystemProvider } from './git-file-system-provider';
+import { GitFileServiceContribution } from './git-file-service-contribution';
+import { FileServiceContribution } from '@theia/filesystem/lib/browser/file-service';
 
 export default new ContainerModule(bind => {
     bindGitPreferences(bind);
@@ -75,6 +78,10 @@ export default new ContainerModule(bind => {
 
     bind(GitSyncService).toSelf().inSingletonScope();
     bind(GitErrorHandler).toSelf().inSingletonScope();
+
+    bind(GitFileSystemProvider).toSelf().inSingletonScope();
+    bind(GitFileServiceContribution).toDynamicValue(ctx => new GitFileServiceContribution(ctx.container)).inSingletonScope();
+    bind(FileServiceContribution).toService(GitFileServiceContribution);
 });
 
 export function createGitScmProviderFactory(ctx: interfaces.Context): GitScmProvider.Factory {

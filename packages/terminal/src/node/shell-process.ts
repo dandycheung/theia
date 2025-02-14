@@ -11,26 +11,24 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, named } from '@theia/core/shared/inversify';
 import * as os from 'os';
 import { ILogger } from '@theia/core/lib/common/logger';
 import { TerminalProcess, TerminalProcessOptions, ProcessManager, MultiRingBuffer } from '@theia/process/lib/node';
-import { isWindows, isOSX, OS } from '@theia/core/lib/common';
+import { isWindows, isOSX } from '@theia/core/lib/common';
 import URI from '@theia/core/lib/common/uri';
-import { FileUri } from '@theia/core/lib/node/file-uri';
+import { FileUri } from '@theia/core/lib/common/file-uri';
 import { EnvironmentUtils } from '@theia/core/lib/node/environment-utils';
 import { parseArgs } from '@theia/process/lib/node/utils';
-import { IShellTerminalPreferences } from '../common/shell-terminal-protocol';
 
 export const ShellProcessFactory = Symbol('ShellProcessFactory');
 export type ShellProcessFactory = (options: ShellProcessOptions) => ShellProcess;
 
 export const ShellProcessOptions = Symbol('ShellProcessOptions');
 export interface ShellProcessOptions {
-    shellPreferences?: IShellTerminalPreferences,
     shell?: string,
     args?: string[] | string,
     rootURI?: string,
@@ -41,7 +39,7 @@ export interface ShellProcessOptions {
     isPseudo?: boolean,
 }
 
-function getRootPath(rootURI?: string): string {
+export function getRootPath(rootURI?: string): string {
     if (rootURI) {
         const uri = new URI(rootURI);
         return FileUri.fsPath(uri);
@@ -63,42 +61,39 @@ export class ShellProcess extends TerminalProcess {
         @inject(ILogger) @named('terminal') logger: ILogger,
         @inject(EnvironmentUtils) environmentUtils: EnvironmentUtils,
     ) {
+        const env = { 'COLORTERM': 'truecolor' };
         super(<TerminalProcessOptions>{
-            command: options.shell || ShellProcess.getShellExecutablePath(options.shellPreferences),
-            args: options.args || ShellProcess.getShellExecutableArgs(options.shellPreferences),
+            command: options.shell || ShellProcess.getShellExecutablePath(),
+            args: options.args || ShellProcess.getShellExecutableArgs(),
             options: {
-                name: 'xterm-color',
+                name: 'xterm-256color',
                 cols: options.cols || ShellProcess.defaultCols,
                 rows: options.rows || ShellProcess.defaultRows,
                 cwd: getRootPath(options.rootURI),
-                env: options.strictEnv !== true ? environmentUtils.mergeProcessEnv(options.env) : options.env,
+                env: options.strictEnv !== true ? Object.assign(env, environmentUtils.mergeProcessEnv(options.env)) : Object.assign(env, options.env),
             },
             isPseudo: options.isPseudo,
         }, processManager, ringBuffer, logger);
     }
 
-    public static getShellExecutablePath(preferences?: IShellTerminalPreferences): string {
+    public static getShellExecutablePath(): string {
         const shell = process.env.THEIA_SHELL;
         if (shell) {
             return shell;
         }
-        if (preferences && preferences.shell[OS.type()]) {
-            return preferences.shell[OS.type()]!;
-        } else if (isWindows) {
+        if (isWindows) {
             return 'cmd.exe';
         } else {
             return process.env.SHELL!;
         }
     }
 
-    public static getShellExecutableArgs(preferences?: IShellTerminalPreferences): string[] {
+    public static getShellExecutableArgs(): string[] {
         const args = process.env.THEIA_SHELL_ARGS;
         if (args) {
             return parseArgs(args);
         }
-        if (preferences) {
-            return preferences.shellArgs[OS.type()];
-        } else if (isOSX) {
+        if (isOSX) {
             return ['-l'];
         } else {
             return [];

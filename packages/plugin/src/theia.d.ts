@@ -3,7 +3,7 @@
 //
 // This program and the accompanying materials are made available under the
 // terms of the Eclipse Public License v. 2.0 which is available at
-// http://www.eclipse.org/legal/epl-2.0.
+// http://www.eclipse.org/legal/epl-2.0.g
 //
 // This Source Code may also be made available under the following Secondary
 // Licenses when the conditions for such availability set forth in the Eclipse
@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 // This file is heavily inspired by VSCode 'vscode.d.ts' - https://github.com/Microsoft/vscode/blob/master/src/vs/vscode.d.ts
@@ -20,8 +20,33 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
+
 import './theia-extra';
-import './theia-proposed';
+import './theia.proposed.canonicalUriProvider';
+import './theia.proposed.createFileSystemWatcher';
+import './theia.proposed.customEditorMove';
+import './theia.proposed.debugVisualization';
+import './theia.proposed.diffCommand';
+import './theia.proposed.documentPaste';
+import './theia.proposed.editSessionIdentityProvider';
+import './theia.proposed.extensionsAny';
+import './theia.proposed.externalUriOpener';
+import './theia.proposed.findTextInFiles';
+import './theia.proposed.fsChunks';
+import './theia.proposed.mappedEditsProvider';
+import './theia.proposed.multiDocumentHighlightProvider';
+import './theia.proposed.notebookCellExecutionState';
+import './theia.proposed.notebookKernelSource';
+import './theia.proposed.notebookMessaging';
+import './theia.proposed.portsAttributes';
+import './theia.proposed.profileContentHandlers';
+import './theia.proposed.resolvers';
+import './theia.proposed.scmValidation';
+import './theia.proposed.shareProvider';
+import './theia.proposed.terminalCompletionProvider';
+import './theia.proposed.terminalQuickFixProvider';
+import './theia.proposed.textSearchProvider';
+import './theia.proposed.timeline';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable max-len */
@@ -661,8 +686,12 @@ export module '@theia/plugin' {
         /**
          * Indicates that this markdown string is from a trusted source. Only *trusted*
          * markdown supports links that execute commands, e.g. `[Run it](command:myCommandId)`.
+         *
+         * Defaults to `false` (commands are disabled).
+         *
+         * If this is an object, only the set of commands listed in `enabledCommands` are allowed.
          */
-        isTrusted?: boolean;
+        isTrusted?: boolean | { readonly enabledCommands: readonly string[] };
 
         /**
          * Indicates that this markdown string can contain {@link ThemeIcon ThemeIcons}, e.g. `$(zap)`.
@@ -1872,7 +1901,11 @@ export module '@theia/plugin' {
         /**
          * Render the line numbers with values relative to the primary cursor location.
          */
-        Relative = 2
+        Relative = 2,
+        /**
+         * Render the line numbers on every 10th line number.
+         */
+        Interval = 3
     }
 
     /**
@@ -1888,6 +1921,14 @@ export module '@theia/plugin' {
          * When setting a text editor's options, this property is optional and it can be a number or `"auto"`.
          */
         tabSize?: number | string;
+
+        /**
+         * The number of spaces to insert when {@link TextEditorOptions.insertSpaces insertSpaces} is true.
+         *
+         * When getting a text editor's options, this property will always be a number (resolved).
+         * When setting a text editor's options, this property is optional and it can be a number or `"tabSize"`.
+         */
+        indentSize?: number | string;
 
         /**
          * When pressing Tab insert {@link TextEditorOptions.tabSize n} spaces.
@@ -2119,6 +2160,11 @@ export module '@theia/plugin' {
          * and all fields other than {@link QuickPickItem.label label} will be ignored.
          */
         kind?: QuickPickItemKind;
+
+        /**
+         * The icon path or {@link ThemeIcon} for the QuickPickItem.
+         */
+        iconPath?: IconPath;
 
         /**
          * A human-readable string which is rendered less prominent in the same line. Supports rendering of
@@ -2652,6 +2698,11 @@ export module '@theia/plugin' {
      */
     export class ThemeColor {
         /**
+         * The id of this color.
+         */
+        readonly id: string;
+
+        /**
          * Creates a reference to a theme color.
          */
         constructor(id: string);
@@ -2691,6 +2742,21 @@ export module '@theia/plugin' {
     }
 
     /**
+     * Represents an icon in the UI. This is either an uri, separate uris for the light- and dark-themes,
+     * or a {@link ThemeIcon theme icon}.
+     */
+    export type IconPath = Uri | {
+        /**
+         * The icon path for the light theme.
+         */
+        light: Uri;
+        /**
+         * The icon path for the dark theme.
+         */
+        dark: Uri;
+    } | ThemeIcon;
+
+    /**
      * Represents the state of a window.
      */
     export interface WindowState {
@@ -2698,10 +2764,19 @@ export module '@theia/plugin' {
          * Whether the current window is focused.
          */
         readonly focused: boolean;
+
+        /**
+         * Whether the window has been interacted with recently. This will change
+         * immediately on activity, or after a short time of user inactivity.
+         */
+        readonly active: boolean;
     }
 
     /**
      * An output channel is a container for readonly textual information.
+     *
+     * To get an instance of an `OutputChannel` use
+     * {@link window.createOutputChannel createOutputChannel}.
      */
     export interface OutputChannel {
 
@@ -2763,6 +2838,106 @@ export module '@theia/plugin' {
          * Dispose and free associated resources.
          */
         dispose(): void;
+    }
+
+    /**
+     * Log levels
+     */
+    export enum LogLevel {
+
+        /**
+         * No messages are logged with this level.
+         */
+        Off = 0,
+
+        /**
+         * All messages are logged with this level.
+         */
+        Trace = 1,
+
+        /**
+         * Messages with debug and higher log level are logged with this level.
+         */
+        Debug = 2,
+
+        /**
+         * Messages with info and higher log level are logged with this level.
+         */
+        Info = 3,
+
+        /**
+         * Messages with warning and higher log level are logged with this level.
+         */
+        Warning = 4,
+
+        /**
+         * Only error messages are logged with this level.
+         */
+        Error = 5
+    }
+
+    /**
+     * A channel for containing log output.
+     *
+     * To get an instance of a `LogOutputChannel` use
+     * {@link window.createOutputChannel createOutputChannel}.
+     */
+    export interface LogOutputChannel extends OutputChannel {
+
+        /**
+         * The current log level of the channel. Defaults to {@link env.logLevel editor log level}.
+         */
+        readonly logLevel: LogLevel;
+
+        /**
+         * An {@link Event} which fires when the log level of the channel changes.
+         */
+        readonly onDidChangeLogLevel: Event<LogLevel>;
+
+        /**
+         * Outputs the given trace message to the channel. Use this method to log verbose information.
+         *
+         * The message is only logged if the channel is configured to display {@link LogLevel.Trace trace} log level.
+         *
+         * @param message trace message to log
+         */
+        trace(message: string, ...args: any[]): void;
+
+        /**
+         * Outputs the given debug message to the channel.
+         *
+         * The message is only logged if the channel is configured to display {@link LogLevel.Debug debug} log level or lower.
+         *
+         * @param message debug message to log
+         */
+        debug(message: string, ...args: any[]): void;
+
+        /**
+         * Outputs the given information message to the channel.
+         *
+         * The message is only logged if the channel is configured to display {@link LogLevel.Info info} log level or lower.
+         *
+         * @param message info message to log
+         */
+        info(message: string, ...args: any[]): void;
+
+        /**
+         * Outputs the given warning message to the channel.
+         *
+         * The message is only logged if the channel is configured to display {@link LogLevel.Warning warning} log level or lower.
+         *
+         * @param message warning message to log
+         */
+        warn(message: string, ...args: any[]): void;
+
+        /**
+         * Outputs the given error or error message to the channel.
+         *
+         * The message is only logged if the channel is configured to display {@link LogLevel.Error error} log level or lower.
+         *
+         * @param error Error or error message to log
+         */
+        error(error: string | Error, ...args: any[]): void;
     }
 
     /**
@@ -2905,11 +3080,25 @@ export module '@theia/plugin' {
         readonly state: TerminalState;
 
         /**
-         * Send text to the terminal.
-         * @param text - text content.
-         * @param addNewLine - in case true - apply new line after the text, otherwise don't apply new line. This defaults to `true`.
+         * An object that contains [shell integration](https://code.visualstudio.com/docs/terminal/shell-integration)-powered
+         * features for the terminal. This will always be `undefined` immediately after the terminal
+         * is created. Listen to {@link window.onDidChangeTerminalShellIntegration} to be notified
+         * when shell integration is activated for a terminal.
+         *
+         * Note that this object may remain undefined if shell integation never activates. For
+         * example Command Prompt does not support shell integration and a user's shell setup could
+         * conflict with the automatic shell integration activation.
+         * @stubbed
          */
-        sendText(text: string, addNewLine?: boolean): void;
+        readonly shellIntegration: TerminalShellIntegration | undefined;
+
+        /**
+         * Send text to the terminal.
+         * @param text - The text to send.
+         * @param shouldExecute - Indicates that the text being sent should be executed rather than just inserted in the terminal.
+         * The character added is \r, independent from the platform (compared to platform specific in vscode). This defaults to `true`.
+         */
+        sendText(text: string, shouldExecute?: boolean): void;
 
         /**
          * Show created terminal on the UI.
@@ -2944,6 +3133,333 @@ export module '@theia/plugin' {
          * https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
          */
         readonly isInteractedWith: boolean;
+    }
+
+    /**
+     * [Shell integration](https://code.visualstudio.com/docs/terminal/shell-integration)-powered capabilities owned by a terminal.
+     * @stubbed
+     */
+    export interface TerminalShellIntegration {
+        /**
+         * The current working directory of the terminal. This {@link Uri} may represent a file on
+         * another machine (eg. ssh into another machine). This requires the shell integration to
+         * support working directory reporting.
+         * @stubbed
+         */
+        readonly cwd: Uri | undefined;
+
+        /**
+         * Execute a command, sending ^C as necessary to interrupt any running command if needed.
+         *
+         * @param commandLine The command line to execute, this is the exact text that will be sent
+         * to the terminal.
+         *
+         * @example
+         * // Execute a command in a terminal immediately after being created
+         * const myTerm = window.createTerminal();
+         * window.onDidChangeTerminalShellIntegration(async ({ terminal, shellIntegration }) => {
+         *   if (terminal === myTerm) {
+         *     const execution = shellIntegration.executeCommand('echo "Hello world"');
+         *     window.onDidEndTerminalShellExecution(event => {
+         *     if (event.execution === execution) {
+         *       console.log(`Command exited with code ${event.exitCode}`);
+         *     }
+         *   }
+         * }));
+         * // Fallback to sendText if there is no shell integration within 3 seconds of launching
+         * setTimeout(() => {
+         *   if (!myTerm.shellIntegration) {
+         *     myTerm.sendText('echo "Hello world"');
+         *     // Without shell integration, we can't know when the command has finished or what the
+         *     // exit code was.
+         *   }
+         * }, 3000);
+         *
+         * @example
+         * // Send command to terminal that has been alive for a while
+         * const commandLine = 'echo "Hello world"';
+         * if (term.shellIntegration) {
+         *   const execution = shellIntegration.executeCommand({ commandLine });
+         *   window.onDidEndTerminalShellExecution(event => {
+         *   if (event.execution === execution) {
+         *     console.log(`Command exited with code ${event.exitCode}`);
+         *   }
+         * } else {
+         *   term.sendText(commandLine);
+         *   // Without shell integration, we can't know when the command has finished or what the
+         *   // exit code was.
+         * }
+         * @stubbed
+         */
+        executeCommand(commandLine: string): TerminalShellExecution;
+
+        /**
+         * Execute a command, sending ^C as necessary to interrupt any running command if needed.
+         *
+         * *Note* This is not guaranteed to work as [shell integration](https://code.visualstudio.com/docs/terminal/shell-integration)
+         * must be activated. Check whether {@link TerminalShellExecution.exitCode} is rejected to
+         * verify whether it was successful.
+         *
+         * @param command A command to run.
+         * @param args Arguments to launch the executable with which will be automatically escaped
+         * based on the executable type.
+         *
+         * @example
+         * // Execute a command in a terminal immediately after being created
+         * const myTerm = window.createTerminal();
+         * window.onDidActivateTerminalShellIntegration(async ({ terminal, shellIntegration }) => {
+         *   if (terminal === myTerm) {
+         *     const command = shellIntegration.executeCommand({
+         *       command: 'echo',
+         *       args: ['Hello world']
+         *     });
+         *     const code = await command.exitCode;
+         *     console.log(`Command exited with code ${code}`);
+         *   }
+         * }));
+         * // Fallback to sendText if there is no shell integration within 3 seconds of launching
+         * setTimeout(() => {
+         *   if (!myTerm.shellIntegration) {
+         *     myTerm.sendText('echo "Hello world"');
+         *     // Without shell integration, we can't know when the command has finished or what the
+         *     // exit code was.
+         *   }
+         * }, 3000);
+         *
+         * @example
+         * // Send command to terminal that has been alive for a while
+         * const commandLine = 'echo "Hello world"';
+         * if (term.shellIntegration) {
+         *   const command = term.shellIntegration.executeCommand({
+         *     command: 'echo',
+         *     args: ['Hello world']
+         *   });
+         *   const code = await command.exitCode;
+         *   console.log(`Command exited with code ${code}`);
+         * } else {
+         *   term.sendText(commandLine);
+         *   // Without shell integration, we can't know when the command has finished or what the
+         *   // exit code was.
+         * }
+         * @stubbed
+         */
+        executeCommand(executable: string, args: string[]): TerminalShellExecution;
+    }
+
+    /**
+     * A command that was executed in a terminal.
+     * @stubbed
+     */
+    export interface TerminalShellExecution {
+        /**
+         * The command line that was executed. The {@link TerminalShellExecutionCommandLineConfidence confidence}
+         * of this value depends on the specific shell's shell integration implementation. This
+         * value may become more accurate after {@link window.onDidEndTerminalShellExecution} is
+         * fired.
+         *
+         * @example
+         * // Log the details of the command line on start and end
+         * window.onDidStartTerminalShellExecution(event => {
+         *   const commandLine = event.execution.commandLine;
+         *   console.log(`Command started\n${summarizeCommandLine(commandLine)}`);
+         * });
+         * window.onDidEndTerminalShellExecution(event => {
+         *   const commandLine = event.execution.commandLine;
+         *   console.log(`Command ended\n${summarizeCommandLine(commandLine)}`);
+         * });
+         * function summarizeCommandLine(commandLine: TerminalShellExecutionCommandLine) {
+         *   return [
+         *     `  Command line: ${command.commandLine.value}`,
+         *     `  Confidence: ${command.commandLine.confidence}`,
+         *     `  Trusted: ${command.commandLine.isTrusted}
+         *   ].join('\n');
+         * }
+         * @stubbed
+         */
+        readonly commandLine: TerminalShellExecutionCommandLine;
+
+        /**
+         * The working directory that was reported by the shell when this command executed. This
+         * {@link Uri} may represent a file on another machine (eg. ssh into another machine). This
+         * requires the shell integration to support working directory reporting.
+         * @stubbed
+         */
+        readonly cwd: Uri | undefined;
+
+        /**
+         * Creates a stream of raw data (including escape sequences) that is written to the
+         * terminal. This will only include data that was written after `read` was called for
+         * the first time, ie. you must call `read` immediately after the command is executed via
+         * {@link TerminalShellIntegration.executeCommand} or
+         * {@link window.onDidStartTerminalShellExecution} to not miss any data.
+         *
+         * @example
+         * // Log all data written to the terminal for a command
+         * const command = term.shellIntegration.executeCommand({ commandLine: 'echo "Hello world"' });
+         * const stream = command.read();
+         * for await (const data of stream) {
+         *   console.log(data);
+         * }
+         * @stubbed
+         */
+        read(): AsyncIterable<string>;
+    }
+
+    /**
+     * A command line that was executed in a terminal.
+     * @stubbed
+     */
+    export interface TerminalShellExecutionCommandLine {
+        /**
+         * The full command line that was executed, including both the command and its arguments.
+         * @stubbed
+         */
+        readonly value: string;
+
+        /**
+         * Whether the command line value came from a trusted source and is therefore safe to
+         * execute without user additional confirmation, such as a notification that asks "Do you
+         * want to execute (command)?". This verification is likely only needed if you are going to
+         * execute the command again.
+         *
+         * This is `true` only when the command line was reported explicitly by the shell
+         * integration script (ie. {@link TerminalShellExecutionCommandLineConfidence.High high confidence})
+         * and it used a nonce for verification.
+         * @stubbed
+         */
+        readonly isTrusted: boolean;
+
+        /**
+         * The confidence of the command line value which is determined by how the value was
+         * obtained. This depends upon the implementation of the shell integration script.
+         * @stubbed
+         */
+        readonly confidence: TerminalShellExecutionCommandLineConfidence;
+    }
+
+    /**
+     * The confidence of a {@link TerminalShellExecutionCommandLine} value.
+     */
+    enum TerminalShellExecutionCommandLineConfidence {
+        /**
+         * The command line value confidence is low. This means that the value was read from the
+         * terminal buffer using markers reported by the shell integration script. Additionally one
+         * of the following conditions will be met:
+         *
+         * - The command started on the very left-most column which is unusual, or
+         * - The command is multi-line which is more difficult to accurately detect due to line
+         *   continuation characters and right prompts.
+         * - Command line markers were not reported by the shell integration script.
+         */
+        Low = 0,
+
+        /**
+         * The command line value confidence is medium. This means that the value was read from the
+         * terminal buffer using markers reported by the shell integration script. The command is
+         * single-line and does not start on the very left-most column (which is unusual).
+         */
+        Medium = 1,
+
+        /**
+         * The command line value confidence is high. This means that the value was explicitly sent
+         * from the shell integration script or the command was executed via the
+         * {@link TerminalShellIntegration.executeCommand} API.
+         */
+        High = 2
+    }
+
+    /**
+     * An event signalling that a terminal's shell integration has changed.
+     * @stubbed
+     */
+    export interface TerminalShellIntegrationChangeEvent {
+        /**
+         * The terminal that shell integration has been activated in.
+         * @stubbed
+         */
+        readonly terminal: Terminal;
+
+        /**
+         * The shell integration object.
+         * @stubbed
+         */
+        readonly shellIntegration: TerminalShellIntegration;
+    }
+
+    /**
+     * An event signalling that an execution has started in a terminal.
+     * @stubbed
+     */
+    export interface TerminalShellExecutionStartEvent {
+        /**
+         * The terminal that shell integration has been activated in.
+         * @stubbed
+         */
+        readonly terminal: Terminal;
+
+        /**
+         * The shell integration object.
+         * @stubbed
+         */
+        readonly shellIntegration: TerminalShellIntegration;
+
+        /**
+         * The terminal shell execution that has ended.
+         * @stubbed
+         */
+        readonly execution: TerminalShellExecution;
+    }
+
+    /**
+     * An event signalling that an execution has ended in a terminal.
+     * @stubbed
+     */
+    export interface TerminalShellExecutionEndEvent {
+        /**
+         * The terminal that shell integration has been activated in.
+         * @stubbed
+         */
+        readonly terminal: Terminal;
+
+        /**
+         * The shell integration object.
+         * @stubbed
+         */
+        readonly shellIntegration: TerminalShellIntegration;
+
+        /**
+         * The terminal shell execution that has ended.
+         * @stubbed
+         */
+        readonly execution: TerminalShellExecution;
+
+        /**
+         * The exit code reported by the shell.
+         *
+         * Note that `undefined` means the shell either did not report an exit  code (ie. the shell
+         * integration script is misbehaving) or the shell reported a command started before the command
+         * finished (eg. a sub-shell was opened). Generally this should not happen, depending on the use
+         * case, it may be best to treat this as a failure.
+         *
+         * @example
+         * const execution = shellIntegration.executeCommand({
+         *   command: 'echo',
+         *   args: ['Hello world']
+         * });
+         * window.onDidEndTerminalShellExecution(event => {
+         *   if (event.execution === execution) {
+         *     if (event.exitCode === undefined) {
+         *      console.log('Command finished but exit code is unknown');
+         *     } else if (event.exitCode === 0) {
+         *      console.log('Command succeeded');
+         *     } else {
+         *      console.log('Command failed');
+         *     }
+         *   }
+         * });
+         * @stubbed
+         */
+        readonly exitCode: number | undefined;
     }
 
     /**
@@ -3002,9 +3518,32 @@ export module '@theia/plugin' {
         message?: string;
 
         /**
+         * The {@link TerminalLocation} or {@link TerminalEditorLocationOptions} or {@link TerminalSplitLocationOptions} for the terminal.
+         */
+        location?: TerminalLocation | TerminalEditorLocationOptions | TerminalSplitLocationOptions;
+
+        /**
+         * Opt-out of the default terminal persistence on restart and reload.
+         * This will only take effect when `terminal.integrated.enablePersistentSessions` is enabled.
+         */
+        isTransient?: boolean;
+
+        /**
          * Terminal attributes. Can be useful to apply some implementation specific information.
          */
         attributes?: { [key: string]: string | null };
+
+        /**
+         * The icon path or {@link ThemeIcon} for the terminal.
+         */
+        iconPath?: IconPath;
+
+        /**
+         * The icon {@link ThemeColor} for the terminal.
+         * The `terminal.ansi*` theme keys are
+         * recommended for the best contrast and consistency across themes.
+         */
+        color?: ThemeColor;
     }
 
     /**
@@ -3034,6 +3573,41 @@ export module '@theia/plugin' {
          *   without providing an exit code.
          */
         readonly code: number | undefined;
+
+        /**
+         * The reason that triggered the exit of a terminal.
+         */
+        readonly reason: TerminalExitReason;
+    }
+
+    /**
+     * Terminal exit reason kind.
+     */
+    export enum TerminalExitReason {
+        /**
+         * Unknown reason.
+         */
+        Unknown = 0,
+
+        /**
+         * The window closed/reloaded.
+         */
+        Shutdown = 1,
+
+        /**
+         * The shell process exited.
+         */
+        Process = 2,
+
+        /**
+         * The user closed the terminal.
+         */
+        User = 3,
+
+        /**
+         * An extension disposed the terminal.
+         */
+        Extension = 4
     }
 
     /**
@@ -3067,6 +3641,30 @@ export module '@theia/plugin' {
          * control it.
          */
         pty: Pseudoterminal;
+
+        /**
+         * The {@link TerminalLocation} or {@link TerminalEditorLocationOptions} or {@link TerminalSplitLocationOptions} for the terminal.
+         */
+        location?: TerminalLocation | TerminalEditorLocationOptions | TerminalSplitLocationOptions;
+
+        /**
+         * Opt-out of the default terminal persistence on restart and reload.
+         * This will only take effect when `terminal.integrated.enablePersistentSessions` is enabled.
+         */
+        isTransient?: boolean;
+
+        /**
+         * The icon path or {@link ThemeIcon} for the terminal.
+         */
+        iconPath?: IconPath;
+
+        /**
+         * The icon {@link ThemeColor} for the terminal.
+         * The standard `terminal.ansi*` theme keys are
+         * recommended for the best contrast and consistency across themes.
+         * @stubbed
+         */
+        color?: ThemeColor;
     }
 
     /**
@@ -3208,6 +3806,79 @@ export module '@theia/plugin' {
     }
 
     /**
+     * The location of the {@link Terminal}.
+     */
+    export enum TerminalLocation {
+        /**
+         * In the terminal view
+         */
+        Panel = 1,
+        /**
+         * In the editor area
+         */
+        Editor = 2,
+    }
+
+    /**
+     * Assumes a {@link TerminalLocation} of editor and allows specifying a {@link ViewColumn} and
+     * {@link TerminalEditorLocationOptions.preserveFocus preserveFocus } property
+     */
+    export interface TerminalEditorLocationOptions {
+        /**
+         * A view column in which the {@link Terminal terminal} should be shown in the editor area.
+         * Use {@link ViewColumn.Active active} to open in the active editor group, other values are
+         * adjusted to be `Min(column, columnCount + 1)`, the
+         * {@link ViewColumn.Active active}-column is not adjusted. Use
+         * {@linkcode ViewColumn.Beside} to open the editor to the side of the currently active one.
+         */
+        viewColumn: ViewColumn;
+        /**
+         * An optional flag that when `true` will stop the {@link Terminal} from taking focus.
+         */
+        preserveFocus?: boolean;
+    }
+
+    /**
+     * Uses the parent {@link Terminal}'s location for the terminal
+     */
+    export interface TerminalSplitLocationOptions {
+        /**
+         * The parent terminal to split this terminal beside. This works whether the parent terminal
+         * is in the panel or the editor area.
+         */
+        parentTerminal: Terminal;
+    }
+
+    /*
+     * Provides a terminal profile for the contributed terminal profile when launched via the UI or
+     * command.
+     */
+    export interface TerminalProfileProvider {
+        /**
+         * Provide the terminal profile.
+         * @param token A cancellation token that indicates the result is no longer needed.
+         * @returns The terminal profile.
+         */
+        provideTerminalProfile(token: CancellationToken): ProviderResult<TerminalProfile>;
+    }
+
+    /**
+     * A terminal profile defines how a terminal will be launched.
+     */
+    export class TerminalProfile {
+        /**
+         * The options that the terminal will launch with.
+         */
+        options: TerminalOptions | ExtensionTerminalOptions;
+
+        /**
+         * Creates a new terminal profile.
+         * @param options The options that the terminal will launch with.
+         */
+        constructor(options: TerminalOptions | ExtensionTerminalOptions);
+    }
+
+    /**
      * A file decoration represents metadata that can be rendered with a file.
      */
     export class FileDecoration {
@@ -3291,6 +3962,24 @@ export module '@theia/plugin' {
     }
 
     /**
+     * Options applied to the mutator.
+     */
+    export interface EnvironmentVariableMutatorOptions {
+        /**
+         * Apply to the environment just before the process is created. Defaults to true
+         */
+        applyAtProcessCreation?: boolean;
+
+        /**
+         * Apply to the environment in the shell integration script. Note that this _will not_ apply
+         * the mutator if shell integration is disabled or not working for some reason. Defaults to
+         * false.
+         * @stubbed
+         */
+        applyAtShellIntegration?: boolean;
+    }
+
+    /**
      * A type of mutation and its value to be applied to an environment variable.
      */
     export interface EnvironmentVariableMutator {
@@ -3303,12 +3992,23 @@ export module '@theia/plugin' {
          * The value to use for the variable.
          */
         readonly value: string;
+
+        /**
+         * Options applied to the mutator.
+         */
+        readonly options: EnvironmentVariableMutatorOptions;
     }
 
     /**
      * A collection of mutations that an extension can apply to a process environment.
      */
     export interface EnvironmentVariableCollection {
+
+        /**
+         * A description for the environment variable collection, this will be used to describe the changes in the UI.
+         */
+        description: string | MarkdownString | undefined;
+
         /**
          * Whether the collection should be cached for the workspace and applied to the terminal
          * across window reloads. When true the collection will be active immediately such when the
@@ -3327,7 +4027,7 @@ export module '@theia/plugin' {
          * @param variable The variable to replace.
          * @param value The value to replace the variable with.
          */
-        replace(variable: string, value: string): void;
+        replace(variable: string, value: string, options?: EnvironmentVariableMutatorOptions): void;
 
         /**
          * Append a value to an environment variable.
@@ -3338,7 +4038,7 @@ export module '@theia/plugin' {
          * @param variable The variable to append to.
          * @param value The value to append to the variable.
          */
-        append(variable: string, value: string): void;
+        append(variable: string, value: string, options?: EnvironmentVariableMutatorOptions): void;
 
         /**
          * Prepend a value to an environment variable.
@@ -3349,7 +4049,7 @@ export module '@theia/plugin' {
          * @param variable The variable to prepend.
          * @param value The value to prepend to the variable.
          */
-        prepend(variable: string, value: string): void;
+        prepend(variable: string, value: string, options?: EnvironmentVariableMutatorOptions): void;
 
         /**
          * Gets the mutator that this collection applies to a variable, if any.
@@ -3377,6 +4077,39 @@ export module '@theia/plugin' {
          * Clears all mutators from this collection.
          */
         clear(): void;
+    }
+
+    /**
+     * A collection of mutations that an extension can apply to a process environment. Applies to all scopes.
+     */
+    export interface GlobalEnvironmentVariableCollection extends EnvironmentVariableCollection {
+        /**
+         * Gets scope-specific environment variable collection for the extension. This enables alterations to
+         * terminal environment variables solely within the designated scope, and is applied in addition to (and
+         * after) the global collection.
+         *
+         * Each object obtained through this method is isolated and does not impact objects for other scopes,
+         * including the global collection.
+         *
+         * @param scope The scope to which the environment variable collection applies to.
+         *
+         * If a scope parameter is omitted, collection applicable to all relevant scopes for that parameter is
+         * returned. For instance, if the 'workspaceFolder' parameter is not specified, the collection that applies
+         * across all workspace folders will be returned.
+         *
+         * @return Environment variable collection for the passed in scope.
+         */
+        getScoped(scope: EnvironmentVariableScope): EnvironmentVariableCollection;
+    }
+
+    /**
+     * The scope object to which the environment variable collection applies.
+     */
+    export interface EnvironmentVariableScope {
+        /**
+         * Any specific workspace folder to get collection for.
+         */
+        workspaceFolder?: WorkspaceFolder;
     }
 
     /**
@@ -3566,7 +4299,7 @@ export module '@theia/plugin' {
          * Gets the extension's environment variable collection for this workspace, enabling changes
          * to be applied to terminal environment variables.
          */
-        readonly environmentVariableCollection: EnvironmentVariableCollection;
+        readonly environmentVariableCollection: GlobalEnvironmentVariableCollection;
 
         /**
          * Get the absolute path of a resource contained in the extension.
@@ -3658,6 +4391,14 @@ export module '@theia/plugin' {
          * The current `Extension` instance.
          */
         readonly extension: Extension<any>;
+
+        /**
+         * An object that keeps information about how this extension can use language models.
+         *
+         * @see {@link LanguageModelChat.sendRequest}
+         * @stubbed
+         */
+        readonly languageModelAccessInformation: LanguageModelAccessInformation;
     }
 
     /**
@@ -3769,11 +4510,21 @@ export module '@theia/plugin' {
         readonly enableScripts?: boolean;
 
         /**
+         * Controls whether forms are enabled in the webview content or not.
+         *
+         * Defaults to true if {@link WebviewOptions.enableScripts scripts are enabled}. Otherwise defaults to false.
+         * Explicitly setting this property to either true or false overrides the default.
+         */
+        readonly enableForms?: boolean;
+
+        /**
          * Controls whether command uris are enabled in webview content or not.
          *
-         * Defaults to false.
+         * Defaults to `false` (command uris are disabled).
+         *
+         * If you pass in an array, only the commands in the array are allowed.
          */
-        readonly enableCommandUris?: boolean;
+        readonly enableCommandUris?: boolean | readonly string[];
 
         /**
          * Root paths from which the webview can load local (filesystem) resources using the `theia-resource:` scheme.
@@ -4463,6 +5214,12 @@ export module '@theia/plugin' {
         readonly visible: boolean;
 
         /**
+         * The badge to display for this webview view.
+         * To remove the badge, set to undefined.
+         */
+        badge?: ViewBadge | undefined;
+
+        /**
          * Event fired when the visibility of the view changes.
          *
          * Actions that trigger a visibility change:
@@ -4545,6 +5302,11 @@ export module '@theia/plugin' {
      * Common namespace for dealing with window and editor, showing messages and user input.
      */
     export namespace window {
+
+        /**
+         * Represents the grid widget within the main editor area
+         */
+        export const tabGroups: TabGroups;
 
         /**
          * The currently active terminal or undefined. The active terminal is the one
@@ -4641,6 +5403,53 @@ export module '@theia/plugin' {
          * @return A promise that resolves to an {@link TextEditor editor}.
          */
         export function showTextDocument(uri: Uri, options?: TextDocumentShowOptions): Thenable<TextEditor>;
+
+        /**
+         * The currently visible {@link NotebookEditor notebook editors} or an empty array.
+         */
+        export const visibleNotebookEditors: readonly NotebookEditor[];
+
+        /**
+         * An {@link Event} which fires when the {@link window.visibleNotebookEditors visible notebook editors}
+         * has changed.
+         */
+        export const onDidChangeVisibleNotebookEditors: Event<readonly NotebookEditor[]>;
+
+        /**
+         * The currently active {@link NotebookEditor notebook editor} or `undefined`. The active editor is the one
+         * that currently has focus or, when none has focus, the one that has changed
+         * input most recently.
+         */
+        export const activeNotebookEditor: NotebookEditor | undefined;
+
+        /**
+         * An {@link Event} which fires when the {@link window.activeNotebookEditor active notebook editor}
+         * has changed. *Note* that the event also fires when the active editor changes
+         * to `undefined`.
+         */
+        export const onDidChangeActiveNotebookEditor: Event<NotebookEditor | undefined>;
+
+        /**
+         * An {@link Event} which fires when the {@link NotebookEditor.selections notebook editor selections}
+         * have changed.
+         */
+        export const onDidChangeNotebookEditorSelection: Event<NotebookEditorSelectionChangeEvent>;
+
+        /**
+         * An {@link Event} which fires when the {@link NotebookEditor.visibleRanges notebook editor visible ranges}
+         * have changed.
+         */
+        export const onDidChangeNotebookEditorVisibleRanges: Event<NotebookEditorVisibleRangesChangeEvent>;
+
+        /**
+         * Show the given {@link NotebookDocument} in a {@link NotebookEditor notebook editor}.
+         *
+         * @param document A text document to be shown.
+         * @param options {@link NotebookDocumentShowOptions Editor options} to configure the behavior of showing the {@link NotebookEditor notebook editor}.
+         *
+         * @return A promise that resolves to an {@link NotebookEditor notebook editor}.
+         */
+        export function showNotebookDocument(document: NotebookDocument, options?: NotebookDocumentShowOptions): Thenable<NotebookEditor>;
 
         /**
          * Shows a selection list.
@@ -4867,7 +5676,7 @@ export module '@theia/plugin' {
          *
          * @return New webview panel.
          */
-        export function createWebviewPanel(viewType: string, title: string, showOptions: ViewColumn | WebviewPanelShowOptions,
+        export function createWebviewPanel(viewType: string, title: string, showOptions: ViewColumn | { readonly viewColumn: ViewColumn; readonly preserveFocus?: boolean },
             options?: WebviewPanelOptions & WebviewOptions): WebviewPanel;
 
         /**
@@ -5020,6 +5829,14 @@ export module '@theia/plugin' {
         export function createOutputChannel(name: string): OutputChannel;
 
         /**
+         * Creates a new {@link LogOutputChannel log output channel} with the given name.
+         *
+         * @param name Human-readable string which will be used to represent the channel in the UI.
+         * @param options Options for the log output channel.
+         */
+        export function createOutputChannel(name: string, options: { log: true }): LogOutputChannel;
+
+        /**
          * Create new terminal.
          * @param name - terminal name to display on the UI.
          * @param shellPath - path to the executable shell. For example "/bin/bash", "bash", "sh".
@@ -5042,6 +5859,28 @@ export module '@theia/plugin' {
          * An {@link Event} which fires when a {@link Terminal.state terminal's state} has changed.
          */
         export const onDidChangeTerminalState: Event<Terminal>;
+
+        /**
+         * Fires when shell integration activates or one of its properties changes in a terminal.
+         * @stubbed
+         */
+        export const onDidChangeTerminalShellIntegration: Event<TerminalShellIntegrationChangeEvent>;
+
+        /**
+         * This will be fired when a terminal command is started. This event will fire only when
+         * [shell integration](https://code.visualstudio.com/docs/terminal/shell-integration) is
+         * activated for the terminal.
+         * @stubbed
+         */
+        export const onDidStartTerminalShellExecution: Event<TerminalShellExecutionStartEvent>;
+
+        /**
+         * This will be fired when a terminal command is ended. This event will fire only when
+         * [shell integration](https://code.visualstudio.com/docs/terminal/shell-integration) is
+         * activated for the terminal.
+         * @stubbed
+         */
+        export const onDidEndTerminalShellExecution: Event<TerminalShellExecutionEndEvent>;
 
         /**
          * Create new terminal with predefined options.
@@ -5157,6 +5996,12 @@ export module '@theia/plugin' {
          * @return Disposable that unregisters the provider.
          */
         export function registerTerminalLinkProvider(provider: TerminalLinkProvider): Disposable;
+        /**
+         * Registers a provider for a contributed terminal profile.
+         * @param id The ID of the contributed terminal profile.
+         * @param provider The terminal profile provider.
+         */
+        export function registerTerminalProfileProvider(id: string, provider: TerminalProfileProvider): Disposable;
 
         /**
          * Register a file decoration provider.
@@ -5255,6 +6100,17 @@ export module '@theia/plugin' {
          * If the input value should be hidden. Defaults to false.
          */
         password: boolean;
+
+        /**
+         * Selection range in the input value. Defined as tuple of two number where the
+         * first is the inclusive start index and the second the exclusive end index. When `undefined` the whole
+         * pre-filled value will be selected, when empty (start equals end) only the cursor will be set,
+         * otherwise the defined range will be selected.
+         *
+         * This property does not get updated when the user types or makes a selection,
+         * but it can be updated by the extension.
+         */
+        valueSelection: readonly [number, number] | undefined;
 
         /**
          * An event signaling when the value has changed.
@@ -5387,7 +6243,7 @@ export module '@theia/plugin' {
         /**
          * Icon for the button.
          */
-        readonly iconPath: Uri | { light: Uri; dark: Uri } | ThemeIcon;
+        readonly iconPath: IconPath;
 
         /**
          * An optional tooltip.
@@ -5447,6 +6303,103 @@ export module '@theia/plugin' {
     }
 
     /**
+     * A file associated with a {@linkcode DataTransferItem}.
+     */
+    export interface DataTransferFile {
+        /**
+         * The name of the file.
+         */
+        readonly name: string;
+
+        /**
+         * The full file path of the file.
+         *
+         * May be `undefined` on web.
+         */
+        readonly uri?: Uri;
+
+        /**
+         * The full file contents of the file.
+         */
+        data(): Thenable<Uint8Array>;
+    }
+
+    /**
+     * Encapsulates data transferred during drag and drop operations.
+     */
+    export class DataTransferItem {
+        /**
+         * Get a string representation of this item.
+         *
+         * If {@linkcode DataTransferItem.value} is an object, this returns the result of json stringifying {@linkcode DataTransferItem.value} value.
+         */
+        asString(): Thenable<string>;
+
+        /**
+         * Try getting the {@link DataTransferFile file} associated with this data transfer item.
+         *
+         * Note that the file object is only valid for the scope of the drag and drop operation.
+         *
+         * @returns The file for the data transfer or `undefined` if the item is either not a file or the
+         * file data cannot be accessed.
+         */
+        asFile(): DataTransferFile | undefined;
+
+        /**
+         * Custom data stored on this item.
+         *
+         * You can use `value` to share data across operations. The original object can be retrieved so long as the extension that
+         * created the `DataTransferItem` runs in the same extension host.
+         */
+        readonly value: any;
+
+        /**
+         * @param value Custom data stored on this item. Can be retrieved using {@linkcode DataTransferItem.value}.
+         */
+        constructor(value: any);
+    }
+
+    /**
+     * A map containing a mapping of the mime type of the corresponding transferred data.
+     *
+     * Drag and drop controllers that implement {@link TreeDragAndDropController.handleDrag `handleDrag`} can add additional mime types to the
+     * data transfer. These additional mime types will only be included in the `handleDrop` when the the drag was initiated from
+     * an element in the same drag and drop controller.
+     */
+    export class DataTransfer implements Iterable<[mimeType: string, item: DataTransferItem]> {
+        /**
+         * Retrieves the data transfer item for a given mime type.
+         *
+         * @param mimeType The mime type to get the data transfer item for, such as `text/plain` or `image/png`.
+         *
+         * Special mime types:
+         * - `text/uri-list` — A string with `toString()`ed Uris separated by `\r\n`. To specify a cursor position in the file,
+         * set the Uri's fragment to `L3,5`, where 3 is the line number and 5 is the column number.
+         */
+        get(mimeType: string): DataTransferItem | undefined;
+
+        /**
+         * Sets a mime type to data transfer item mapping.
+         * @param mimeType The mime type to set the data for.
+         * @param value The data transfer item for the given mime type.
+         */
+        set(mimeType: string, value: DataTransferItem): void;
+
+        /**
+         * Allows iteration through the data transfer items.
+         *
+         * @param callbackfn Callback for iteration through the data transfer items.
+         * @param thisArg The `this` context used when invoking the handler function.
+         */
+        forEach(callbackfn: (item: DataTransferItem, mimeType: string, dataTransfer: DataTransfer) => void, thisArg?: any): void;
+
+        /**
+         * Get a new iterator with the `[mime, item]` pairs for each element in this data transfer.
+         */
+        [Symbol.iterator](): IterableIterator<[mimeType: string, item: DataTransferItem]>;
+    }
+
+    /**
      * Options for creating a {@link TreeView TreeView}
      */
     export interface TreeViewOptions<T> {
@@ -5460,6 +6413,55 @@ export module '@theia/plugin' {
          * Whether to show collapse all action or not.
          */
         showCollapseAll?: boolean;
+
+        /**
+         * An optional interface to implement drag and drop in the tree view.
+         */
+        dragAndDropController?: TreeDragAndDropController<T>;
+        /**
+         * Whether the tree supports multi-select. When the tree supports multi-select and a command is executed from the tree,
+         * the first argument to the command is the tree item that the command was executed on and the second argument is an
+         * array containing all selected tree items.
+         */
+        canSelectMany?: boolean;
+
+        /**
+         * By default, when the children of a tree item have already been fetched, child checkboxes are automatically managed based on the checked state of the parent tree item.
+         * If the tree item is collapsed by default (meaning that the children haven't yet been fetched) then child checkboxes will not be updated.
+         * To override this behavior and manage child and parent checkbox state in the extension, set this to `true`.
+         *
+         * Examples where {@link TreeViewOptions.manageCheckboxStateManually} is false, the default behavior:
+         *
+         * 1. A tree item is checked, then its children are fetched. The children will be checked.
+         *
+         * 2. A tree item's parent is checked. The tree item and all of it's siblings will be checked.
+         *   - [ ] Parent
+         *     - [ ] Child 1
+         *     - [ ] Child 2
+         *   When the user checks Parent, the tree will look like this:
+         *   - [x] Parent
+         *     - [x] Child 1
+         *     - [x] Child 2
+         *
+         * 3. A tree item and all of it's siblings are checked. The parent will be checked.
+         *   - [ ] Parent
+         *     - [ ] Child 1
+         *     - [ ] Child 2
+         *   When the user checks Child 1 and Child 2, the tree will look like this:
+         *   - [x] Parent
+         *     - [x] Child 1
+         *     - [x] Child 2
+         *
+         * 4. A tree item is unchecked. The parent will be unchecked.
+         *   - [x] Parent
+         *     - [x] Child 1
+         *     - [x] Child 2
+         *   When the user unchecks Child 1, the tree will look like this:
+         *   - [ ] Parent
+         *     - [ ] Child 1
+         *     - [x] Child 2
+         */
+        manageCheckboxStateManually?: boolean;
     }
 
     /**
@@ -5499,6 +6501,191 @@ export module '@theia/plugin' {
     }
 
     /**
+     * A file associated with a {@linkcode DataTransferItem}.
+     */
+    export interface DataTransferFile {
+        /**
+         * The name of the file.
+         */
+        readonly name: string;
+
+        /**
+         * The full file path of the file.
+         *
+         * May be `undefined` on web.
+         */
+        readonly uri?: Uri;
+
+        /**
+         * The full file contents of the file.
+         */
+        data(): Thenable<Uint8Array>;
+    }
+
+    /**
+     * Encapsulates data transferred during drag and drop operations.
+     */
+    export class DataTransferItem {
+        /**
+         * Get a string representation of this item.
+         *
+         * If {@linkcode DataTransferItem.value} is an object, this returns the result of json stringifying {@linkcode DataTransferItem.value} value.
+         */
+        asString(): Thenable<string>;
+
+        /**
+         * Try getting the {@link DataTransferFile file} associated with this data transfer item.
+         *
+         * Note that the file object is only valid for the scope of the drag and drop operation.
+         *
+         * @returns The file for the data transfer or `undefined` if the item is either not a file or the
+         * file data cannot be accessed.
+         */
+        asFile(): DataTransferFile | undefined;
+
+        /**
+         * Custom data stored on this item.
+         *
+         * You can use `value` to share data across operations. The original object can be retrieved so long as the extension that
+         * created the `DataTransferItem` runs in the same extension host.
+         */
+        readonly value: any;
+
+        /**
+         * @param value Custom data stored on this item. Can be retrieved using {@linkcode DataTransferItem.value}.
+         */
+        constructor(value: any);
+    }
+
+    /**
+     * A map containing a mapping of the mime type of the corresponding transferred data.
+     *
+     * Drag and drop controllers that implement {@link TreeDragAndDropController.handleDrag `handleDrag`} can add additional mime types to the
+     * data transfer. These additional mime types will only be included in the `handleDrop` when the the drag was initiated from
+     * an element in the same drag and drop controller.
+     */
+    export class DataTransfer implements Iterable<[mimeType: string, item: DataTransferItem]> {
+        /**
+         * Retrieves the data transfer item for a given mime type.
+         *
+         * @param mimeType The mime type to get the data transfer item for, such as `text/plain` or `image/png`.
+         *
+         * Special mime types:
+         * - `text/uri-list` — A string with `toString()`ed Uris separated by `\r\n`. To specify a cursor position in the file,
+         * set the Uri's fragment to `L3,5`, where 3 is the line number and 5 is the column number.
+         */
+        get(mimeType: string): DataTransferItem | undefined;
+
+        /**
+         * Sets a mime type to data transfer item mapping.
+         * @param mimeType The mime type to set the data for.
+         * @param value The data transfer item for the given mime type.
+         */
+        set(mimeType: string, value: DataTransferItem): void;
+
+        /**
+         * Allows iteration through the data transfer items.
+         *
+         * @param callbackfn Callback for iteration through the data transfer items.
+         * @param thisArg The `this` context used when invoking the handler function.
+         */
+        forEach(callbackfn: (item: DataTransferItem, mimeType: string, dataTransfer: DataTransfer) => void, thisArg?: any): void;
+
+        /**
+         * Get a new iterator with the `[mime, item]` pairs for each element in this data transfer.
+         */
+        [Symbol.iterator](): IterableIterator<[mimeType: string, item: DataTransferItem]>;
+    }
+
+    /**
+     * Provides support for drag and drop in `TreeView`.
+     */
+    export interface TreeDragAndDropController<T> {
+
+        /**
+         * The mime types that the {@link TreeDragAndDropController.handleDrop `handleDrop`} method of this `DragAndDropController` supports.
+         * This could be well-defined, existing, mime types, and also mime types defined by the extension.
+         *
+         * To support drops from trees, you will need to add the mime type of that tree.
+         * This includes drops from within the same tree.
+         * The mime type of a tree is recommended to be of the format `application/vnd.code.tree.<treeidlowercase>`.
+         *
+         * Use the special `files` mime type to support all types of dropped files {@link DataTransferFile files}, regardless of the file's actual mime type.
+         *
+         * To learn the mime type of a dragged item:
+         * 1. Set up your `DragAndDropController`
+         * 2. Use the Developer: Set Log Level... command to set the level to "Debug"
+         * 3. Open the developer tools and drag the item with unknown mime type over your tree. The mime types will be logged to the developer console
+         *
+         * Note that mime types that cannot be sent to the extension will be omitted.
+         */
+        readonly dropMimeTypes: readonly string[];
+
+        /**
+         * The mime types that the {@link TreeDragAndDropController.handleDrag `handleDrag`} method of this `TreeDragAndDropController` may add to the tree data transfer.
+         * This could be well-defined, existing, mime types, and also mime types defined by the extension.
+         *
+         * The recommended mime type of the tree (`application/vnd.code.tree.<treeidlowercase>`) will be automatically added.
+         */
+        readonly dragMimeTypes: readonly string[];
+
+        /**
+         * When the user starts dragging items from this `DragAndDropController`, `handleDrag` will be called.
+         * Extensions can use `handleDrag` to add their {@link DataTransferItem `DataTransferItem`} items to the drag and drop.
+         *
+         * When the items are dropped on **another tree item** in **the same tree**, your `DataTransferItem` objects
+         * will be preserved. Use the recommended mime type for the tree (`application/vnd.code.tree.<treeidlowercase>`) to add
+         * tree objects in a data transfer. See the documentation for `DataTransferItem` for how best to take advantage of this.
+         *
+         * To add a data transfer item that can be dragged into the editor, use the application specific mime type "text/uri-list".
+         * The data for "text/uri-list" should be a string with `toString()`ed Uris separated by newlines. To specify a cursor position in the file,
+         * set the Uri's fragment to `L3,5`, where 3 is the line number and 5 is the column number.
+         *
+         * @param source The source items for the drag and drop operation.
+         * @param dataTransfer The data transfer associated with this drag.
+         * @param token A cancellation token indicating that drag has been cancelled.
+         */
+        handleDrag?(source: readonly T[], dataTransfer: DataTransfer, token: CancellationToken): Thenable<void> | void;
+
+        /**
+         * Called when a drag and drop action results in a drop on the tree that this `DragAndDropController` belongs to.
+         *
+         * Extensions should fire {@link TreeDataProvider.onDidChangeTreeData onDidChangeTreeData} for any elements that need to be refreshed.
+         *
+         * @param dataTransfer The data transfer items of the source of the drag.
+         * @param target The target tree element that the drop is occurring on. When undefined, the target is the root.
+         * @param token A cancellation token indicating that the drop has been cancelled.
+         */
+        handleDrop?(target: T | undefined, dataTransfer: DataTransfer, token: CancellationToken): Thenable<void> | void;
+    }
+
+    /**
+     * A badge presenting a value for a view
+     */
+    export interface ViewBadge {
+
+        /**
+         * A label to present in tooltip for the badge.
+         */
+        readonly tooltip: string;
+
+        /**
+         * The value to present in the badge.
+         */
+        readonly value: number;
+    }
+
+    /**
+     * An event describing the change in a tree item's checkbox state.
+     */
+    export interface TreeCheckboxChangeEvent<T> {
+        /**
+         * The items that were checked or unchecked.
+         */
+        readonly items: ReadonlyArray<[T, TreeItemCheckboxState]>;
+    }
+
+    /**
      * Represents a Tree view
      */
     export interface TreeView<T> extends Disposable {
@@ -5534,6 +6721,11 @@ export module '@theia/plugin' {
         readonly onDidChangeVisibility: Event<TreeViewVisibilityChangeEvent>;
 
         /**
+         * An event to signal that an element or root has either been checked or unchecked.
+         */
+        readonly onDidChangeCheckboxState: Event<TreeCheckboxChangeEvent<T>>;
+
+        /**
          * An optional human-readable message that will be rendered in the view.
          * Setting the message to null, undefined, or empty string will remove the message from the view.
          */
@@ -5552,13 +6744,37 @@ export module '@theia/plugin' {
         description?: string;
 
         /**
-         * Reveal an element. By default revealed element is selected.
-         *
-         * In order to not to select, set the option `select` to `false`.
-         *
-         * **NOTE:** {@link TreeDataProvider TreeDataProvider} is required to implement {@link TreeDataProvider.getParent getParent} method to access this API.
+         * The badge to display for this TreeView.
+         * To remove the badge, set to undefined.
          */
-        reveal(element: T, options?: { select?: boolean; focus?: boolean; expand?: boolean | number }): Thenable<void>;
+        badge: ViewBadge | undefined;
+
+        /**
+         * Reveals the given element in the tree view.
+         * If the tree view is not visible then the tree view is shown and element is revealed.
+         *
+         * By default revealed element is selected.
+         * In order to not to select, set the option `select` to `false`.
+         * In order to focus, set the option `focus` to `true`.
+         * In order to expand the revealed element, set the option `expand` to `true`. To expand recursively set `expand` to the number of levels to expand.
+         *
+         * * *NOTE:* In VS Code, you can expand only to 3 levels maximum. This is not the case in Theia, there are no limits to expansion level.
+         * * *NOTE:* The {@link TreeDataProvider} that the `TreeView` {@link window.createTreeView is registered with} with must implement {@link TreeDataProvider.getParent getParent} method to access this API.
+         */
+        reveal(element: T, options?: {
+            /**
+             * If true, then the element will be selected.
+             */
+            readonly select?: boolean;
+            /**
+             * If true, then the element will be focused.
+             */
+            readonly focus?: boolean;
+            /**
+             * If true, then the element will be expanded. If a number is passed, then up to that number of levels of children will be expanded
+             */
+            readonly expand?: boolean | number;
+        }): Thenable<void>;
     }
 
     /**
@@ -5641,7 +6857,7 @@ export module '@theia/plugin' {
          * When `falsy`, {@link ThemeIcon.Folder Folder Theme Icon} is assigned, if item is collapsible otherwise {@link ThemeIcon.File File Theme Icon}.
          * When a {@link ThemeIcon ThemeIcon} is specified, icon is derived from the current file icon theme for the specified theme icon using {@link TreeItem.resourceUri resourceUri} (if provided).
          */
-        iconPath?: string | Uri | { light: string | Uri; dark: string | Uri } | ThemeIcon;
+        iconPath?: string | IconPath;
 
         /**
          * A human readable string which is rendered less prominent.
@@ -5700,6 +6916,12 @@ export module '@theia/plugin' {
         accessibilityInformation?: AccessibilityInformation;
 
         /**
+         * {@link TreeItemCheckboxState TreeItemCheckboxState} of the tree item.
+         * {@link TreeDataProvider.onDidChangeTreeData onDidChangeTreeData} should be fired when {@link TreeItem.checkboxState checkboxState} changes.
+         */
+        checkboxState?: TreeItemCheckboxState | { readonly state: TreeItemCheckboxState; readonly tooltip?: string; readonly accessibilityInformation?: AccessibilityInformation };
+
+        /**
          * @param label A human-readable string describing this item
          * @param collapsibleState {@link TreeItemCollapsibleState TreeItemCollapsibleState} of the tree item. Default is [TreeItemCollapsibleState.None](#TreeItemCollapsibleState.None)
          */
@@ -5745,6 +6967,20 @@ export module '@theia/plugin' {
          * first is the inclusive start index and the second the exclusive end index
          */
         highlights?: [number, number][];
+    }
+
+    /**
+     * Checkbox state of the tree item
+     */
+    export enum TreeItemCheckboxState {
+        /**
+         * Determines an item is unchecked
+         */
+        Unchecked = 0,
+        /**
+         * Determines an item is checked
+         */
+        Checked = 1
     }
 
     /**
@@ -6411,6 +7647,13 @@ export module '@theia/plugin' {
         export let textDocuments: readonly TextDocument[];
 
         /**
+         * All notebook documents currently known to the editor.
+         *
+         * @readonly
+         */
+        export let notebookDocuments: readonly NotebookDocument[];
+
+        /**
          * Register a text document content provider.
          *
          * Only one provider can be registered per scheme.
@@ -6422,6 +7665,36 @@ export module '@theia/plugin' {
         export function registerTextDocumentContentProvider(scheme: string, provider: TextDocumentContentProvider): Disposable;
 
         /**
+         * An event that is emitted when a {@link NotebookDocument notebook} is opened.
+         */
+        export const onDidOpenNotebookDocument: Event<NotebookDocument>;
+
+        /**
+         * An event that is emitted when a notebook is disposed.
+         *
+         * Note 1: There is no guarantee that this event fires when an editor tab is closed.
+         *
+         * Note 2: A notebook can be open but not shown in an editor which means this event can fire for a notebook that has not been shown in an editor.
+         */
+        export const onDidCloseNotebookDocument: Event<NotebookDocument>;
+
+        /**
+         * An event that is emitted when a {@link NotebookDocument notebook} is saved.
+         */
+        export const onDidSaveNotebookDocument: Event<NotebookDocument>;
+
+        /**
+         * Register a notebook serializer.
+         *
+         * A notebook serializer must be contributed through the notebooks extension point. When opening a notebook file, the editor will send the onNotebook:<notebookType> activation event, and extensions must register their serializer in return.
+         * @param notebookType a notebook.
+         * @param serializer a notebook serializer.
+         * @param options Optional context options that define what parts of a notebook should be persisted
+         * @return A {@link Disposable disposable} that unregisters this serializer when being disposed.
+         */
+        export function registerNotebookSerializer(notebookType: string, serializer: NotebookSerializer, options?: NotebookDocumentContentOptions): Disposable;
+
+        /**
          * An event that is emitted when a {@link TextDocument text document} is opened.
          *
          * To add an event listener when a visible text document is opened, use the {@link TextEditor TextEditor} events in the
@@ -6430,9 +7703,13 @@ export module '@theia/plugin' {
          * - The event is emitted before the {@link TextDocument document} is updated in the
          * {@link window.activeTextEditor active text editor}
          * - When a {@link TextDocument text document} is already open (e.g.: open in another {@link window.visibleTextEditors visible text editor}) this event is not emitted
-         *
          */
         export const onDidOpenTextDocument: Event<TextDocument>;
+
+        /**
+         * An event that is emitted when a {@link TextDocument text document} is saved to disk.
+         */
+        export const onDidSaveTextDocument: Event<TextDocument>;
 
         /**
          * An event that is emitted when a {@link TextDocument text document} is disposed.
@@ -6466,9 +7743,25 @@ export module '@theia/plugin' {
         export const onWillSaveTextDocument: Event<TextDocumentWillSaveEvent>;
 
         /**
-         * An event that is emitted when a {@link TextDocument text document} is saved to disk.
+         * An event that is emitted when a {@link Notebook notebook} has changed.
          */
-        export const onDidSaveTextDocument: Event<TextDocument>;
+        export const onDidChangeNotebookDocument: Event<NotebookDocumentChangeEvent>;
+
+        /**
+         * An event that is emitted when a {@link NotebookDocument notebook document} will be saved to disk.
+         *
+         * *Note 1:* Subscribers can delay saving by registering asynchronous work. For the sake of data integrity the editor
+         * might save without firing this event. For instance when shutting down with dirty files.
+         *
+         * *Note 2:* Subscribers are called sequentially and they can {@link NotebookDocumentWillSaveEvent.waitUntil delay} saving
+         * by registering asynchronous work. Protection against misbehaving listeners is implemented as such:
+         *  * there is an overall time budget that all listeners share and if that is exhausted no further listener is called
+         *  * listeners that take a long time or produce errors frequently will not be called anymore
+         *
+         * The current thresholds are 1.5 seconds as overall time budget and a listener can misbehave 3 times before being ignored.
+         * @stubbed
+         */
+        export const onWillSaveNotebookDocument: Event<NotebookDocumentWillSaveEvent>;
 
         /**
          * An event that is emitted when files are being created.
@@ -6579,6 +7872,29 @@ export module '@theia/plugin' {
         export function openTextDocument(options?: { language?: string; content?: string; }): Thenable<TextDocument | undefined>;
 
         /**
+         *  Open a notebook. Will return early if this notebook is already {@link NotebookDocument loaded}.
+         *  Otherwise the notebook is loaded and the {@link onDidOpenNotebookDocument onDidOpenNotebookDocument}-event fires.
+         *
+         *  Note that the lifecycle of the returned notebook is owned by the editor and not by the extension.
+         *  That means an  {@link onDidCloseNotebookDocument onDidCloseNotebookDocument}-event can occur at any time after.
+         *  Note that opening a notebook does not show a notebook editor. This function only returns a notebook document
+         *  which can be shown in a notebook editor but it can also be used for other things.
+         *
+         * @param uri The resource to open.
+         * @return A promise that resolves to a {@link NotebookDocument notebook}.
+         */
+        export function openNotebookDocument(uri: Uri): Thenable<NotebookDocument> | undefined;
+
+        /**
+         * Open an untitled notebook. The editor will prompt the user for a file path when the document is to be saved.
+         *
+         * @param notebookType The notebook type that should be used.
+         * @param content The initial contents of the notebook.
+         * @return A promise that resolves to a {@link NotebookDocument notebook}.
+         */
+        export function openNotebookDocument(notebookType: string, content?: NotebookData): Thenable<NotebookDocument> | undefined;
+
+        /**
          * Get a workspace configuration object.
          *
          * When a section-identifier is provided only that part of the configuration
@@ -6638,6 +7954,29 @@ export module '@theia/plugin' {
         export function findFiles(include: GlobPattern, exclude?: GlobPattern | null, maxResults?: number, token?: CancellationToken): Thenable<Uri[]>;
 
         /**
+         * Saves the editor identified by the given resource and returns the resulting resource or `undefined`
+         * if save was not successful or no editor with the given resource was found.
+         *
+         * **Note** that an editor with the provided resource must be opened in order to be saved.
+         *
+         * @param uri the associated uri for the opened editor to save.
+         * @returns A thenable that resolves when the save operation has finished.
+         */
+        export function save(uri: Uri): Thenable<Uri | undefined>;
+
+        /**
+         * Saves the editor identified by the given resource to a new file name as provided by the user and
+         * returns the resulting resource or `undefined` if save was not successful or cancelled or no editor
+         * with the given resource was found.
+         *
+         * **Note** that an editor with the provided resource must be opened in order to be saved as.
+         *
+         * @param uri the associated uri for the opened editor to save as.
+         * @returns A thenable that resolves when the save-as operation has finished.
+         */
+        export function saveAs(uri: Uri): Thenable<Uri | undefined>;
+
+        /**
          * Save all dirty files.
          *
          * @param includeUntitled Also save files that have been created during this session.
@@ -6659,9 +7998,10 @@ export module '@theia/plugin' {
          * not be attempted, when a single edit fails.
          *
          * @param edit A workspace edit.
+         * @param metadata Optional {@link WorkspaceEditMetadata metadata} for the edit.
          * @return A thenable that resolves when the edit could be applied.
          */
-        export function applyEdit(edit: WorkspaceEdit): Thenable<boolean>;
+        export function applyEdit(edit: WorkspaceEdit, metadata?: WorkspaceEditMetadata): Thenable<boolean>;
 
         /**
          * Register a filesystem provider for a given scheme, e.g. `ftp`.
@@ -6674,7 +8014,7 @@ export module '@theia/plugin' {
          * @param options Immutable metadata about the provider.
          * @return A {@link Disposable disposable} that unregisters this provider when being disposed.
          */
-        export function registerFileSystemProvider(scheme: string, provider: FileSystemProvider, options?: { readonly isCaseSensitive?: boolean, readonly isReadonly?: boolean }): Disposable;
+        export function registerFileSystemProvider(scheme: string, provider: FileSystemProvider, options?: { readonly isCaseSensitive?: boolean, readonly isReadonly?: boolean | MarkdownString }): Disposable;
 
         /**
          * Returns the {@link WorkspaceFolder workspace folder} that contains a given uri.
@@ -6805,6 +8145,9 @@ export module '@theia/plugin' {
 
         /**
          * The application root folder from which the editor is running.
+         *
+         * *Note* that the value is the empty string when running in an
+         * environment that has no representation of an application root folder.
          */
         export const appRoot: string;
 
@@ -6839,10 +8182,25 @@ export module '@theia/plugin' {
         export const isTelemetryEnabled: boolean;
 
         /**
+         * An {@link Event} which fires when the default shell changes. This fires with the new
+         * shell path.
+         */
+        export const onDidChangeShell: Event<string>;
+
+        /**
          * An {@link Event} which fires when the user enabled or disables telemetry.
          * `true` if the user has enabled telemetry or `false` if the user has disabled telemetry.
          */
         export const onDidChangeTelemetryEnabled: Event<boolean>;
+
+        /**
+         * Creates a new {@link TelemetryLogger telemetry logger}.
+         *
+         * @param sender The telemetry sender that is used by the telemetry logger.
+         * @param options Options for the telemetry logger.
+         * @returns A new telemetry logger
+         */
+        export function createTelemetryLogger(sender: TelemetrySender, options?: TelemetryLoggerOptions): TelemetryLogger;
 
         /**
          * The name of a remote. Defined by extensions, popular samples are `wsl` for the Windows
@@ -6856,7 +8214,9 @@ export module '@theia/plugin' {
         export const remoteName: string | undefined;
 
         /**
-         * The detected default shell for the extension host.
+         * The detected default shell for the extension host, this is overridden by the
+         * `terminal.integrated.defaultProfile` setting for the extension host's platform. Note that in
+         * environments that do not support a shell the value is the empty string.
          */
         export const shell: string;
 
@@ -6917,6 +8277,15 @@ export module '@theia/plugin' {
          */
         export function asExternalUri(target: Uri): Thenable<Uri>;
 
+        /**
+         * The current log level of the editor.
+         */
+        export const logLevel: LogLevel;
+
+        /**
+         * An {@link Event} which fires when the log level of the editor changes.
+         */
+        export const onDidChangeLogLevel: Event<LogLevel>;
     }
 
     /**
@@ -6960,7 +8329,7 @@ export module '@theia/plugin' {
          * @param pattern A file glob pattern like `*.{ts,js}` that will be matched on file paths
          * relative to the base path.
          */
-        constructor(base: WorkspaceFolder | Uri | string, pattern: string)
+        constructor(base: WorkspaceFolder | Uri | string, pattern: string);
     }
 
     /**
@@ -7002,6 +8371,19 @@ export module '@theia/plugin' {
          * to filter documents to a {@link WorkspaceFolder workspace folder}.
          */
         readonly pattern?: GlobPattern;
+
+        /**
+         * The {@link NotebookDocument.notebookType type} of a notebook, like `jupyter-notebook`. This allows
+         * to narrow down on the type of a notebook that a {@link NotebookCell.document cell document} belongs to.
+         *
+         * *Note* that setting the `notebookType`-property changes how `scheme` and `pattern` are interpreted. When set
+         * they are evaluated against the {@link NotebookDocument.uri notebook uri}, not the document uri.
+         *
+         * @example <caption>Match python document inside jupyter notebook that aren't stored yet (`untitled`)</caption>
+         * { language: 'python', notebookType: 'jupyter-notebook', scheme: 'untitled' }
+         * @stubbed
+         */
+        readonly notebookType?: string;
     }
 
     /**
@@ -7125,6 +8507,43 @@ export module '@theia/plugin' {
         unIndentedLinePattern?: RegExp;
     }
 
+    export enum SyntaxTokenType {
+        /**
+         * Everything except tokens that are part of comments, string literals and regular expressions.
+         */
+        Other = 0,
+        /**
+         * A comment.
+         */
+        Comment = 1,
+        /**
+         * A string literal.
+         */
+        String = 2,
+        /**
+         * A regular expression.
+         */
+        RegEx = 3
+    }
+
+    /**
+     * Describes pairs of strings where the close string will be automatically inserted when typing the opening string.
+     */
+    export interface AutoClosingPair {
+        /**
+         * The string that will trigger the automatic insertion of the closing string.
+         */
+        open: string;
+        /**
+         * The closing string that will be automatically inserted when typing the opening string.
+         */
+        close: string;
+        /**
+         * A set of tokens where the pair should not be auto closed.
+         */
+        notIn?: SyntaxTokenType[];
+    }
+
     /**
      * The language configuration interfaces defines the contract between extensions
      * and various editor features, like automatic bracket insertion, automatic indentation etc.
@@ -7164,6 +8583,10 @@ export module '@theia/plugin' {
          */
         onEnterRules?: OnEnterRule[];
 
+        /**
+         * The language's auto closing pairs.
+         */
+        autoClosingPairs?: AutoClosingPair[];
     }
 
     /**
@@ -7309,7 +8732,7 @@ export module '@theia/plugin' {
          * The `activeSignatureHelp` has its [`SignatureHelp.activeSignature`] field updated based on
          * the user arrowing through available signatures.
          */
-        readonly activeSignatureHelp?: SignatureHelp;
+        readonly activeSignatureHelp: SignatureHelp | undefined;
     }
 
     /**
@@ -8617,11 +10040,21 @@ export module '@theia/plugin' {
         source?: string;
 
         /**
-         * A code or identifier for this diagnostics. Will not be surfaced
-         * to the user, but should be used for later processing, e.g. when
-         * providing {@link CodeActionContext code actions}.
+         * A code or identifier for this diagnostic.
+         * Should be used for later processing, e.g. when providing {@link CodeActionContext code actions}.
          */
-        code?: string | number;
+        code?: string | number | {
+            /**
+             * A code or identifier for this diagnostic.
+             * Should be used for later processing, e.g. when providing {@link CodeActionContext code actions}.
+             */
+            value: string | number;
+
+            /**
+             * A target URI to open with more information about the diagnostic error.
+             */
+            target: Uri;
+        };
 
         /**
          * An array of related diagnostic information, e.g. when symbol-names within
@@ -8873,7 +10306,7 @@ export module '@theia/plugin' {
          * @return An array of commands, quick fixes, or refactorings or a thenable of such. The lack of a result can be
          * signaled by returning `undefined`, `null`, or an empty array.
          */
-        provideCodeActions(document: TextDocument, range: Range | Selection, context: CodeActionContext, token: CancellationToken): ProviderResult<(Command | T)[]>;
+        provideCodeActions(document: TextDocument, range: Range | Selection, context: CodeActionContext, token: CancellationToken): ProviderResult<Array<Command | T>>;
 
         /**
          * Given a code action fill in its `edit`-property. Changes to
@@ -9033,6 +10466,17 @@ export module '@theia/plugin' {
         static readonly RefactorInline: CodeActionKind;
 
         /**
+         * Base kind for refactoring inline actions: `refactor.move`
+         *
+         * Example move actions:
+         *
+         * - Move a function to a new file
+         * - Move a property between classes
+         * - Move method to base class
+         */
+        static readonly RefactorMove: CodeActionKind;
+
+        /**
          * Base kind for refactoring rewrite actions: `refactor.rewrite`
          *
          * Example rewrite actions:
@@ -9066,6 +10510,24 @@ export module '@theia/plugin' {
          * They should not suppress errors or perform unsafe fixes such as generating new types or classes.
          */
         static readonly SourceFixAll: CodeActionKind;
+
+        /**
+         * Base kind for all code actions applying to the entire notebook's scope. CodeActionKinds using
+         * this should always begin with `notebook.`
+         *
+         * This requires that new CodeActions be created for it and contributed via extensions.
+         * Pre-existing kinds can not just have the new `notebook.` prefix added to them, as the functionality
+         * is unique to the full-notebook scope.
+         *
+         * Notebook CodeActionKinds can be initialized as either of the following (both resulting in `notebook.source.xyz`):
+         * - `const newKind =  CodeActionKind.Notebook.append(CodeActionKind.Source.append('xyz').value)`
+         * - `const newKind =  CodeActionKind.Notebook.append('source.xyz')`
+         *
+         * Example Kinds/Actions:
+         * - `notebook.source.organizeImports` (might move all imports to a new top cell)
+         * - `notebook.source.normalizeVariableNames` (might rename all variables to a standardized casing format)
+         */
+        static readonly Notebook: CodeActionKind;
 
         private constructor(value: string);
 
@@ -9166,7 +10628,17 @@ export module '@theia/plugin' {
         /**
          * The icon path or {@link ThemeIcon ThemeIcon} for the edit.
          */
-        iconPath?: Uri | { light: Uri; dark: Uri } | ThemeIcon;
+        iconPath?: IconPath;
+    }
+
+    /**
+     * Additional data about a workspace edit.
+     */
+    export interface WorkspaceEditMetadata {
+        /**
+         * Signal to the editor that this edit is a refactoring.
+         */
+        isRefactoring?: boolean;
     }
 
     /**
@@ -9225,7 +10697,31 @@ export module '@theia/plugin' {
          * @param uri A resource identifier.
          * @param edits An array of text edits.
          */
-        set(uri: Uri, edits: TextEdit[]): void;
+        set(uri: Uri, edits: ReadonlyArray<TextEdit | SnippetTextEdit>): void;
+
+        /**
+         * Set (and replace) text edits or snippet edits with metadata for a resource.
+         *
+         * @param uri A resource identifier.
+         * @param edits An array of edits.
+         */
+        set(uri: Uri, edits: ReadonlyArray<[TextEdit | SnippetTextEdit, WorkspaceEditEntryMetadata | undefined]>): void;
+
+        /**
+         * Set (and replace) notebook edits for a resource.
+         *
+         * @param uri A resource identifier.
+         * @param edits An array of edits.
+         */
+        set(uri: Uri, edits: readonly NotebookEdit[]): void;
+
+        /**
+         * Set (and replace) notebook edits with metadata for a resource.
+         *
+         * @param uri A resource identifier.
+         * @param edits An array of edits.
+         */
+        set(uri: Uri, edits: ReadonlyArray<[NotebookEdit, WorkspaceEditEntryMetadata | undefined]>): void;
 
         /**
          * Get the text edits for a resource.
@@ -9320,6 +10816,26 @@ export module '@theia/plugin' {
             options: FormattingOptions,
             token: CancellationToken | undefined
         ): ProviderResult<TextEdit[] | undefined>;
+
+        /**
+         * Provide formatting edits for multiple ranges in a document.
+         *
+         * This function is optional but allows a formatter to perform faster when formatting only modified ranges or when
+         * formatting a large number of selections.
+         *
+         * The given ranges are hints and providers can decide to format a smaller
+         * or larger range. Often this is done by adjusting the start and end
+         * of the range to full syntax nodes.
+         *
+         * @param document The document in which the command was invoked.
+         * @param ranges The ranges which should be formatted.
+         * @param options Options controlling formatting.
+         * @param token A cancellation token.
+         * @returns A set of text edits or a thenable that resolves to such. The lack of a result can be
+         * signaled by returning `undefined`, `null`, or an empty array.
+         * @stubbed @monaco-uplift the current monaco version does not yet use this API
+         */
+        provideDocumentRangesFormattingEdits?(document: TextDocument, ranges: Range[], options: FormattingOptions, token: CancellationToken): ProviderResult<TextEdit[]>;
     }
 
     /**
@@ -9855,6 +11371,16 @@ export module '@theia/plugin' {
          * @return A {@link Disposable disposable} that unregisters this provider when being disposed.
          */
         export function registerDefinitionProvider(selector: DocumentSelector, provider: DefinitionProvider): Disposable;
+
+        /**
+         * Registers a new {@link DocumentDropEditProvider}.
+         *
+         * @param selector A selector that defines the documents this provider applies to.
+         * @param provider A drop provider.
+         *
+         * @return A {@link Disposable} that unregisters this provider when disposed of.
+         */
+        export function registerDocumentDropEditProvider(selector: DocumentSelector, provider: DocumentDropEditProvider): Disposable;
 
         /**
          * Register a declaration provider.
@@ -10547,6 +12073,11 @@ export module '@theia/plugin' {
          * Controls whether the input box is visible (default is true).
          */
         visible: boolean;
+
+        /**
+         * Controls whether the input box is enabled (default is `true`).
+         */
+        enabled: boolean;
     }
 
     interface QuickDiffProvider {
@@ -10571,7 +12102,7 @@ export module '@theia/plugin' {
          * The icon path for a specific
          * {@link SourceControlResourceState source control resource state}.
          */
-        readonly iconPath?: string | Uri;
+        readonly iconPath?: string | Uri | ThemeIcon;
     }
 
     /**
@@ -10936,6 +12467,33 @@ export module '@theia/plugin' {
          * If compact is true, debug sessions with a single child are hidden in the CALL STACK view to make the tree more compact.
          */
         compact?: boolean;
+
+        /**
+         * When true, a save will not be triggered for open editors when starting a debug session,
+         * regardless of the value of the `debug.saveBeforeStart` setting.
+         */
+        suppressSaveBeforeStart?: boolean;
+
+        /**
+         * When true, the debug toolbar will not be shown for this session.
+         */
+        suppressDebugToolbar?: boolean;
+
+        /**
+         * When true, the window statusbar color will not be changed for this session.
+         */
+        suppressDebugStatusbar?: boolean;
+
+        /**
+         * When true, the debug viewlet will not be automatically revealed for this session.
+         */
+        suppressDebugView?: boolean;
+        /**
+         * Signals to the editor that the debug session was started from a test run
+         * request. This is used to link the lifecycle of the debug session and
+         * test run in UI actions.
+         */
+        testRun?: TestRun;
     }
 
     /**
@@ -11300,6 +12858,50 @@ export module '@theia/plugin' {
     }
 
     /**
+     * Represents a thread in a debug session.
+     */
+    export class DebugThread {
+        /**
+         * Debug session for thread.
+         */
+        readonly session: DebugSession;
+
+        /**
+         * ID of the associated thread in the debug protocol.
+         */
+        readonly threadId: number;
+
+        /**
+         * @hidden
+         */
+        private constructor(session: DebugSession, threadId: number);
+    }
+
+    /**
+     * Represents a stack frame in a debug session.
+     */
+    export class DebugStackFrame {
+        /**
+         * Debug session for thread.
+         */
+        readonly session: DebugSession;
+
+        /**
+         * ID of the associated thread in the debug protocol.
+         */
+        readonly threadId: number;
+        /**
+         * ID of the stack frame in the debug protocol.
+         */
+        readonly frameId: number;
+
+        /**
+         * @hidden
+         */
+        private constructor(session: DebugSession, threadId: number, frameId: number);
+    }
+
+    /**
      * Namespace for debug functionality.
      */
     export namespace debug {
@@ -11347,6 +12949,19 @@ export module '@theia/plugin' {
          * An {@link Event event} that is emitted when the set of breakpoints is added, removed, or changed.
          */
         export const onDidChangeBreakpoints: Event<BreakpointsChangeEvent>;
+
+        /**
+         * The currently focused thread or stack frame, or `undefined` if no
+         * thread or stack is focused. A thread can be focused any time there is
+         * an active debug session, while a stack frame can only be focused when
+         * a session is paused and the call stack has been retrieved.
+         */
+        export const activeStackItem: DebugThread | DebugStackFrame | undefined;
+
+        /**
+         * An event which fires when the {@link debug.activeStackItem} has changed.
+         */
+        export const onDidChangeActiveStackItem: Event<DebugThread | DebugStackFrame | undefined>;
 
         /**
          * Register a {@link DebugAdapterDescriptorFactory debug adapter descriptor factory} for a specific debug type.
@@ -11566,7 +13181,7 @@ export module '@theia/plugin' {
          * @param args The command arguments.
          * @param options Optional options for the started the shell.
          */
-        constructor(command: string | ShellQuotedString, args: (string | ShellQuotedString)[], options?: ShellExecutionOptions);
+        constructor(command: string | ShellQuotedString, args: Array<string | ShellQuotedString>, options?: ShellExecutionOptions);
 
         /**
          * The shell command line. Is `undefined` if created with a command and arguments.
@@ -11770,6 +13385,9 @@ export module '@theia/plugin' {
 
         /** Controls whether the terminal is cleared before executing the task. */
         clear?: boolean;
+
+        /** Controls whether the terminal is closed after executing the task. */
+        close?: boolean;
     }
 
     /**
@@ -12167,6 +13785,11 @@ export module '@theia/plugin' {
         label?: string;
 
         /**
+         * The optional state of a comment thread, which may affect how the comment is displayed.
+         */
+        state?: CommentThreadState;
+
+        /**
          * Dispose this comment thread.
          *
          * Once disposed, this comment thread will be removed from visible editors and Comment Panel when appropriate.
@@ -12177,6 +13800,14 @@ export module '@theia/plugin' {
          * Whether the thread supports reply. Defaults to true.
          */
         canReply: boolean;
+    }
+
+    /**
+     * The state of a comment thread.
+     */
+    export enum CommentThreadState {
+        Unresolved = 0,
+        Resolved = 1
     }
 
     /**
@@ -12268,6 +13899,11 @@ export module '@theia/plugin' {
          * Label will be rendered next to authorName if exists.
          */
         label?: string;
+
+        /**
+         * Optional timestamp.
+         */
+        timestamp?: Date;
     }
 
     /**
@@ -12708,6 +14344,48 @@ export module '@theia/plugin' {
     }
 
     /**
+     * An edit operation applied {@link DocumentDropEditProvider on drop}.
+     */
+    export class DocumentDropEdit {
+        /**
+         * The text or snippet to insert at the drop location.
+         */
+        insertText: string | SnippetString;
+
+        /**
+         * An optional additional edit to apply on drop.
+         */
+        additionalEdit?: WorkspaceEdit;
+
+        /**
+         * @param insertText The text or snippet to insert at the drop location.
+         */
+        constructor(insertText: string | SnippetString);
+    }
+
+    /**
+     * Provider which handles dropping of resources into a text editor.
+     *
+     * This allows users to drag and drop resources (including resources from external apps) into the editor. While dragging
+     * and dropping files, users can hold down `shift` to drop the file into the editor instead of opening it.
+     * Requires `editor.dropIntoEditor.enabled` to be on.
+     */
+    export interface DocumentDropEditProvider {
+        /**
+         * Provide edits which inserts the content being dragged and dropped into the document.
+         *
+         * @param document The document in which the drop occurred.
+         * @param position The position in the document where the drop occurred.
+         * @param dataTransfer A {@link DataTransfer} object that holds data about what is being dragged and dropped.
+         * @param token A cancellation token.
+         *
+         * @return A {@link DocumentDropEdit} or a thenable that resolves to such. The lack of a result can be
+         * signaled by returning `undefined` or `null`.
+         */
+        provideDocumentDropEdits(document: TextDocument, position: Position, dataTransfer: DataTransfer, token: CancellationToken): ProviderResult<DocumentDropEdit>;
+    }
+
+    /**
      * Represents a session of a currently logged in user.
      */
     export interface AuthenticationSession {
@@ -12749,6 +14427,17 @@ export module '@theia/plugin' {
     }
 
     /**
+     * Optional options to be used when calling {@link authentication.getSession} with the flag `forceNewSession`.
+     */
+    export interface AuthenticationForceNewSessionOptions {
+        /**
+         * An optional message that will be displayed to the user when we ask to re-authenticate. Providing additional context
+         * as to why you are asking a user to re-authenticate can help increase the odds that they will accept.
+         */
+        detail?: string;
+    }
+
+    /**
      * Options to be used when getting an {@link AuthenticationSession AuthenticationSession} from an {@link AuthenticationProvider AuthenticationProvider}.
      */
     export interface AuthenticationGetSessionOptions {
@@ -12782,7 +14471,7 @@ export module '@theia/plugin' {
          *
          * Defaults to false.
          */
-        forceNewSession?: boolean | { detail: string };
+        forceNewSession?: boolean | AuthenticationForceNewSessionOptions;
 
         /**
          * Whether we should show the indication to sign in in the Accounts menu.
@@ -12795,6 +14484,11 @@ export module '@theia/plugin' {
          * Note: you cannot use this option with any other options that prompt the user like {@link createIfNone}.
          */
         silent?: boolean;
+
+        /**
+         * The account that you would like to get a session for. This is passed down to the Authentication Provider to be used for creating the correct session.
+         */
+        account?: AuthenticationSessionAccountInformation;
     }
 
     /**
@@ -12856,6 +14550,18 @@ export module '@theia/plugin' {
     }
 
     /**
+     * The options passed in to the {@link AuthenticationProvider.getSessions} and
+     * {@link AuthenticationProvider.createSession} call.
+     */
+    export interface AuthenticationProviderSessionOptions {
+        /**
+         * The account that is being asked about. If this is passed in, the provider should
+         * attempt to return the sessions that are only related to this account.
+         */
+        account?: AuthenticationSessionAccountInformation;
+    }
+
+    /**
      * A provider for performing authentication to a service.
      */
     export interface AuthenticationProvider {
@@ -12869,9 +14575,10 @@ export module '@theia/plugin' {
          * Get a list of sessions.
          * @param scopes An optional list of scopes. If provided, the sessions returned should match
          * these permissions, otherwise all sessions should be returned.
+         * @param options Additional options for getting sessions.
          * @returns A promise that resolves to an array of authentication sessions.
          */
-        getSessions(scopes?: readonly string[]): Thenable<readonly AuthenticationSession[]>;
+        getSessions(scopes: readonly string[] | undefined, options: AuthenticationProviderSessionOptions): Thenable<AuthenticationSession[]>;
 
         /**
          * Prompts a user to login.
@@ -12884,9 +14591,10 @@ export module '@theia/plugin' {
          * then this should never be called if there is already an existing session matching these
          * scopes.
          * @param scopes A list of scopes, permissions, that the new session should be created with.
+         * @param options Additional options for creating a session.
          * @returns A promise that resolves to an authentication session.
          */
-        createSession(scopes: readonly string[]): Thenable<AuthenticationSession>;
+        createSession(scopes: readonly string[], options: AuthenticationProviderSessionOptions): Thenable<AuthenticationSession>;
 
         /**
          * Removes the session corresponding to session id.
@@ -12947,6 +14655,20 @@ export module '@theia/plugin' {
         export function getSession(providerId: string, scopes: readonly string[], options?: AuthenticationGetSessionOptions): Thenable<AuthenticationSession | undefined>;
 
         /**
+         * Get all accounts that the user is logged in to for the specified provider.
+         * Use this paired with {@link getSession} in order to get an authentication session for a specific account.
+         *
+         * Currently, there are only two authentication providers that are contributed from built in extensions
+         * to the editor that implement GitHub and Microsoft authentication: their providerId's are 'github' and 'microsoft'.
+         *
+         * Note: Getting accounts does not imply that your extension has access to that account or its authentication sessions. You can verify access to the account by calling {@link getSession}.
+         *
+         * @param providerId The id of the provider to use
+         * @returns A thenable that resolves to a readonly array of authentication accounts.
+         */
+        export function getAccounts(providerId: string): Thenable<readonly AuthenticationSessionAccountInformation[]>;
+
+        /**
          * An {@link Event event} which fires when the authentication sessions of an authentication provider have
          * been added, removed, or changed.
          */
@@ -12966,605 +14688,4045 @@ export module '@theia/plugin' {
          */
         export function registerAuthenticationProvider(id: string, label: string, provider: AuthenticationProvider, options?: AuthenticationProviderOptions): Disposable;
     }
-}
 
-/**
- * Namespace for testing functionality. Tests are published by registering
- * {@link TestController} instances, then adding {@link TestItem TestItems}.
- * Controllers may also describe how to run tests by creating one or more
- * {@link TestRunProfile} instances.
- */
-export namespace tests {
     /**
-     * Creates a new test controller.
+     * Namespace for localization-related functionality in the extension API. To use this properly,
+     * you must have `l10n` defined in your extension manifest and have bundle.l10n.<language>.json files.
+     * For more information on how to generate bundle.l10n.<language>.json files, check out the
+     * [vscode-l10n repo](https://github.com/microsoft/vscode-l10n).
      *
-     * @param id Identifier for the controller, must be globally unique.
-     * @param label A human-readable label for the controller.
-     * @returns An instance of the {@link TestController}.
-     * @stubbed
+     * Note: Built-in extensions (for example, Git, TypeScript Language Features, GitHub Authentication)
+     * are excluded from the `l10n` property requirement. In other words, they do not need to specify
+     * a `l10n` in the extension manifest because their translated strings come from Language Packs.
      */
-    export function createTestController(id: string, label: string): TestController;
-}
+    export namespace l10n {
+        /**
+         * Marks a string for localization. If a localized bundle is available for the language specified by
+         * {@link env.language} and the bundle has a localized value for this message, then that localized
+         * value will be returned (with injected {@link args} values for any templated values).
+         * @param message - The message to localize. Supports index templating where strings like `{0}` and `{1}` are
+         * replaced by the item at that index in the {@link args} array.
+         * @param args - The arguments to be used in the localized string. The index of the argument is used to
+         * match the template placeholder in the localized string.
+         * @returns localized string with injected arguments.
+         * @example `l10n.t('Hello {0}!', 'World');`
+         */
+        export function t(message: string, ...args: Array<string | number | boolean>): string;
 
-/**
- * The kind of executions that {@link TestRunProfile TestRunProfiles} control.
- */
-export enum TestRunProfileKind {
-    Run = 1,
-    Debug = 2,
-    Coverage = 3,
-}
+        /**
+         * Marks a string for localization. If a localized bundle is available for the language specified by
+         * {@link env.language} and the bundle has a localized value for this message, then that localized
+         * value will be returned (with injected {@link args} values for any templated values).
+         * @param message The message to localize. Supports named templating where strings like `{foo}` and `{bar}` are
+         * replaced by the value in the Record for that key (foo, bar, etc).
+         * @param args The arguments to be used in the localized string. The name of the key in the record is used to
+         * match the template placeholder in the localized string.
+         * @returns localized string with injected arguments.
+         * @example `l10n.t('Hello {name}', { name: 'Erich' });`
+         */
+        export function t(message: string, args: Record<string, any>): string;
+        /**
+         * Marks a string for localization. If a localized bundle is available for the language specified by
+         * {@link env.language} and the bundle has a localized value for this message, then that localized
+         * value will be returned (with injected args values for any templated values).
+         * @param options The options to use when localizing the message.
+         * @returns localized string with injected arguments.
+         */
+        export function t(options: {
+            /**
+             * The message to localize. If {@link args} is an array, this message supports index templating where strings like
+             * `{0}` and `{1}` are replaced by the item at that index in the {@link args} array. If `args` is a `Record<string, any>`,
+             * this supports named templating where strings like `{foo}` and `{bar}` are replaced by the value in
+             * the Record for that key (foo, bar, etc).
+             */
+            message: string;
+            /**
+             * The arguments to be used in the localized string. As an array, the index of the argument is used to
+             * match the template placeholder in the localized string. As a Record, the key is used to match the template
+             * placeholder in the localized string.
+             */
+            args?: Array<string | number | boolean> | Record<string, any>;
+            /**
+             * A comment to help translators understand the context of the message.
+             */
+            comment: string | string[];
+        }): string;
+        /**
+         * The bundle of localized strings that have been loaded for the extension.
+         * It's undefined if no bundle has been loaded. The bundle is typically not loaded if
+         * there was no bundle found or when we are running with the default language.
+         */
+        export const bundle: { [key: string]: string } | undefined;
+        /**
+         * The URI of the localization bundle that has been loaded for the extension.
+         * It's undefined if no bundle has been loaded. The bundle is typically not loaded if
+         * there was no bundle found or when we are running with the default language.
+         */
+        export const uri: Uri | undefined;
+    }
 
-/**
- * Tags can be associated with {@link TestItem TestItems} and
- * {@link TestRunProfile TestRunProfiles}. A profile with a tag can only
- * execute tests that include that tag in their {@link TestItem.tags} array.
- */
-export class TestTag {
     /**
-     * ID of the test tag. `TestTag` instances with the same ID are considered
-     * to be identical.
+     * The tab represents a single text based resource.
      */
-    readonly id: string;
+    export class TabInputText {
+        /**
+         * The uri represented by the tab.
+         */
+        readonly uri: Uri;
+        /**
+         * Constructs a text tab input with the given URI.
+         * @param uri The URI of the tab.
+         */
+        constructor(uri: Uri);
+    }
 
     /**
-     * Creates a new TestTag instance.
-     * @param id ID of the test tag.
+     * The tab represents two text based resources
+     * being rendered as a diff.
      */
-    constructor(id: string);
-}
+    export class TabInputTextDiff {
+        /**
+         * The uri of the original text resource.
+         */
+        readonly original: Uri;
+        /**
+         * The uri of the modified text resource.
+         */
+        readonly modified: Uri;
+        /**
+         * Constructs a new text diff tab input with the given URIs.
+         * @param original The uri of the original text resource.
+         * @param modified The uri of the modified text resource.
+         */
+        constructor(original: Uri, modified: Uri);
+    }
 
-/**
- * A TestRunProfile describes one way to execute tests in a {@link TestController}.
- */
-export interface TestRunProfile {
     /**
-     * Label shown to the user in the UI.
+     * The tab represents a custom editor.
+     */
+    export class TabInputCustom {
+        /**
+         * The uri that the tab is representing.
+         */
+        readonly uri: Uri;
+        /**
+         * The type of custom editor.
+         */
+        readonly viewType: string;
+        /**
+         * Constructs a custom editor tab input.
+         * @param uri The uri of the tab.
+         * @param viewType The viewtype of the custom editor.
+         */
+        constructor(uri: Uri, viewType: string);
+    }
+
+    /**
+     * The tab represents a webview.
+     */
+    export class TabInputWebview {
+        /**
+         * The type of webview. Maps to WebviewPanel's viewType
+         */
+        readonly viewType: string;
+        /**
+         * Constructs a webview tab input with the given view type.
+         * @param viewType The type of webview. Maps to WebviewPanel's viewType
+         */
+        constructor(viewType: string);
+    }
+
+    /**
+     * The tab represents a notebook.
+     */
+    export class TabInputNotebook {
+        /**
+         * The uri that the tab is representing.
+         */
+        readonly uri: Uri;
+        /**
+         * The type of notebook. Maps to NotebookDocuments's notebookType
+         */
+        readonly notebookType: string;
+        /**
+         * Constructs a new tab input for a notebook.
+         * @param uri The uri of the notebook.
+         * @param notebookType The type of notebook. Maps to NotebookDocuments's notebookType
+         */
+        constructor(uri: Uri, notebookType: string);
+    }
+
+    /**
+     * The tabs represents two notebooks in a diff configuration.
+     */
+    export class TabInputNotebookDiff {
+        /**
+         * The uri of the original notebook.
+         */
+        readonly original: Uri;
+        /**
+         * The uri of the modified notebook.
+         */
+        readonly modified: Uri;
+        /**
+         * The type of notebook. Maps to NotebookDocuments's notebookType
+         */
+        readonly notebookType: string;
+        /**
+         * Constructs a notebook diff tab input.
+         * @param original The uri of the original unmodified notebook.
+         * @param modified The uri of the modified notebook.
+         * @param notebookType The type of notebook. Maps to NotebookDocuments's notebookType
+         */
+        constructor(original: Uri, modified: Uri, notebookType: string);
+    }
+
+    /**
+     * The tab represents a terminal in the editor area.
+     */
+    export class TabInputTerminal {
+        /**
+         * Constructs a terminal tab input.
+         */
+        constructor();
+    }
+
+    /**
+     * Represents a tab within a {@link TabGroup group of tabs}.
+     * Tabs are merely the graphical representation within the editor area.
+     * A backing editor is not a guarantee.
+     */
+    export interface Tab {
+
+        /**
+         * The text displayed on the tab.
+         */
+        readonly label: string;
+
+        /**
+         * The group which the tab belongs to.
+         */
+        readonly group: TabGroup;
+
+        /**
+         * Defines the structure of the tab i.e. text, notebook, custom, etc.
+         * Resource and other useful properties are defined on the tab kind.
+         */
+        readonly input: TabInputText | TabInputTextDiff | TabInputCustom | TabInputWebview | TabInputNotebook | TabInputNotebookDiff | TabInputTerminal | unknown;
+
+        /**
+         * Whether or not the tab is currently active.
+         * This is dictated by being the selected tab in the group.
+         */
+        readonly isActive: boolean;
+
+        /**
+         * Whether or not the dirty indicator is present on the tab.
+         */
+        readonly isDirty: boolean;
+
+        /**
+         * Whether or not the tab is pinned (pin icon is present).
+         */
+        readonly isPinned: boolean;
+
+        /**
+         * Whether or not the tab is in preview mode.
+         */
+        readonly isPreview: boolean;
+    }
+
+    /**
+     * An event describing change to tabs.
+     */
+    export interface TabChangeEvent {
+        /**
+         * The tabs that have been opened.
+         */
+        readonly opened: readonly Tab[];
+        /**
+         * The tabs that have been closed.
+         */
+        readonly closed: readonly Tab[];
+        /**
+         * Tabs that have changed, e.g have changed
+         * their {@link Tab.isActive active} state.
+         */
+        readonly changed: readonly Tab[];
+    }
+
+    /**
+     * An event describing changes to tab groups.
+     */
+    export interface TabGroupChangeEvent {
+        /**
+         * Tab groups that have been opened.
+         */
+        readonly opened: readonly TabGroup[];
+        /**
+         * Tab groups that have been closed.
+         */
+        readonly closed: readonly TabGroup[];
+        /**
+         * Tab groups that have changed, e.g have changed
+         * their {@link TabGroup.isActive active} state.
+         */
+        readonly changed: readonly TabGroup[];
+    }
+
+    /**
+     * Represents a group of tabs. A tab group itself consists of multiple tabs.
+     */
+    export interface TabGroup {
+        /**
+         * Whether or not the group is currently active.
+         *
+         * *Note* that only one tab group is active at a time, but that multiple tab
+         * groups can have an {@link TabGroup.isActive active tab}.
+         *
+         * @see {@link Tab.isActive}
+         */
+        readonly isActive: boolean;
+
+        /**
+         * The view column of the group.
+         */
+        readonly viewColumn: ViewColumn;
+
+        /**
+         * The active {@link Tab tab} in the group. This is the tab whose contents are currently
+         * being rendered.
+         *
+         * *Note* that there can be one active tab per group but there can only be one {@link TabGroups.activeTabGroup active group}.
+         */
+        readonly activeTab: Tab | undefined;
+
+        /**
+         * The list of tabs contained within the group.
+         * This can be empty if the group has no tabs open.
+         */
+        readonly tabs: readonly Tab[];
+    }
+
+    /**
+     * Represents the main editor area which consists of multiple groups which contain tabs.
+     */
+    export interface TabGroups {
+        /**
+         * All the groups within the group container.
+         */
+        readonly all: readonly TabGroup[];
+
+        /**
+         * The currently active group.
+         */
+        readonly activeTabGroup: TabGroup;
+
+        /**
+         * An {@link Event event} which fires when {@link TabGroup tab groups} have changed.
+         */
+        readonly onDidChangeTabGroups: Event<TabGroupChangeEvent>;
+
+        /**
+         * An {@link Event event} which fires when {@link Tab tabs} have changed.
+         */
+        readonly onDidChangeTabs: Event<TabChangeEvent>;
+
+        /**
+         * Closes the tab. This makes the tab object invalid and the tab
+         * should no longer be used for further actions.
+         * Note: In the case of a dirty tab, a confirmation dialog will be shown which may be cancelled. If cancelled the tab is still valid
+         *
+         * @param tab The tab to close.
+         * @param preserveFocus When `true` focus will remain in its current position. If `false` it will jump to the next tab.
+         * @returns A promise that resolves to `true` when all tabs have been closed.
+         */
+        close(tab: Tab | readonly Tab[], preserveFocus?: boolean): Thenable<boolean>;
+
+        /**
+         * Closes the tab group. This makes the tab group object invalid and the tab group
+         * should no longer be used for further actions.
+         * @param tabGroup The tab group to close.
+         * @param preserveFocus When `true` focus will remain in its current position.
+         * @returns A promise that resolves to `true` when all tab groups have been closed.
+         */
+        close(tabGroup: TabGroup | readonly TabGroup[], preserveFocus?: boolean): Thenable<boolean>;
+    }
+
+    /**
+     * A special value wrapper denoting a value that is safe to not clean.
+     * This is to be used when you can guarantee no identifiable information is contained in the value and the cleaning is improperly redacting it.
+     */
+    export class TelemetryTrustedValue<T = any> {
+        readonly value: T;
+
+        constructor(value: T);
+    }
+
+    /**
+     * A telemetry logger which can be used by extensions to log usage and error telemetry.
      *
-     * Note that the label has some significance if the user requests that
-     * tests be re-run in a certain way. For example, if tests were run
-     * normally and the user requests to re-run them in debug mode, the editor
-     * will attempt use a configuration with the same label of the `Debug`
-     * kind. If there is no such configuration, the default will be used.
-     * @stubbed
-     */
-    label: string;
-
-    /**
-     * Configures what kind of execution this profile controls. If there
-     * are no profiles for a kind, it will not be available in the UI.
-     * @stubbed
-     */
-    readonly kind: TestRunProfileKind;
-
-    /**
-     * Controls whether this profile is the default action that will
-     * be taken when its kind is actioned. For example, if the user clicks
-     * the generic "run all" button, then the default profile for
-     * {@link TestRunProfileKind.Run} will be executed, although the
-     * user can configure this.
-     * @stubbed
-     */
-    isDefault: boolean;
-
-    /**
-     * Associated tag for the profile. If this is set, only {@link TestItem}
-     * instances with the same tag will be eligible to execute in this profile.
-     * @stubbed
-     */
-    tag: TestTag | undefined;
-
-    /**
-     * If this method is present, a configuration gear will be present in the
-     * UI, and this method will be invoked when it's clicked. When called,
-     * you can take other editor actions, such as showing a quick pick or
-     * opening a configuration file.
-     * @stubbed
-     */
-    configureHandler: (() => void) | undefined;
-
-    /**
-     * Handler called to start a test run. When invoked, the function should call
-     * {@link TestController.createTestRun} at least once, and all test runs
-     * associated with the request should be created before the function returns
-     * or the returned promise is resolved.
+     * A logger wraps around a {@link TelemetrySender sender} but it guarantees that
+     * - user settings to disable or tweak telemetry are respected, and that
+     * - potential sensitive data is removed
      *
-     * @param request Request information for the test run.
-     * @param cancellationToken Token that signals the used asked to abort the
-     * test run. If cancellation is requested on this token, all {@link TestRun}
-     * instances associated with the request will be
-     * automatically cancelled as well.
-     * @stubbed
+     * It also enables an "echo UI" that prints whatever data is send and it allows the editor
+     * to forward unhandled errors to the respective extensions.
+     *
+     * To get an instance of a `TelemetryLogger`, use
+     * {@link env.createTelemetryLogger `createTelemetryLogger`}.
      */
-    runHandler: (request: TestRunRequest, token: CancellationToken) => Thenable<void> | void;
+    export interface TelemetryLogger {
+
+        /**
+         * An {@link Event} which fires when the enablement state of usage or error telemetry changes.
+         */
+        readonly onDidChangeEnableStates: Event<TelemetryLogger>;
+
+        /**
+         * Whether or not usage telemetry is enabled for this logger.
+         */
+        readonly isUsageEnabled: boolean;
+
+        /**
+         * Whether or not error telemetry is enabled for this logger.
+         */
+        readonly isErrorsEnabled: boolean;
+
+        /**
+         * Log a usage event.
+         *
+         * After completing cleaning, telemetry setting checks, and data mix-in calls `TelemetrySender.sendEventData` to log the event.
+         * Automatically supports echoing to extension telemetry output channel.
+         * @param eventName The event name to log
+         * @param data The data to log
+         */
+        logUsage(eventName: string, data?: Record<string, any | TelemetryTrustedValue>): void;
+
+        /**
+         * Log an error event.
+         *
+         * After completing cleaning, telemetry setting checks, and data mix-in calls `TelemetrySender.sendEventData` to log the event. Differs from `logUsage` in that it will log the event if the telemetry setting is Error+.
+         * Automatically supports echoing to extension telemetry output channel.
+         * @param eventName The event name to log
+         * @param data The data to log
+         */
+        logError(eventName: string, data?: Record<string, any | TelemetryTrustedValue>): void;
+
+        /**
+         * Log an error event.
+         *
+         * Calls `TelemetrySender.sendErrorData`. Does cleaning, telemetry checks, and data mix-in.
+         * Automatically supports echoing to extension telemetry output channel.
+         * Will also automatically log any exceptions thrown within the extension host process.
+         * @param error The error object which contains the stack trace cleaned of PII
+         * @param data Additional data to log alongside the stack trace
+         */
+        logError(error: Error, data?: Record<string, any | TelemetryTrustedValue>): void;
+
+        /**
+         * Dispose this object and free resources.
+         */
+        dispose(): void;
+    }
 
     /**
-     * Deletes the run profile.
-     * @stubbed
-     */
-    dispose(): void;
-}
-
-/**
- * Entry point to discover and execute tests. It contains {@link TestController.items} which
- * are used to populate the editor UI, and is associated with
- * {@link TestController.createRunProfile run profiles} to allow
- * for tests to be executed.
- */
-export interface TestController {
-    /**
-     * The id of the controller passed in {@link vscode.tests.createTestController}.
-     * This must be globally unique.
-     * @stubbed
-     */
-    readonly id: string;
-
-    /**
-     * Human-readable label for the test controller.
-     * @stubbed
-     */
-    label: string;
-
-    /**
-     * A collection of "top-level" {@link TestItem} instances, which can in
-     * turn have their own {@link TestItem.children children} to form the
-     * "test tree."
+     * The telemetry sender is the contract between a telemetry logger and some telemetry service. **Note** that extensions must NOT
+     * call the methods of their sender directly as the logger provides extra guards and cleaning.
      *
-     * The extension controls when to add tests. For example, extensions should
-     * add tests for a file when {@link vscode.workspace.onDidOpenTextDocument}
-     * fires in order for decorations for tests within a file to be visible.
+     * ```js
+     * const sender: vscode.TelemetrySender = {...};
+     * const logger = vscode.env.createTelemetryLogger(sender);
      *
-     * However, the editor may sometimes explicitly request children using the
-     * {@link resolveHandler} See the documentation on that method for more details.
-     * @stubbed
+     * // GOOD - uses the logger
+     * logger.logUsage('myEvent', { myData: 'myValue' });
+     *
+     * // BAD - uses the sender directly: no data cleansing, ignores user settings, no echoing to the telemetry output channel etc
+     * sender.logEvent('myEvent', { myData: 'myValue' });
+     * ```
      */
-    readonly items: TestItemCollection;
+    export interface TelemetrySender {
+        /**
+         * Function to send event data without a stacktrace. Used within a {@link TelemetryLogger}
+         *
+         * @param eventName The name of the event which you are logging
+         * @param data A serializable key value pair that is being logged
+         */
+        sendEventData(eventName: string, data?: Record<string, any>): void;
+
+        /**
+         * Function to send an error. Used within a {@link TelemetryLogger}
+         *
+         * @param error The error being logged
+         * @param data Any additional data to be collected with the exception
+         */
+        sendErrorData(error: Error, data?: Record<string, any>): void;
+
+        /**
+         * Optional flush function which will give this sender a chance to send any remaining events
+         * as its {@link TelemetryLogger} is being disposed
+         */
+        flush?(): void | Thenable<void>;
+    }
 
     /**
-     * Creates a profile used for running tests. Extensions must create
-     * at least one profile in order for tests to be run.
-     * @param label A human-readable label for this profile.
-     * @param kind Configures what kind of execution this profile manages.
-     * @param runHandler Function called to start a test run.
-     * @param isDefault Whether this is the default action for its kind.
-     * @param tag Profile test tag.
-     * @returns An instance of a {@link TestRunProfile}, which is automatically
-     * associated with this controller.
-     * @stubbed
+     * Options for creating a {@link TelemetryLogger}
      */
-    createRunProfile(label: string, kind: TestRunProfileKind, runHandler: (request: TestRunRequest, token: CancellationToken) => Thenable<void> | void, isDefault?: boolean, tag?: TestTag): TestRunProfile;
+    export interface TelemetryLoggerOptions {
+        /**
+         * Whether or not you want to avoid having the built-in common properties such as os, extension name, etc injected into the data object.
+         * Defaults to `false` if not defined.
+         */
+        readonly ignoreBuiltInCommonProperties?: boolean;
+
+        /**
+         * Whether or not unhandled errors on the extension host caused by your extension should be logged to your sender.
+         * Defaults to `false` if not defined.
+         */
+        readonly ignoreUnhandledErrors?: boolean;
+
+        /**
+         * Any additional common properties which should be injected into the data object.
+         */
+        readonly additionalCommonProperties?: Record<string, any>;
+    }
 
     /**
-     * A function provided by the extension that the editor may call to request
-     * children of a test item, if the {@link TestItem.canResolveChildren} is
-     * `true`. When called, the item should discover children and call
-     * {@link vscode.tests.createTestItem} as children are discovered.
-     *
-     * Generally the extension manages the lifecycle of test items, but under
-     * certain conditions the editor may request the children of a specific
-     * item to be loaded. For example, if the user requests to re-run tests
-     * after reloading the editor, the editor may need to call this method
-     * to resolve the previously-run tests.
-     *
-     * The item in the explorer will automatically be marked as "busy" until
-     * the function returns or the returned thenable resolves.
-     *
-     * @param item An unresolved test item for which children are being
-     * requested, or `undefined` to resolve the controller's initial {@link TestController.items items}.
-     * @stubbed
+     * Represents a notebook editor that is attached to a {@link NotebookDocument notebook}.
      */
-    resolveHandler?: (item: TestItem | undefined) => Thenable<void> | void;
+    export enum NotebookEditorRevealType {
+        /**
+         * The range will be revealed with as little scrolling as possible.
+         */
+        Default = 0,
+
+        /**
+         * The range will always be revealed in the center of the viewport.
+         */
+        InCenter = 1,
+
+        /**
+         * If the range is outside the viewport, it will be revealed in the center of the viewport.
+         * Otherwise, it will be revealed with as little scrolling as possible.
+         */
+        InCenterIfOutsideViewport = 2,
+
+        /**
+         * The range will always be revealed at the top of the viewport.
+         */
+        AtTop = 3
+    }
 
     /**
-     * If this method is present, a refresh button will be present in the
-     * UI, and this method will be invoked when it's clicked. When called,
-     * the extension should scan the workspace for any new, changed, or
-     * removed tests.
-     *
-     * It's recommended that extensions try to update tests in realtime, using
-     * a {@link FileSystemWatcher} for example, and use this method as a fallback.
-     *
-     * @returns A thenable that resolves when tests have been refreshed.
-     * @stubbed
+     * Represents a notebook editor that is attached to a {@link NotebookDocument notebook}.
+     * Additional properties of the NotebookEditor are available in the proposed
+     * API, which will be finalized later.
      */
-    refreshHandler: ((token: CancellationToken) => Thenable<void> | void) | undefined;
+    export interface NotebookEditor {
+
+        /**
+         * The {@link NotebookDocument notebook document} associated with this notebook editor.
+         */
+        readonly notebook: NotebookDocument;
+
+        /**
+         * The primary selection in this notebook editor.
+         */
+        selection: NotebookRange;
+
+        /**
+         * All selections in this notebook editor.
+         *
+         * The primary selection (or focused range) is `selections[0]`. When the document has no cells, the primary selection is empty `{ start: 0, end: 0 }`;
+         */
+        selections: readonly NotebookRange[];
+
+        /**
+         * The current visible ranges in the editor (vertically).
+         */
+        readonly visibleRanges: readonly NotebookRange[];
+
+        /**
+         * The column in which this editor shows.
+         */
+        readonly viewColumn?: ViewColumn;
+
+        /**
+         * Scroll as indicated by `revealType` in order to reveal the given range.
+         *
+         * @param range A range.
+         * @param revealType The scrolling strategy for revealing `range`.
+         * @stubbed
+         */
+        revealRange(range: NotebookRange, revealType?: NotebookEditorRevealType): void;
+    }
 
     /**
-     * Creates a {@link TestRun}. This should be called by the
-     * {@link TestRunProfile} when a request is made to execute tests, and may
-     * also be called if a test run is detected externally. Once created, tests
-     * that are included in the request will be moved into the queued state.
-     *
-     * All runs created using the same `request` instance will be grouped
-     * together. This is useful if, for example, a single suite of tests is
-     * run on multiple platforms.
-     *
-     * @param request Test run request. Only tests inside the `include` may be
-     * modified, and tests in its `exclude` are ignored.
-     * @param name The human-readable name of the run. This can be used to
-     * disambiguate multiple sets of results in a test run. It is useful if
-     * tests are run across multiple platforms, for example.
-     * @param persist Whether the results created by the run should be
-     * persisted in the editor. This may be false if the results are coming from
-     * a file already saved externally, such as a coverage information file.
-     * @returns An instance of the {@link TestRun}. It will be considered "running"
-     * from the moment this method is invoked until {@link TestRun.end} is called.
-     * @stubbed
+     * Renderer messaging is used to communicate with a single renderer. It's returned from {@link notebooks.createRendererMessaging}.
      */
-    createTestRun(request: TestRunRequest, name?: string, persist?: boolean): TestRun;
+    export interface NotebookRendererMessaging {
+        /**
+         * An event that fires when a message is received from a renderer.
+         */
+        readonly onDidReceiveMessage: Event<{
+            readonly editor: NotebookEditor;
+            readonly message: any;
+        }>;
+
+        /**
+         * Send a message to one or all renderer.
+         *
+         * @param message Message to send
+         * @param editor Editor to target with the message. If not provided, the
+         * message is sent to all renderers.
+         * @returns a boolean indicating whether the message was successfully
+         * delivered to any renderer.
+         */
+        postMessage(message: any, editor?: NotebookEditor): Thenable<boolean>;
+    }
 
     /**
-     * Creates a new managed {@link TestItem} instance. It can be added into
-     * the {@link TestItem.children} of an existing item, or into the
+     * A notebook cell kind.
+     */
+    export enum NotebookCellKind {
+
+        /**
+         * A markup-cell is formatted source that is used for display.
+         */
+        Markup = 1,
+
+        /**
+         * A code-cell is source that can be {@link NotebookController executed} and that
+         * produces {@link NotebookCellOutput output}.
+         */
+        Code = 2
+    }
+
+    /**
+     * Represents a cell of a {@link NotebookDocument notebook}, either a {@link NotebookCellKind.Code code}-cell
+     * or {@link NotebookCellKind.Markup markup}-cell.
+     *
+     * NotebookCell instances are immutable and are kept in sync for as long as they are part of their notebook.
+     */
+    export interface NotebookCell {
+
+        /**
+         * The index of this cell in its {@link NotebookDocument.cellAt containing notebook}. The
+         * index is updated when a cell is moved within its notebook. The index is `-1`
+         * when the cell has been removed from its notebook.
+         */
+        readonly index: number;
+
+        /**
+         * The {@link NotebookDocument notebook} that contains this cell.
+         */
+        readonly notebook: NotebookDocument;
+
+        /**
+         * The kind of this cell.
+         */
+        readonly kind: NotebookCellKind;
+
+        /**
+         * The {@link TextDocument text} of this cell, represented as text document.
+         */
+        readonly document: TextDocument;
+
+        /**
+         * The metadata of this cell. Can be anything but must be JSON-stringifyable.
+         */
+        readonly metadata: { readonly [key: string]: any };
+
+        /**
+         * The outputs of this cell.
+         */
+        readonly outputs: readonly NotebookCellOutput[];
+
+        /**
+         * The most recent {@link NotebookCellExecutionSummary execution summary} for this cell.
+         */
+        readonly executionSummary: NotebookCellExecutionSummary | undefined;
+    }
+
+    /**
+     * Represents a notebook which itself is a sequence of {@link NotebookCell code or markup cells}. Notebook documents are
+     * created from {@link NotebookData notebook data}.
+     */
+    export interface NotebookDocument {
+
+        /**
+         * The associated uri for this notebook.
+         *
+         * *Note* that most notebooks use the `file`-scheme, which means they are files on disk. However, **not** all notebooks are
+         * saved on disk and therefore the `scheme` must be checked before trying to access the underlying file or siblings on disk.
+         *
+         * @see {@link FileSystemProvider}
+         */
+        readonly uri: Uri;
+
+        /**
+         * The type of notebook.
+         */
+        readonly notebookType: string;
+
+        /**
+         * The version number of this notebook (it will strictly increase after each
+         * change, including undo/redo).
+         */
+        readonly version: number;
+
+        /**
+         * `true` if there are unpersisted changes.
+         */
+        readonly isDirty: boolean;
+
+        /**
+         * Is this notebook representing an untitled file which has not been saved yet.
+         */
+        readonly isUntitled: boolean;
+
+        /**
+         * `true` if the notebook has been closed. A closed notebook isn't synchronized anymore
+         * and won't be re-used when the same resource is opened again.
+         */
+        readonly isClosed: boolean;
+
+        /**
+         * Arbitrary metadata for this notebook. Can be anything but must be JSON-stringifyable.
+         */
+        readonly metadata: { [key: string]: any };
+
+        /**
+         * The number of cells in the notebook.
+         */
+        readonly cellCount: number;
+
+        /**
+         * Return the cell at the specified index. The index will be adjusted to the notebook.
+         *
+         * @param index - The index of the cell to retrieve.
+         * @return A {@link NotebookCell cell}.
+         */
+        cellAt(index: number): NotebookCell;
+
+        /**
+         * Get the cells of this notebook. A subset can be retrieved by providing
+         * a range. The range will be adjusted to the notebook.
+         *
+         * @param range A notebook range.
+         * @returns The cells contained by the range or all cells.
+         */
+        getCells(range?: NotebookRange): NotebookCell[];
+
+        /**
+         * Save the document. The saving will be handled by the corresponding {@link NotebookSerializer serializer}.
+         *
+         * @return A promise that will resolve to true when the document
+         * has been saved. Will return false if the file was not dirty or when save failed.
+         */
+        save(): Thenable<boolean>;
+    }
+
+    /**
+     * Describes a change to a notebook cell.
+     *
+     * @see {@link NotebookDocumentChangeEvent}
+     */
+    export interface NotebookDocumentCellChange {
+
+        /**
+         * The affected cell.
+         */
+        readonly cell: NotebookCell;
+
+        /**
+         * The document of the cell or `undefined` when it did not change.
+         *
+         * *Note* that you should use the {@link workspace.onDidChangeTextDocument onDidChangeTextDocument}-event
+         * for detailed change information, like what edits have been performed.
+         */
+        readonly document: TextDocument | undefined;
+
+        /**
+         * The new metadata of the cell or `undefined` when it did not change.
+         */
+        readonly metadata: { [key: string]: any } | undefined;
+
+        /**
+         * The new outputs of the cell or `undefined` when they did not change.
+         */
+        readonly outputs: readonly NotebookCellOutput[] | undefined;
+
+        /**
+         * The new execution summary of the cell or `undefined` when it did not change.
+         */
+        readonly executionSummary: NotebookCellExecutionSummary | undefined;
+    }
+
+    /**
+     * Describes a structural change to a notebook document, e.g newly added and removed cells.
+     *
+     * @see {@link NotebookDocumentChangeEvent}
+     */
+    export interface NotebookDocumentContentChange {
+
+        /**
+         * The range at which cells have been either added or removed.
+         *
+         * Note that no cells have been {@link NotebookDocumentContentChange.removedCells removed}
+         * when this range is {@link NotebookRange.isEmpty empty}.
+         */
+        readonly range: NotebookRange;
+
+        /**
+         * Cells that have been added to the document.
+         */
+        readonly addedCells: readonly NotebookCell[];
+
+        /**
+         * Cells that have been removed from the document.
+         */
+        readonly removedCells: readonly NotebookCell[];
+    }
+
+    /**
+     * An event describing a transactional {@link NotebookDocument notebook} change.
+     */
+    export interface NotebookDocumentChangeEvent {
+
+        /**
+         * The affected notebook.
+         */
+        readonly notebook: NotebookDocument;
+
+        /**
+         * The new metadata of the notebook or `undefined` when it did not change.
+         */
+        readonly metadata: { [key: string]: any } | undefined;
+
+        /**
+         * An array of content changes describing added or removed {@link NotebookCell cells}.
+         */
+        readonly contentChanges: readonly NotebookDocumentContentChange[];
+
+        /**
+         * An array of {@link NotebookDocumentCellChange cell changes}.
+         */
+        readonly cellChanges: readonly NotebookDocumentCellChange[];
+    }
+
+    /**
+     * An event that is fired when a {@link NotebookDocument notebook document} will be saved.
+     *
+     * To make modifications to the document before it is being saved, call the
+     * {@linkcode NotebookDocumentWillSaveEvent.waitUntil waitUntil}-function with a thenable
+     * that resolves to a {@link WorkspaceEdit workspace edit}.
+     */
+    export interface NotebookDocumentWillSaveEvent {
+        /**
+         * A cancellation token.
+         */
+        readonly token: CancellationToken;
+
+        /**
+         * The {@link NotebookDocument notebook document} that will be saved.
+         * @stubbed
+         */
+        readonly notebook: NotebookDocument;
+
+        /**
+         * The reason why save was triggered.
+         * @stubbed
+         */
+        readonly reason: TextDocumentSaveReason;
+
+        /**
+         * Allows to pause the event loop and to apply {@link WorkspaceEdit workspace edit}.
+         * Edits of subsequent calls to this function will be applied in order. The
+         * edits will be *ignored* if concurrent modifications of the notebook document happened.
+         *
+         * *Note:* This function can only be called during event dispatch and not
+         * in an asynchronous manner:
+         *
+         * ```ts
+         * workspace.onWillSaveNotebookDocument(event => {
+         * // async, will *throw* an error
+         * setTimeout(() => event.waitUntil(promise));
+         *
+         * // sync, OK
+         * event.waitUntil(promise);
+         * })
+         * ```
+         *
+         * @param thenable A thenable that resolves to {@link WorkspaceEdit workspace edit}.
+         * @stubbed
+         */
+        waitUntil(thenable: Thenable<WorkspaceEdit>): void;
+
+        /**
+         * Allows to pause the event loop until the provided thenable resolved.
+         *
+         * *Note:* This function can only be called during event dispatch.
+         *
+         * @param thenable A thenable that delays saving.
+         * @stubbed
+         */
+        waitUntil(thenable: Thenable<any>): void;
+    }
+
+    /**
+     * The summary of a notebook cell execution.
+     */
+    export interface NotebookCellExecutionSummary {
+
+        /**
+         * The order in which the execution happened.
+         */
+        readonly executionOrder?: number;
+
+        /**
+         * If the execution finished successfully.
+         */
+        readonly success?: boolean;
+
+        /**
+         * The times at which execution started and ended, as unix timestamps
+         */
+        readonly timing?: { readonly startTime: number; readonly endTime: number };
+    }
+
+    /**
+     * A notebook range represents an ordered pair of two cell indices.
+     * It is guaranteed that start is less than or equal to end.
+     */
+    export class NotebookRange {
+
+        /**
+         * The zero-based start index of this range.
+         */
+        readonly start: number;
+
+        /**
+         * The exclusive end index of this range (zero-based).
+         */
+        readonly end: number;
+
+        /**
+         * `true` if `start` and `end` are equal.
+         */
+        readonly isEmpty: boolean;
+
+        /**
+         * Create a new notebook range. If `start` is not
+         * before or equal to `end`, the values will be swapped.
+         *
+         * @param start start index
+         * @param end end index.
+         */
+        constructor(start: number, end: number);
+
+        /**
+         * Derive a new range for this range.
+         *
+         * @param change An object that describes a change to this range.
+         * @return A range that reflects the given change. Will return `this` range if the change
+         * is not changing anything.
+         */
+        with(change: { start?: number; end?: number }): NotebookRange;
+    }
+
+    /**
+     * One representation of a {@link NotebookCellOutput notebook output}, defined by MIME type and data.
+     */
+    export class NotebookCellOutputItem {
+
+        /**
+         * Factory function to create a `NotebookCellOutputItem` from a string.
+         *
+         * *Note* that an UTF-8 encoder is used to create bytes for the string.
+         *
+         * @param value A string.
+         * @param mime Optional MIME type, defaults to `text/plain`.
+         * @returns A new output item object.
+         */
+        static text(value: string, mime?: string): NotebookCellOutputItem;
+
+        /**
+         * Factory function to create a `NotebookCellOutputItem` from
+         * a JSON object.
+         *
+         * *Note* that this function is not expecting "stringified JSON" but
+         * an object that can be stringified. This function will throw an error
+         * when the passed value cannot be JSON-stringified.
+         *
+         * @param value A JSON-stringifyable value.
+         * @param mime Optional MIME type, defaults to `application/json`
+         * @returns A new output item object.
+         */
+        static json(value: any, mime?: string): NotebookCellOutputItem;
+
+        /**
+         * Factory function to create a `NotebookCellOutputItem` that uses
+         * uses the `application/vnd.code.notebook.stdout` mime type.
+         *
+         * @param value A string.
+         * @returns A new output item object.
+         */
+        static stdout(value: string): NotebookCellOutputItem;
+
+        /**
+         * Factory function to create a `NotebookCellOutputItem` that uses
+         * uses the `application/vnd.code.notebook.stderr` mime type.
+         *
+         * @param value A string.
+         * @returns A new output item object.
+         */
+        static stderr(value: string): NotebookCellOutputItem;
+
+        /**
+         * Factory function to create a `NotebookCellOutputItem` that uses
+         * uses the `application/vnd.code.notebook.error` mime type.
+         *
+         * @param value An error object.
+         * @returns A new output item object.
+         */
+        static error(value: Error): NotebookCellOutputItem;
+
+        /**
+         * The mime type which determines how the {@linkcode NotebookCellOutputItem.data data}-property
+         * is interpreted.
+         *
+         * Notebooks have built-in support for certain mime-types, extensions can add support for new
+         * types and override existing types.
+         */
+        mime: string;
+
+        /**
+         * The data of this output item. Must always be an array of unsigned 8-bit integers.
+         */
+        data: Uint8Array;
+
+        /**
+         * Create a new notebook cell output item.
+         *
+         * @param data The value of the output item.
+         * @param mime The mime type of the output item.
+         */
+        constructor(data: Uint8Array, mime: string);
+    }
+
+    /**
+     * Notebook cell output represents a result of executing a cell. It is a container type for multiple
+     * {@link NotebookCellOutputItem output items} where contained items represent the same result but
+     * use different MIME types.
+     */
+    export class NotebookCellOutput {
+
+        /**
+         * The output items of this output. Each item must represent the same result. _Note_ that repeated
+         * MIME types per output is invalid and that the editor will just pick one of them.
+         *
+         * ```ts
+         * new vscode.NotebookCellOutput([
+         *  vscode.NotebookCellOutputItem.text('Hello', 'text/plain'),
+         *  vscode.NotebookCellOutputItem.text('<i>Hello</i>', 'text/html'),
+         *  vscode.NotebookCellOutputItem.text('_Hello_', 'text/markdown'),
+         *  vscode.NotebookCellOutputItem.text('Hey', 'text/plain'), // INVALID: repeated type, editor will pick just one
+         * ])
+         * ```
+         */
+        items: NotebookCellOutputItem[];
+
+        /**
+         * Arbitrary metadata for this cell output. Can be anything but must be JSON-stringifyable.
+         */
+        metadata?: { [key: string]: any };
+
+        /**
+         * Create new notebook output.
+         *
+         * @param items Notebook output items.
+         * @param metadata Optional metadata.
+         */
+        constructor(items: NotebookCellOutputItem[], metadata?: { [key: string]: any });
+    }
+
+    /**
+     * NotebookCellData is the raw representation of notebook cells. Its is part of {@linkcode NotebookData}.
+     */
+    export class NotebookCellData {
+
+        /**
+         * The {@link NotebookCellKind kind} of this cell data.
+         */
+        kind: NotebookCellKind;
+
+        /**
+         * The source value of this cell data - either source code or formatted text.
+         */
+        value: string;
+
+        /**
+         * The language identifier of the source value of this cell data. Any value from
+         * {@linkcode languages.getLanguages getLanguages} is possible.
+         */
+        languageId: string;
+
+        /**
+         * The outputs of this cell data.
+         */
+        outputs?: NotebookCellOutput[];
+
+        /**
+         * Arbitrary metadata of this cell data. Can be anything but must be JSON-stringifyable.
+         */
+        metadata?: { [key: string]: any };
+
+        /**
+         * The execution summary of this cell data.
+         */
+        executionSummary?: NotebookCellExecutionSummary;
+
+        /**
+         * Create new cell data. Minimal cell data specifies its kind, its source value, and the
+         * language identifier of its source.
+         *
+         * @param kind The kind.
+         * @param value The source value.
+         * @param languageId The language identifier of the source value.
+         */
+        constructor(kind: NotebookCellKind, value: string, languageId: string);
+    }
+
+    /**
+     * Raw representation of a notebook.
+     *
+     * Extensions are responsible for creating {@linkcode NotebookData} so that the editor
+     * can create a {@linkcode NotebookDocument}.
+     *
+     * @see {@link NotebookSerializer}
+     */
+    export class NotebookData {
+        /**
+         * The cell data of this notebook data.
+         */
+        cells: NotebookCellData[];
+
+        /**
+         * Arbitrary metadata of notebook data.
+         */
+        metadata?: { [key: string]: any };
+
+        /**
+         * Create new notebook data.
+         *
+         * @param cells An array of cell data.
+         */
+        constructor(cells: NotebookCellData[]);
+    }
+
+    /**
+     * The notebook serializer enables the editor to open notebook files.
+     *
+     * At its core the editor only knows a {@link NotebookData notebook data structure} but not
+     * how that data structure is written to a file, nor how it is read from a file. The
+     * notebook serializer bridges this gap by deserializing bytes into notebook data and
+     * vice versa.
+     */
+    export interface NotebookSerializer {
+
+        /**
+         * Deserialize contents of a notebook file into the notebook data structure.
+         *
+         * @param content Contents of a notebook file.
+         * @param token A cancellation token.
+         * @return Notebook data or a thenable that resolves to such.
+         */
+        deserializeNotebook(content: Uint8Array, token: CancellationToken): NotebookData | Thenable<NotebookData>;
+
+        /**
+         * Serialize notebook data into file contents.
+         *
+         * @param data A notebook data structure.
+         * @param token A cancellation token.
+         * @returns An array of bytes or a thenable that resolves to such.
+         */
+        serializeNotebook(data: NotebookData, token: CancellationToken): Uint8Array | Thenable<Uint8Array>;
+    }
+
+    /**
+     * Notebook content options define what parts of a notebook are persisted. Note
+     *
+     * For instance, a notebook serializer can opt-out of saving outputs and in that case the editor doesn't mark a
+     * notebooks as {@link NotebookDocument.isDirty dirty} when its output has changed.
+     */
+    export interface NotebookDocumentContentOptions {
+        /**
+         * Controls if output change events will trigger notebook document content change events and
+         * if it will be used in the diff editor, defaults to false. If the content provider doesn't
+         * persist the outputs in the file document, this should be set to true.
+         */
+        transientOutputs?: boolean;
+
+        /**
+         * Controls if a cell metadata property change event will trigger notebook document content
+         * change events and if it will be used in the diff editor, defaults to false. If the
+         * content provider doesn't persist a metadata property in the file document, it should be
+         * set to true.
+         */
+        transientCellMetadata?: { [key: string]: boolean | undefined };
+
+        /**
+         * Controls if a document metadata property change event will trigger notebook document
+         * content change event and if it will be used in the diff editor, defaults to false. If the
+         * content provider doesn't persist a metadata property in the file document, it should be
+         * set to true.
+         */
+        transientDocumentMetadata?: { [key: string]: boolean | undefined };
+    }
+
+    /**
+     * Represents options to configure the behavior of showing a {@link NotebookDocument notebook document} in an {@link NotebookEditor notebook editor}.
+     */
+    export interface NotebookDocumentShowOptions {
+        /**
+         * An optional view column in which the {@link NotebookEditor notebook editor} should be shown.
+         * The default is the {@link ViewColumn.Active active}. Columns that do not exist
+         * will be created as needed up to the maximum of {@linkcode ViewColumn.Nine}.
+         * Use {@linkcode ViewColumn.Beside} to open the editor to the side of the currently
+         * active one.
+         */
+        readonly viewColumn?: ViewColumn;
+
+        /**
+         * An optional flag that when `true` will stop the {@link NotebookEditor notebook editor} from taking focus.
+         */
+        readonly preserveFocus?: boolean;
+
+        /**
+         * An optional flag that controls if an {@link NotebookEditor notebook editor}-tab shows as preview. Preview tabs will
+         * be replaced and reused until set to stay - either explicitly or through editing. The default behaviour depends
+         * on the `workbench.editor.enablePreview`-setting.
+         */
+        readonly preview?: boolean;
+
+        /**
+         * An optional selection to apply for the document in the {@link NotebookEditor notebook editor}.
+         */
+        readonly selections?: readonly NotebookRange[];
+    }
+
+    /**
+     * A snippet edit represents an interactive edit that is performed by
+     * the editor.
+     *
+     * *Note* that a snippet edit can always be performed as a normal {@link TextEdit text edit}.
+     * This will happen when no matching editor is open or when a {@link WorkspaceEdit workspace edit}
+     * contains snippet edits for multiple files. In that case only those that match the active editor
+     * will be performed as snippet edits and the others as normal text edits.
+     */
+    export class SnippetTextEdit {
+
+        /**
+         * Utility to create a replace snippet edit.
+         *
+         * @param range A range.
+         * @param snippet A snippet string.
+         * @return A new snippet edit object.
+         */
+        static replace(range: Range, snippet: SnippetString): SnippetTextEdit;
+
+        /**
+         * Utility to create an insert snippet edit.
+         *
+         * @param position A position, will become an empty range.
+         * @param snippet A snippet string.
+         * @return A new snippet edit object.
+         */
+        static insert(position: Position, snippet: SnippetString): SnippetTextEdit;
+
+        /**
+         * The range this edit applies to.
+         */
+        range: Range;
+
+        /**
+         * The {@link SnippetString snippet} this edit will perform.
+         */
+        snippet: SnippetString;
+
+        /**
+         * Create a new snippet edit.
+         *
+         * @param range A range.
+         * @param snippet A snippet string.
+         */
+        constructor(range: Range, snippet: SnippetString);
+    }
+
+    /**
+     * A notebook edit represents edits that should be applied to the contents of a notebook.
+     */
+    export class NotebookEdit {
+
+        /**
+         * Utility to create a edit that replaces cells in a notebook.
+         *
+         * @param range The range of cells to replace
+         * @param newCells The new notebook cells.
+         */
+        static replaceCells(range: NotebookRange, newCells: NotebookCellData[]): NotebookEdit;
+
+        /**
+         * Utility to create an edit that replaces cells in a notebook.
+         *
+         * @param index The index to insert cells at.
+         * @param newCells The new notebook cells.
+         */
+        static insertCells(index: number, newCells: NotebookCellData[]): NotebookEdit;
+
+        /**
+         * Utility to create an edit that deletes cells in a notebook.
+         *
+         * @param range The range of cells to delete.
+         */
+        static deleteCells(range: NotebookRange): NotebookEdit;
+
+        /**
+         * Utility to create an edit that update a cell's metadata.
+         *
+         * @param index The index of the cell to update.
+         * @param newCellMetadata The new metadata for the cell.
+         */
+        static updateCellMetadata(index: number, newCellMetadata: { [key: string]: any }): NotebookEdit;
+
+        /**
+         * Utility to create an edit that updates the notebook's metadata.
+         *
+         * @param newNotebookMetadata The new metadata for the notebook.
+         */
+        static updateNotebookMetadata(newNotebookMetadata: { [key: string]: any }): NotebookEdit;
+
+        /**
+         * Range of the cells being edited. May be empty.
+         */
+        range: NotebookRange;
+
+        /**
+         * New cells being inserted. May be empty.
+         */
+        newCells: NotebookCellData[];
+
+        /**
+         * Optional new metadata for the cells.
+         */
+        newCellMetadata?: { [key: string]: any };
+
+        /**
+         * Optional new metadata for the notebook.
+         */
+        newNotebookMetadata?: { [key: string]: any };
+
+        constructor(range: NotebookRange, newCells: NotebookCellData[]);
+    }
+
+    /**
+     * Represents an event describing the change in a {@link NotebookEditor.selections notebook editor's selections}.
+     */
+    export interface NotebookEditorSelectionChangeEvent {
+        /**
+         * The {@link NotebookEditor notebook editor} for which the selections have changed.
+         */
+        readonly notebookEditor: NotebookEditor;
+
+        /**
+         * The new value for the {@link NotebookEditor.selections notebook editor's selections}.
+         */
+        readonly selections: readonly NotebookRange[];
+    }
+
+    /**
+     * Represents an event describing the change in a {@link NotebookEditor.visibleRanges notebook editor's visibleRanges}.
+     */
+    export interface NotebookEditorVisibleRangesChangeEvent {
+        /**
+         * The {@link NotebookEditor notebook editor} for which the visible ranges have changed.
+         */
+        readonly notebookEditor: NotebookEditor;
+
+        /**
+         * The new value for the {@link NotebookEditor.visibleRanges notebook editor's visibleRanges}.
+         */
+        readonly visibleRanges: readonly NotebookRange[];
+    }
+
+    /**
+     * Notebook controller affinity for notebook documents.
+     *
+     * @see {@link NotebookController.updateNotebookAffinity}
+     */
+    export enum NotebookControllerAffinity {
+        /**
+         * Default affinity.
+         */
+        Default = 1,
+        /**
+         * A controller is preferred for a notebook.
+         */
+        Preferred = 2
+    }
+
+    /**
+     * A notebook controller represents an entity that can execute notebook cells. This is often referred to as a kernel.
+     *
+     * There can be multiple controllers and the editor will let users choose which controller to use for a certain notebook. The
+     * {@linkcode NotebookController.notebookType notebookType}-property defines for what kind of notebooks a controller is for and
+     * the {@linkcode NotebookController.updateNotebookAffinity updateNotebookAffinity}-function allows controllers to set a preference
+     * for specific notebook documents. When a controller has been selected its
+     * {@link NotebookController.onDidChangeSelectedNotebooks onDidChangeSelectedNotebooks}-event fires.
+     *
+     * When a cell is being run the editor will invoke the {@linkcode NotebookController.executeHandler executeHandler} and a controller
+     * is expected to create and finalize a {@link NotebookCellExecution notebook cell execution}. However, controllers are also free
+     * to create executions by themselves.
+     */
+    export interface NotebookController {
+
+        /**
+         * The identifier of this notebook controller.
+         *
+         * _Note_ that controllers are remembered by their identifier and that extensions should use
+         * stable identifiers across sessions.
+         */
+        readonly id: string;
+
+        /**
+         * The notebook type this controller is for.
+         */
+        readonly notebookType: string;
+
+        /**
+         * An array of language identifiers that are supported by this
+         * controller. Any language identifier from {@linkcode languages.getLanguages getLanguages}
+         * is possible. When falsy all languages are supported.
+         *
+         * Samples:
+         * ```js
+         * // support JavaScript and TypeScript
+         * myController.supportedLanguages = ['javascript', 'typescript']
+         *
+         * // support all languages
+         * myController.supportedLanguages = undefined; // falsy
+         * myController.supportedLanguages = []; // falsy
+         * ```
+         */
+        supportedLanguages?: string[];
+
+        /**
+         * The human-readable label of this notebook controller.
+         */
+        label: string;
+
+        /**
+         * The human-readable description which is rendered less prominent.
+         */
+        description?: string;
+
+        /**
+         * The human-readable detail which is rendered less prominent.
+         */
+        detail?: string;
+
+        /**
+         * Whether this controller supports execution order so that the
+         * editor can render placeholders for them.
+         */
+        supportsExecutionOrder?: boolean;
+
+        /**
+         * Create a cell execution task.
+         *
+         * _Note_ that there can only be one execution per cell at a time and that an error is thrown if
+         * a cell execution is created while another is still active.
+         *
+         * This should be used in response to the {@link NotebookController.executeHandler execution handler}
+         * being called or when cell execution has been started else, e.g when a cell was already
+         * executing or when cell execution was triggered from another source.
+         *
+         * @param cell The notebook cell for which to create the execution.
+         * @returns A notebook cell execution.
+         */
+        createNotebookCellExecution(cell: NotebookCell): NotebookCellExecution;
+
+        /**
+         * The execute handler is invoked when the run gestures in the UI are selected, e.g Run Cell, Run All,
+         * Run Selection etc. The execute handler is responsible for creating and managing {@link NotebookCellExecution execution}-objects.
+         */
+        executeHandler: (cells: NotebookCell[], notebook: NotebookDocument, controller: NotebookController) => void | Thenable<void>;
+
+        /**
+         * Optional interrupt handler.
+         *
+         * By default cell execution is canceled via {@link NotebookCellExecution.token tokens}. Cancellation
+         * tokens require that a controller can keep track of its execution so that it can cancel a specific execution at a later
+         * point. Not all scenarios allow for that, eg. REPL-style controllers often work by interrupting whatever is currently
+         * running. For those cases the interrupt handler exists - it can be thought of as the equivalent of `SIGINT`
+         * or `Control+C` in terminals.
+         *
+         * _Note_ that supporting {@link NotebookCellExecution.token cancellation tokens} is preferred and that interrupt handlers should
+         * only be used when tokens cannot be supported.
+         */
+        interruptHandler?: (notebook: NotebookDocument) => void | Thenable<void>;
+
+        /**
+         * An event that fires whenever a controller has been selected or un-selected for a notebook document.
+         *
+         * There can be multiple controllers for a notebook and in that case a controllers needs to be _selected_. This is a user gesture
+         * and happens either explicitly or implicitly when interacting with a notebook for which a controller was _suggested_. When possible,
+         * the editor _suggests_ a controller that is most likely to be _selected_.
+         *
+         * _Note_ that controller selection is persisted (by the controllers {@link NotebookController.id id}) and restored as soon as a
+         * controller is re-created or as a notebook is {@link workspace.onDidOpenNotebookDocument opened}.
+         */
+        readonly onDidChangeSelectedNotebooks: Event<{ readonly notebook: NotebookDocument; readonly selected: boolean }>;
+
+        /**
+         * A controller can set affinities for specific notebook documents. This allows a controller
+         * to be presented more prominent for some notebooks.
+         *
+         * @param notebook The notebook for which a priority is set.
+         * @param affinity A controller affinity
+         */
+        updateNotebookAffinity(notebook: NotebookDocument, affinity: NotebookControllerAffinity): void;
+
+        /**
+         * Dispose and free associated resources.
+         */
+        dispose(): void;
+    }
+
+    /**
+     * A NotebookCellExecution is how {@link NotebookController notebook controller} modify a notebook cell as
+     * it is executing.
+     *
+     * When a cell execution object is created, the cell enters the {@linkcode NotebookCellExecutionState.Pending Pending} state.
+     * When {@linkcode NotebookCellExecution.start start(...)} is called on the execution task, it enters the {@linkcode NotebookCellExecutionState.Executing Executing} state. When
+     * {@linkcode NotebookCellExecution.end end(...)} is called, it enters the {@linkcode NotebookCellExecutionState.Idle Idle} state.
+     */
+    export interface NotebookCellExecution {
+
+        /**
+         * The {@link NotebookCell cell} for which this execution has been created.
+         */
+        readonly cell: NotebookCell;
+
+        /**
+         * A cancellation token which will be triggered when the cell execution is canceled
+         * from the UI.
+         *
+         * _Note_ that the cancellation token will not be triggered when the {@link NotebookController controller}
+         * that created this execution uses an {@link NotebookController.interruptHandler interrupt-handler}.
+         */
+        readonly token: CancellationToken;
+
+        /**
+         * Set and unset the order of this cell execution.
+         */
+        executionOrder: number | undefined;
+
+        /**
+         * Signal that the execution has begun.
+         *
+         * @param startTime The time that execution began, in milliseconds in the Unix epoch. Used to drive the clock
+         * that shows for how long a cell has been running. If not given, the clock won't be shown.
+         */
+        start(startTime?: number): void;
+
+        /**
+         * Signal that execution has ended.
+         *
+         * @param success If true, a green check is shown on the cell status bar.
+         * If false, a red X is shown.
+         * If undefined, no check or X icon is shown.
+         * @param endTime The time that execution finished, in milliseconds in the Unix epoch.
+         */
+        end(success: boolean | undefined, endTime?: number): void;
+
+        /**
+         * Clears the output of the cell that is executing or of another cell that is affected by this execution.
+         *
+         * @param cell Cell for which output is cleared. Defaults to the {@link NotebookCellExecution.cell cell} of
+         * this execution.
+         * @return A thenable that resolves when the operation finished.
+         */
+        clearOutput(cell?: NotebookCell): Thenable<void>;
+
+        /**
+         * Replace the output of the cell that is executing or of another cell that is affected by this execution.
+         *
+         * @param out Output that replaces the current output.
+         * @param cell Cell for which output is cleared. Defaults to the {@link NotebookCellExecution.cell cell} of
+         * this execution.
+         * @return A thenable that resolves when the operation finished.
+         */
+        replaceOutput(out: NotebookCellOutput | readonly NotebookCellOutput[], cell?: NotebookCell): Thenable<void>;
+
+        /**
+         * Append to the output of the cell that is executing or to another cell that is affected by this execution.
+         *
+         * @param out Output that is appended to the current output.
+         * @param cell Cell for which output is cleared. Defaults to the {@link NotebookCellExecution.cell cell} of
+         * this execution.
+         * @return A thenable that resolves when the operation finished.
+         */
+        appendOutput(out: NotebookCellOutput | readonly NotebookCellOutput[], cell?: NotebookCell): Thenable<void>;
+
+        /**
+         * Replace all output items of existing cell output.
+         *
+         * @param items Output items that replace the items of existing output.
+         * @param output Output object that already exists.
+         * @return A thenable that resolves when the operation finished.
+         */
+        replaceOutputItems(items: NotebookCellOutputItem | readonly NotebookCellOutputItem[], output: NotebookCellOutput): Thenable<void>;
+
+        /**
+         * Append output items to existing cell output.
+         *
+         * @param items Output items that are append to existing output.
+         * @param output Output object that already exists.
+         * @return A thenable that resolves when the operation finished.
+         */
+        appendOutputItems(items: NotebookCellOutputItem | readonly NotebookCellOutputItem[], output: NotebookCellOutput): Thenable<void>;
+    }
+
+    /**
+     * Represents the alignment of status bar items.
+     */
+    export enum NotebookCellStatusBarAlignment {
+
+        /**
+         * Aligned to the left side.
+         */
+        Left = 1,
+
+        /**
+         * Aligned to the right side.
+         */
+        Right = 2
+    }
+
+    /**
+     * A contribution to a cell's status bar
+     */
+    export class NotebookCellStatusBarItem {
+        /**
+         * The text to show for the item.
+         */
+        text: string;
+
+        /**
+         * Whether the item is aligned to the left or right.
+         * @stubbed
+         */
+        alignment: NotebookCellStatusBarAlignment;
+
+        /**
+         * An optional {@linkcode Command} or identifier of a command to run on click.
+         *
+         * The command must be {@link commands.getCommands known}.
+         *
+         * Note that if this is a {@linkcode Command} object, only the {@linkcode Command.command command} and {@linkcode Command.arguments arguments}
+         * are used by the editor.
+         */
+        command?: string | Command;
+
+        /**
+         * A tooltip to show when the item is hovered.
+         */
+        tooltip?: string;
+
+        /**
+         * The priority of the item. A higher value item will be shown more to the left.
+         */
+        priority?: number;
+
+        /**
+         * Accessibility information used when a screen reader interacts with this item.
+         */
+        accessibilityInformation?: AccessibilityInformation;
+
+        /**
+         * Creates a new NotebookCellStatusBarItem.
+         * @param text The text to show for the item.
+         * @param alignment Whether the item is aligned to the left or right.
+         */
+        constructor(text: string, alignment: NotebookCellStatusBarAlignment);
+    }
+
+    /**
+     * A provider that can contribute items to the status bar that appears below a cell's editor.
+     */
+    export interface NotebookCellStatusBarItemProvider {
+        /**
+         * An optional event to signal that statusbar items have changed. The provide method will be called again.
+         */
+        onDidChangeCellStatusBarItems?: Event<void>;
+
+        /**
+         * The provider will be called when the cell scrolls into view, when its content, outputs, language, or metadata change, and when it changes execution state.
+         * @param cell The cell for which to return items.
+         * @param token A token triggered if this request should be cancelled.
+         * @return One or more {@link NotebookCellStatusBarItem cell statusbar items}
+         */
+        provideCellStatusBarItems(cell: NotebookCell, token: CancellationToken): ProviderResult<NotebookCellStatusBarItem | NotebookCellStatusBarItem[]>;
+    }
+
+    /**
+     * Namespace for notebooks.
+     * The notebooks functionality is composed of three loosely coupled components:
+     * -{@link NotebookSerializer} enable the editor to open, show, and save notebooks
+     * -{@link NotebookController} own the execution of notebooks, e.g they create output from code cells.
+     * -{@link NotebookRenderer} present notebook output in the editor. They run in a separate context.
+     *
+     */
+    export namespace notebooks {
+
+        /**
+         * Creates a new notebook controller.
+         * @param id Identifier of the controller. Must be unique per extension.
+         * @param notebookType A notebook type for which this controller is for.
+         * @param label The label of the controller.
+         * @param handler The execute-handler of the controller.
+         * @returns a new instance of {@link NotebookController}
+         */
+        export function createNotebookController(
+            id: string,
+            notebookType: string,
+            label: string,
+            handler?: (cells: NotebookCell[],
+                notebook: NotebookDocument,
+                controller: NotebookController) => void | Thenable<void>): NotebookController;
+
+        /**
+         * Creates a new messaging instance used to communicate with a specific renderer.
+         * - Note 1: Extensions can only create renderer that they have defined in their package.json - file
+         * - Note 2: A renderer only has access to messaging if requiresMessaging is set to always or optional in its notebookRenderer contribution.
+         * @param rendererId The renderer ID to communicate with
+         * @returns A new notebook renderer messaging object.
+         */
+        export function createRendererMessaging(rendererId: string): NotebookRendererMessaging;
+
+        /**
+         * Register a cell statusbar item provider for the given notebook type.
+         * @param notebookType The notebook type to register for.
+         * @param provider A cell status bar provider.
+         * @returns A Disposable that unregisters this provider when being disposed.
+         */
+        export function registerNotebookCellStatusBarItemProvider(notebookType: string, provider: NotebookCellStatusBarItemProvider): Disposable;
+    }
+
+    // based on VS Code API 1.81.0
+
+    /**
+     * Namespace for testing functionality. Tests are published by registering
+     * {@link TestController} instances, then adding {@link TestItem TestItems}.
+     * Controllers may also describe how to run tests by creating one or more
+     * {@link TestRunProfile} instances.
+     */
+    export namespace tests {
+        /**
+         * Creates a new test controller.
+         *
+         * @param id Identifier for the controller, must be globally unique.
+         * @param label A human-readable label for the controller.
+         * @returns An instance of the {@link TestController}.
+         */
+        export function createTestController(id: string, label: string): TestController;
+    }
+
+    /**
+     * The kind of executions that {@link TestRunProfile TestRunProfiles} control.
+     */
+    export enum TestRunProfileKind {
+        Run = 1,
+        Debug = 2,
+        Coverage = 3,
+    }
+
+    /**
+     * Tags can be associated with {@link TestItem TestItems} and
+     * {@link TestRunProfile TestRunProfiles}. A profile with a tag can only
+     * execute tests that include that tag in their {@link TestItem.tags} array.
+     */
+    export class TestTag {
+        /**
+         * ID of the test tag. `TestTag` instances with the same ID are considered
+         * to be identical.
+         */
+        readonly id: string;
+
+        /**
+         * Creates a new TestTag instance.
+         * @param id ID of the test tag.
+         */
+        constructor(id: string);
+    }
+
+    /**
+     * A TestRunProfile describes one way to execute tests in a {@link TestController}.
+     */
+    export interface TestRunProfile {
+        /**
+         * Label shown to the user in the UI.
+         *
+         * Note that the label has some significance if the user requests that
+         * tests be re-run in a certain way. For example, if tests were run
+         * normally and the user requests to re-run them in debug mode, the editor
+         * will attempt use a configuration with the same label of the `Debug`
+         * kind. If there is no such configuration, the default will be used.
+         */
+        label: string;
+
+        /**
+         * Configures what kind of execution this profile controls. If there
+         * are no profiles for a kind, it will not be available in the UI.
+         */
+        readonly kind: TestRunProfileKind;
+
+        /**
+         * Controls whether this profile is the default action that will
+         * be taken when its kind is actioned. For example, if the user clicks
+         * the generic "run all" button, then the default profile for
+         * {@link TestRunProfileKind.Run} will be executed, although the
+         * user can configure this.
+         *
+         * Changes the user makes in their default profiles will be reflected
+         * in this property after a {@link onDidChangeDefault} event.
+         */
+        isDefault: boolean;
+
+        /**
+         * Fired when a user has changed whether this is a default profile. The
+         * event contains the new value of {@link isDefault}
+         */
+        onDidChangeDefault: Event<boolean>;
+
+        /**
+         * Whether this profile supports continuous running of requests. If so,
+         * then {@link TestRunRequest.continuous} may be set to `true`. Defaults
+         * to false.
+         */
+        supportsContinuousRun: boolean;
+
+        /**
+         * Associated tag for the profile. If this is set, only {@link TestItem}
+         * instances with the same tag will be eligible to execute in this profile.
+         */
+        tag: TestTag | undefined;
+
+        /**
+         * If this method is present, a configuration gear will be present in the
+         * UI, and this method will be invoked when it's clicked. When called,
+         * you can take other editor actions, such as showing a quick pick or
+         * opening a configuration file.
+         */
+        configureHandler: (() => void) | undefined;
+
+        /**
+         * Handler called to start a test run. When invoked, the function should call
+         * {@link TestController.createTestRun} at least once, and all test runs
+         * associated with the request should be created before the function returns
+         * or the returned promise is resolved.
+         *
+         * If {@link supportsContinuousRun} is set, then {@link TestRunRequest.continuous}
+         * may be `true`. In this case, the profile should observe changes to
+         * source code and create new test runs by calling {@link TestController.createTestRun},
+         * until the cancellation is requested on the `token`.
+         *
+         * @param request Request information for the test run.
+         * @param cancellationToken Token that signals the used asked to abort the
+         * test run. If cancellation is requested on this token, all {@link TestRun}
+         * instances associated with the request will be
+         * automatically cancelled as well.
+         */
+        runHandler: (request: TestRunRequest, token: CancellationToken) => Thenable<void> | void;
+
+        /**
+         * An extension-provided function that provides detailed statement and
+         * function-level coverage for a file. The editor will call this when more
+         * detail is needed for a file, such as when it's opened in an editor or
+         * expanded in the **Test Coverage** view.
+         *
+         * The {@link FileCoverage} object passed to this function is the same instance
+         * emitted on {@link TestRun.addCoverage} calls associated with this profile.
+         * @stubbed
+         */
+        loadDetailedCoverage?: (testRun: TestRun, fileCoverage: FileCoverage, token: CancellationToken) => Thenable<FileCoverageDetail[]>;
+
+        /**
+         * An extension-provided function that provides detailed statement and
+         * function-level coverage for a single test in a file. This is the per-test
+         * sibling of {@link TestRunProfile.loadDetailedCoverage}, called only if
+         * a test item is provided in {@link FileCoverage.includesTests} and only
+         * for files where such data is reported.
+         *
+         * Often {@link TestRunProfile.loadDetailedCoverage} will be called first
+         * when a user opens a file, and then this method will be called if they
+         * drill down into specific per-test coverage information. This method
+         * should then return coverage data only for constructs the given test item
+         * executed during the test run.
+         *
+         * The {@link FileCoverage} object passed to this function is the same
+         * instance emitted on {@link TestRun.addCoverage} calls associated with this profile.
+         *
+         * @param testRun The test run that generated the coverage data.
+         * @param fileCoverage The file coverage object to load detailed coverage for.
+         * @param fromTestItem The test item to request coverage information for.
+         * @param token A cancellation token that indicates the operation should be cancelled.
+         * @stubbed
+         */
+        loadDetailedCoverageForTest?: (testRun: TestRun, fileCoverage: FileCoverage, fromTestItem: TestItem, token: CancellationToken) => Thenable<FileCoverageDetail[]>;
+
+        /**
+         * Deletes the run profile.
+         */
+        dispose(): void;
+    }
+
+    /**
+     * Entry point to discover and execute tests. It contains {@link TestController.items} which
+     * are used to populate the editor UI, and is associated with
+     * {@link TestController.createRunProfile run profiles} to allow
+     * for tests to be executed.
+     */
+    export interface TestController {
+        /**
+         * The id of the controller passed in {@link tests.createTestController}.
+         * This must be globally unique.
+         */
+        readonly id: string;
+
+        /**
+         * Human-readable label for the test controller.
+         */
+        label: string;
+
+        /**
+         * A collection of "top-level" {@link TestItem} instances, which can in
+         * turn have their own {@link TestItem.children children} to form the
+         * "test tree."
+         *
+         * The extension controls when to add tests. For example, extensions should
+         * add tests for a file when {@link workspace.onDidOpenTextDocument}
+         * fires in order for decorations for tests within a file to be visible.
+         *
+         * However, the editor may sometimes explicitly request children using the
+         * {@link resolveHandler} See the documentation on that method for more details.
+         */
+        readonly items: TestItemCollection;
+
+        /**
+         * Creates a profile used for running tests. Extensions must create
+         * at least one profile in order for tests to be run.
+         * @param label A human-readable label for this profile.
+         * @param kind Configures what kind of execution this profile manages.
+         * @param runHandler Function called to start a test run.
+         * @param isDefault Whether this is the default action for its kind.
+         * @param tag Profile test tag.
+         * @param supportsContinuousRun Whether the profile supports continuous running.
+         * @returns An instance of a {@link TestRunProfile}, which is automatically
+         * associated with this controller.
+         */
+        createRunProfile(label: string, kind: TestRunProfileKind, runHandler: (request: TestRunRequest, token: CancellationToken) => Thenable<void> | void, isDefault?: boolean, tag?: TestTag, supportsContinuousRun?: boolean): TestRunProfile;
+
+        /**
+         * A function provided by the extension that the editor may call to request
+         * children of a test item, if the {@link TestItem.canResolveChildren} is
+         * `true`. When called, the item should discover children and call
+         * {@link TestController.createTestItem} as children are discovered.
+         *
+         * Generally the extension manages the lifecycle of test items, but under
+         * certain conditions the editor may request the children of a specific
+         * item to be loaded. For example, if the user requests to re-run tests
+         * after reloading the editor, the editor may need to call this method
+         * to resolve the previously-run tests.
+         *
+         * The item in the explorer will automatically be marked as "busy" until
+         * the function returns or the returned thenable resolves.
+         *
+         * @param item An unresolved test item for which children are being
+         * requested, or `undefined` to resolve the controller's initial {@link TestController.items items}.
+         */
+        resolveHandler?: (item: TestItem | undefined) => Thenable<void> | void;
+
+        /**
+         * If this method is present, a refresh button will be present in the
+         * UI, and this method will be invoked when it's clicked. When called,
+         * the extension should scan the workspace for any new, changed, or
+         * removed tests.
+         *
+         * It's recommended that extensions try to update tests in realtime, using
+         * a {@link FileSystemWatcher} for example, and use this method as a fallback.
+         *
+         * @returns A thenable that resolves when tests have been refreshed.
+         */
+        refreshHandler: ((token: CancellationToken) => Thenable<void> | void) | undefined;
+
+        /**
+         * Creates a {@link TestRun}. This should be called by the
+         * {@link TestRunProfile} when a request is made to execute tests, and may
+         * also be called if a test run is detected externally. Once created, tests
+         * that are included in the request will be moved into the queued state.
+         *
+         * All runs created using the same `request` instance will be grouped
+         * together. This is useful if, for example, a single suite of tests is
+         * run on multiple platforms.
+         *
+         * @param request Test run request. Only tests inside the `include` may be
+         * modified, and tests in its `exclude` are ignored.
+         * @param name The human-readable name of the run. This can be used to
+         * disambiguate multiple sets of results in a test run. It is useful if
+         * tests are run across multiple platforms, for example.
+         * @param persist Whether the results created by the run should be
+         * persisted in the editor. This may be false if the results are coming from
+         * a file already saved externally, such as a coverage information file.
+         * @returns An instance of the {@link TestRun}. It will be considered "running"
+         * from the moment this method is invoked until {@link TestRun.end} is called.
+         */
+        createTestRun(request: TestRunRequest, name?: string, persist?: boolean): TestRun;
+
+        /**
+         * Creates a new managed {@link TestItem} instance. It can be added into
+         * the {@link TestItem.children} of an existing item, or into the
+         * {@link TestController.items}.
+         *
+         * @param id Identifier for the TestItem. The test item's ID must be unique
+         * in the {@link TestItemCollection} it's added to.
+         * @param label Human-readable label of the test item.
+         * @param uri URI this TestItem is associated with. May be a file or directory.
+         */
+        createTestItem(id: string, label: string, uri?: Uri): TestItem;
+
+        /**
+         * Marks an item's results as being outdated. This is commonly called when
+         * code or configuration changes and previous results should no longer
+         * be considered relevant. The same logic used to mark results as outdated
+         * may be used to drive {@link TestRunRequest.continuous continuous test runs}.
+         *
+         * If an item is passed to this method, test results for the item and all of
+         * its children will be marked as outdated. If no item is passed, then all
+         * test owned by the TestController will be marked as outdated.
+         *
+         * Any test runs started before the moment this method is called, including
+         * runs which may still be ongoing, will be marked as outdated and deprioritized
+         * in the editor's UI.
+         *
+         * @param item Item to mark as outdated. If undefined, all the controller's items are marked outdated.
+         */
+        invalidateTestResults(items?: TestItem | readonly TestItem[]): void;
+
+        /**
+         * Unregisters the test controller, disposing of its associated tests
+         * and unpersisted results.
+         */
+        dispose(): void;
+    }
+
+    /**
+     * A TestRunRequest is a precursor to a {@link TestRun}, which in turn is
+     * created by passing a request to {@link TestController.createTestRun}. The
+     * TestRunRequest contains information about which tests should be run, which
+     * should not be run, and how they are run (via the {@link TestRunRequest.profile profile}).
+     *
+     * In general, TestRunRequests are created by the editor and pass to
+     * {@link TestRunProfile.runHandler}, however you can also create test
+     * requests and runs outside of the `runHandler`.
+     */
+    export class TestRunRequest {
+        /**
+         * A filter for specific tests to run. If given, the extension should run
+         * all of the included tests and all their children, excluding any tests
+         * that appear in {@link TestRunRequest.exclude}. If this property is
+         * undefined, then the extension should simply run all tests.
+         *
+         * The process of running tests should resolve the children of any test
+         * items who have not yet been resolved.
+         */
+        readonly include: readonly TestItem[] | undefined;
+
+        /**
+         * An array of tests the user has marked as excluded from the test included
+         * in this run; exclusions should apply after inclusions.
+         *
+         * May be omitted if no exclusions were requested. Test controllers should
+         * not run excluded tests or any children of excluded tests.
+         */
+        readonly exclude: readonly TestItem[] | undefined;
+
+        /**
+         * The profile used for this request. This will always be defined
+         * for requests issued from the editor UI, though extensions may
+         * programmatically create requests not associated with any profile.
+         */
+        readonly profile: TestRunProfile | undefined;
+
+        /**
+         * Whether the profile should run continuously as source code changes. Only
+         * relevant for profiles that set {@link TestRunProfile.supportsContinuousRun}.
+         */
+        readonly continuous?: boolean;
+
+        /**
+         * Controls how test Test Results view is focused.  If true, the editor
+         * will keep the maintain the user's focus. If false, the editor will
+         * prefer to move focus into the Test Results view, although
+         * this may be configured by users.
+         */
+        readonly preserveFocus: boolean;
+
+        /**
+         * @param include Array of specific tests to run, or undefined to run all tests
+         * @param exclude An array of tests to exclude from the run.
+         * @param profile The run profile used for this request.
+         * @param continuous Whether to run tests continuously as source changes.
+         * @param preserveFocus Whether to preserve the user's focus when the run is started
+         */
+        constructor(include?: readonly TestItem[], exclude?: readonly TestItem[], profile?: TestRunProfile, continuous?: boolean, preserveFocus?: boolean);
+    }
+
+    /**
+     * A TestRun represents an in-progress or completed test run and
+     * provides methods to report the state of individual tests in the run.
+     */
+    export interface TestRun {
+        /**
+         * The human-readable name of the run. This can be used to
+         * disambiguate multiple sets of results in a test run. It is useful if
+         * tests are run across multiple platforms, for example.
+         */
+        readonly name: string | undefined;
+
+        /**
+         * A cancellation token which will be triggered when the test run is
+         * canceled from the UI.
+         */
+        readonly token: CancellationToken;
+
+        /**
+         * Whether the test run will be persisted across reloads by the editor.
+         */
+        readonly isPersisted: boolean;
+
+        /**
+         * Indicates a test is queued for later execution.
+         * @param test Test item to update.
+         */
+        enqueued(test: TestItem): void;
+
+        /**
+         * Indicates a test has started running.
+         * @param test Test item to update.
+         */
+        started(test: TestItem): void;
+
+        /**
+         * Indicates a test has been skipped.
+         * @param test Test item to update.
+         */
+        skipped(test: TestItem): void;
+
+        /**
+         * Indicates a test has failed. You should pass one or more
+         * {@link TestMessage TestMessages} to describe the failure.
+         * @param test Test item to update.
+         * @param message Messages associated with the test failure.
+         * @param duration How long the test took to execute, in milliseconds.
+         */
+        failed(test: TestItem, message: TestMessage | readonly TestMessage[], duration?: number): void;
+
+        /**
+         * Indicates a test has errored. You should pass one or more
+         * {@link TestMessage TestMessages} to describe the failure. This differs
+         * from the "failed" state in that it indicates a test that couldn't be
+         * executed at all, from a compilation error for example.
+         * @param test Test item to update.
+         * @param message Messages associated with the test failure.
+         * @param duration How long the test took to execute, in milliseconds.
+         */
+        errored(test: TestItem, message: TestMessage | readonly TestMessage[], duration?: number): void;
+
+        /**
+         * Indicates a test has passed.
+         * @param test Test item to update.
+         * @param duration How long the test took to execute, in milliseconds.
+         */
+        passed(test: TestItem, duration?: number): void;
+
+        /**
+         * Appends raw output from the test runner. On the user's request, the
+         * output will be displayed in a terminal. ANSI escape sequences,
+         * such as colors and text styles, are supported. New lines must be given
+         * as CRLF (`\r\n`) rather than LF (`\n`).
+         *
+         * @param output Output text to append.
+         * @param location Indicate that the output was logged at the given
+         * location.
+         * @param test Test item to associate the output with.
+         */
+        appendOutput(output: string, location?: Location, test?: TestItem): void;
+
+        /**
+         * Adds coverage for a file in the run.
+         * @stubbed
+         */
+        addCoverage(fileCoverage: FileCoverage): void;
+
+        /**
+         * Signals the end of the test run. Any tests included in the run whose
+         * states have not been updated will have their state reset.
+         */
+        end(): void;
+
+        /**
+         * An event fired when the editor is no longer interested in data
+         * associated with the test run.
+         */
+        onDidDispose: Event<void>;
+    }
+
+    /**
+     * Collection of test items, found in {@link TestItem.children} and
      * {@link TestController.items}.
-     *
-     * @param id Identifier for the TestItem. The test item's ID must be unique
-     * in the {@link TestItemCollection} it's added to.
-     * @param label Human-readable label of the test item.
-     * @param uri URI this TestItem is associated with. May be a file or directory.
-     * @stubbed
      */
-    createTestItem(id: string, label: string, uri?: Uri): TestItem;
+    export interface TestItemCollection extends Iterable<[id: string, testItem: TestItem]> {
+        /**
+         * Gets the number of items in the collection.
+         */
+        readonly size: number;
+
+        /**
+         * Replaces the items stored by the collection.
+         * @param items Items to store.
+         */
+        replace(items: readonly TestItem[]): void;
+
+        /**
+         * Iterate over each entry in this collection.
+         *
+         * @param callback Function to execute for each entry.
+         * @param thisArg The `this` context used when invoking the handler function.
+         */
+        forEach(callback: (item: TestItem, collection: TestItemCollection) => unknown, thisArg?: any): void;
+
+        /**
+         * Adds the test item to the children. If an item with the same ID already
+         * exists, it'll be replaced.
+         * @param item Item to add.
+         */
+        add(item: TestItem): void;
+
+        /**
+         * Removes a single test item from the collection.
+         * @param itemId Item ID to delete.
+         */
+        delete(itemId: string): void;
+
+        /**
+         * Efficiently gets a test item by ID, if it exists, in the children.
+         * @param itemId Item ID to get.
+         * @returns The found item or undefined if it does not exist.
+         */
+        get(itemId: string): TestItem | undefined;
+    }
 
     /**
-     * Unregisters the test controller, disposing of its associated tests
-     * and unpersisted results.
+     * An item shown in the "test explorer" view.
+     *
+     * A `TestItem` can represent either a test suite or a test itself, since
+     * they both have similar capabilities.
+     */
+    export interface TestItem {
+        /**
+         * Identifier for the `TestItem`. This is used to correlate
+         * test results and tests in the document with those in the workspace
+         * (test explorer). This cannot change for the lifetime of the `TestItem`,
+         * and must be unique among its parent's direct children.
+         */
+        readonly id: string;
+
+        /**
+         * URI this `TestItem` is associated with. May be a file or directory.
+         */
+        readonly uri: Uri | undefined;
+
+        /**
+         * The children of this test item. For a test suite, this may contain the
+         * individual test cases or nested suites.
+         */
+        readonly children: TestItemCollection;
+
+        /**
+         * The parent of this item. It's set automatically, and is undefined
+         * top-level items in the {@link TestController.items} and for items that
+         * aren't yet included in another item's {@link TestItem.children children}.
+         */
+        readonly parent: TestItem | undefined;
+
+        /**
+         * Tags associated with this test item. May be used in combination with
+         * {@link TestRunProfile.tag tags}, or simply as an organizational feature.
+         */
+        tags: readonly TestTag[];
+
+        /**
+         * Indicates whether this test item may have children discovered by resolving.
+         *
+         * If true, this item is shown as expandable in the Test Explorer view and
+         * expanding the item will cause {@link TestController.resolveHandler}
+         * to be invoked with the item.
+         *
+         * Default to `false`.
+         */
+        canResolveChildren: boolean;
+
+        /**
+         * Controls whether the item is shown as "busy" in the Test Explorer view.
+         * This is useful for showing status while discovering children.
+         *
+         * Defaults to `false`.
+         */
+        busy: boolean;
+
+        /**
+         * Display name describing the test case.
+         */
+        label: string;
+
+        /**
+         * Optional description that appears next to the label.
+         */
+        description?: string;
+
+        /**
+         * A string that should be used when comparing this item
+         * with other items. When `falsy` the {@link TestItem.label label}
+         * is used.
+         */
+        sortText?: string | undefined;
+
+        /**
+         * Location of the test item in its {@link TestItem.uri uri}.
+         *
+         * This is only meaningful if the `uri` points to a file.
+         */
+        range: Range | undefined;
+
+        /**
+         * Optional error encountered while loading the test.
+         *
+         * Note that this is not a test result and should only be used to represent errors in
+         * test discovery, such as syntax errors.
+         */
+        error: string | MarkdownString | undefined;
+    }
+
+    /**
+     * A stack frame found in the {@link TestMessage.stackTrace}.
+     */
+    export class TestMessageStackFrame {
+        /**
+         * The location of this stack frame. This should be provided as a URI if the
+         * location of the call frame can be accessed by the editor.
+         */
+        uri?: Uri;
+
+        /**
+         * Position of the stack frame within the file.
+         */
+        position?: Position;
+
+        /**
+         * The name of the stack frame, typically a method or function name.
+         */
+        label: string;
+
+        /**
+         * @param label The name of the stack frame
+         * @param file The file URI of the stack frame
+         * @param position The position of the stack frame within the file
+         */
+        constructor(label: string, uri?: Uri, position?: Position);
+    }
+
+    /**
+     * Message associated with the test state. Can be linked to a specific
+     * source range -- useful for assertion failures, for example.
+     */
+    export class TestMessage {
+        /**
+         * Human-readable message text to display.
+         */
+        message: string | MarkdownString;
+
+        /**
+         * Expected test output. If given with {@link TestMessage.actualOutput actualOutput }, a diff view will be shown.
+         */
+        expectedOutput?: string;
+
+        /**
+         * Actual test output. If given with {@link TestMessage.expectedOutput expectedOutput }, a diff view will be shown.
+         */
+        actualOutput?: string;
+
+        /**
+         * Associated file location.
+         */
+        location?: Location;
+
+        /**
+         * Context value of the test item. This can be used to contribute message-
+         * specific actions to the test peek view. The value set here can be found
+         * in the `testMessage` property of the following `menus` contribution points:
+         *
+         * - `testing/message/context` - context menu for the message in the results tree
+         * - `testing/message/content` - a prominent button overlaying editor content where
+         *    the message is displayed.
+         *
+         * For example:
+         *
+         * ```json
+         * "contributes": {
+         *   "menus": {
+         *     "testing/message/content": [
+         *       {
+         *         "command": "extension.deleteCommentThread",
+         *         "when": "testMessage == canApplyRichDiff"
+         *       }
+         *     ]
+         *   }
+         * }
+         * ```
+         *
+         * The command will be called with an object containing:
+         * - `test`: the {@link TestItem} the message is associated with, *if* it
+         *    is still present in the {@link TestController.items} collection.
+         * - `message`: the {@link TestMessage} instance.
+         */
+        contextValue?: string;
+
+        /**
+         * The stack trace associated with the message or failure.
+         */
+        stackTrace?: TestMessageStackFrame[];
+
+        /**
+         * Creates a new TestMessage that will present as a diff in the editor.
+         * @param message Message to display to the user.
+         * @param expected Expected output.
+         * @param actual Actual output.
+         */
+        static diff(message: string | MarkdownString, expected: string, actual: string): TestMessage;
+
+        /**
+         * Creates a new TestMessage instance.
+         * @param message The message to show to the user.
+         */
+        constructor(message: string | MarkdownString);
+    }
+
+    /**
+     * A class that contains information about a covered resource. A count can
+     * be give for lines, branches, and declarations in a file.
+     */
+    export class TestCoverageCount {
+        /**
+         * Number of items covered in the file.
+         */
+        covered: number;
+        /**
+         * Total number of covered items in the file.
+         */
+        total: number;
+
+        /**
+         * @param covered Value for {@link TestCoverageCount.covered}
+         * @param total Value for {@link TestCoverageCount.total}
+         */
+        constructor(covered: number, total: number);
+    }
+
+    /**
+     * Contains coverage metadata for a file.
+     */
+    export class FileCoverage {
+        /**
+         * File URI.
+         */
+        readonly uri: Uri;
+
+        /**
+         * Statement coverage information. If the reporter does not provide statement
+         * coverage information, this can instead be used to represent line coverage.
+         */
+        statementCoverage: TestCoverageCount;
+
+        /**
+         * Branch coverage information.
+         */
+        branchCoverage?: TestCoverageCount;
+
+        /**
+         * Declaration coverage information. Depending on the reporter and
+         * language, this may be types such as functions, methods, or namespaces.
+         */
+        declarationCoverage?: TestCoverageCount;
+
+        /**
+         * A list of {@link TestItem test cases} that generated coverage in this
+         * file. If set, then {@link TestRunProfile.loadDetailedCoverageForTest}
+         * should also be defined in order to retrieve detailed coverage information.
+         */
+        includesTests?: TestItem[];
+
+        /**
+         * Creates a {@link FileCoverage} instance with counts filled in from
+         * the coverage details.
+         * @param uri Covered file URI
+         * @param detailed Detailed coverage information
+         */
+        static fromDetails(uri: Uri, details: readonly FileCoverageDetail[]): FileCoverage;
+
+        /**
+         * @param uri Covered file URI
+         * @param statementCoverage Statement coverage information. If the reporter
+         * does not provide statement coverage information, this can instead be
+         * used to represent line coverage.
+         * @param branchCoverage Branch coverage information
+         * @param declarationCoverage Declaration coverage information
+         * @param includesTests Test cases included in this coverage report, see {@link includesTests}
+         */
+        constructor(
+            uri: Uri,
+            statementCoverage: TestCoverageCount,
+            branchCoverage?: TestCoverageCount,
+            declarationCoverage?: TestCoverageCount,
+            includesTests?: TestItem[],
+        );
+    }
+
+    /**
+     * Contains coverage information for a single statement or line.
+     */
+    export class StatementCoverage {
+        /**
+         * The number of times this statement was executed, or a boolean indicating
+         * whether it was executed if the exact count is unknown. If zero or false,
+         * the statement will be marked as un-covered.
+         */
+        executed: number | boolean;
+
+        /**
+         * Statement location.
+         */
+        location: Position | Range;
+
+        /**
+         * Coverage from branches of this line or statement. If it's not a
+         * conditional, this will be empty.
+         */
+        branches: BranchCoverage[];
+
+        /**
+         * @param location The statement position.
+         * @param executed The number of times this statement was executed, or a
+         * boolean indicating  whether it was executed if the exact count is
+         * unknown. If zero or false, the statement will be marked as un-covered.
+         * @param branches Coverage from branches of this line.  If it's not a
+         * conditional, this should be omitted.
+         */
+        constructor(executed: number | boolean, location: Position | Range, branches?: BranchCoverage[]);
+    }
+
+    /**
+     * Contains coverage information for a branch of a {@link StatementCoverage}.
+     */
+    export class BranchCoverage {
+        /**
+         * The number of times this branch was executed, or a boolean indicating
+         * whether it was executed if the exact count is unknown. If zero or false,
+         * the branch will be marked as un-covered.
+         */
+        executed: number | boolean;
+
+        /**
+         * Branch location.
+         */
+        location?: Position | Range;
+
+        /**
+         * Label for the branch, used in the context of "the ${label} branch was
+         * not taken," for example.
+         */
+        label?: string;
+
+        /**
+         * @param executed The number of times this branch was executed, or a
+         * boolean indicating  whether it was executed if the exact count is
+         * unknown. If zero or false, the branch will be marked as un-covered.
+         * @param location The branch position.
+         */
+        constructor(executed: number | boolean, location?: Position | Range, label?: string);
+    }
+
+    /**
+     * Contains coverage information for a declaration. Depending on the reporter
+     * and language, this may be types such as functions, methods, or namespaces.
+     */
+    export class DeclarationCoverage {
+        /**
+         * Name of the declaration.
+         */
+        name: string;
+
+        /**
+         * The number of times this declaration was executed, or a boolean
+         * indicating whether it was executed if the exact count is unknown. If
+         * zero or false, the declaration will be marked as un-covered.
+         */
+        executed: number | boolean;
+
+        /**
+         * Declaration location.
+         */
+        location: Position | Range;
+
+        /**
+         * @param executed The number of times this declaration was executed, or a
+         * boolean indicating  whether it was executed if the exact count is
+         * unknown. If zero or false, the declaration will be marked as un-covered.
+         * @param location The declaration position.
+         */
+        constructor(name: string, executed: number | boolean, location: Position | Range);
+    }
+
+    /**
+     * Coverage details returned from {@link TestRunProfile.loadDetailedCoverage}.
+     */
+    export type FileCoverageDetail = StatementCoverage | DeclarationCoverage;
+
+    /**
+     * Represents a user request in chat history.
      * @stubbed
      */
-    dispose(): void;
+    export class ChatRequestTurn {
+        /**
+         * The prompt as entered by the user.
+         *
+         * Information about references used in this request is stored in {@link ChatRequestTurn.references}.
+         *
+         * *Note* that the {@link ChatParticipant.name name} of the participant and the {@link ChatCommand.name command}
+         * are not part of the prompt.
+         * @stubbed
+         */
+        readonly prompt: string;
+
+        /**
+         * The id of the chat participant to which this request was directed.
+         * @stubbed
+         */
+        readonly participant: string;
+
+        /**
+         * The name of the {@link ChatCommand command} that was selected for this request.
+         * @stubbed
+         */
+        readonly command?: string;
+
+        /**
+         * The references that were used in this message.
+         * @stubbed
+         */
+        readonly references: ChatPromptReference[];
+
+        /**
+         * The list of tools were attached to this request.
+         * @stubbed
+         */
+        readonly toolReferences: readonly ChatLanguageModelToolReference[];
+
+        /**
+         * @hidden
+         * @stubbed
+         */
+        private constructor(prompt: string, command: string | undefined, references: ChatPromptReference[], participant: string, toolReferences: ChatLanguageModelToolReference[]);
+    }
+
+    /**
+     * Represents a chat participant's response in chat history.
+     * @stubbed
+     */
+    export class ChatResponseTurn {
+        /**
+         * The content that was received from the chat participant. Only the stream parts that represent actual content (not metadata) are represented.
+         * @stubbed
+         */
+        readonly response: ReadonlyArray<ChatResponseMarkdownPart | ChatResponseFileTreePart | ChatResponseAnchorPart | ChatResponseCommandButtonPart>;
+
+        /**
+         * The result that was received from the chat participant.
+         * @stubbed
+         */
+        readonly result: ChatResult;
+
+        /**
+         * The id of the chat participant that this response came from.
+         * @stubbed
+         */
+        readonly participant: string;
+
+        /**
+         * The name of the command that this response came from.
+         * @stubbed
+         */
+        readonly command?: string;
+
+        /**
+         * @hidden
+         */
+        private constructor(response: ReadonlyArray<ChatResponseMarkdownPart | ChatResponseFileTreePart | ChatResponseAnchorPart | ChatResponseCommandButtonPart>, result: ChatResult, participant: string);
+    }
+
+    /**
+     * Extra context passed to a participant.
+     * @stubbed
+     */
+    export interface ChatContext {
+        /**
+         * All of the chat messages so far in the current chat session. Currently, only chat messages for the current participant are included.
+         * @stubbed
+         */
+        readonly history: ReadonlyArray<ChatRequestTurn | ChatResponseTurn>;
+    }
+
+    /**
+     * Represents an error result from a chat request.
+     * @stubbed
+     */
+    export interface ChatErrorDetails {
+        /**
+         * An error message that is shown to the user.
+         * @stubbed
+         */
+        message: string;
+
+        /**
+         * If set to true, the response will be partly blurred out.
+         * @stubbed
+         */
+        responseIsFiltered?: boolean;
+    }
+
+    /**
+     * The result of a chat request.
+     * @stubbed
+     */
+    export interface ChatResult {
+        /**
+         * If the request resulted in an error, this property defines the error details.
+         * @stubbed
+         */
+        errorDetails?: ChatErrorDetails;
+
+        /**
+         * Arbitrary metadata for this result. Can be anything, but must be JSON-stringifyable.
+         * @stubbed
+         */
+        readonly metadata?: { readonly [key: string]: any };
+    }
+
+    /**
+     * Represents the type of user feedback received.
+     */
+    export enum ChatResultFeedbackKind {
+        /**
+         * The user marked the result as unhelpful.
+         */
+        Unhelpful = 0,
+
+        /**
+         * The user marked the result as helpful.
+         */
+        Helpful = 1,
+    }
+
+    /**
+     * Represents user feedback for a result.
+     * @stubbed
+     */
+    export interface ChatResultFeedback {
+        /**
+         * The ChatResult for which the user is providing feedback.
+         * This object has the same properties as the result returned from the participant callback, including `metadata`, but is not the same instance.
+         * @stubbed
+         */
+        readonly result: ChatResult;
+
+        /**
+         * The kind of feedback that was received.
+         * @stubbed
+         */
+        readonly kind: ChatResultFeedbackKind;
+    }
+
+    /**
+     * A followup question suggested by the participant.
+     * @stubbed
+     */
+    export interface ChatFollowup {
+        /**
+         * The message to send to the chat.
+         * @stubbed
+         */
+        prompt: string;
+
+        /**
+         * A title to show the user. The prompt will be shown by default, when this is unspecified.
+         * @stubbed
+         */
+        label?: string;
+
+        /**
+         * By default, the followup goes to the same participant/command. But this property can be set to invoke a different participant by ID.
+         * Followups can only invoke a participant that was contributed by the same extension.
+         * @stubbed
+         */
+        participant?: string;
+
+        /**
+         * By default, the followup goes to the same participant/command. But this property can be set to invoke a different command.
+         * @stubbed
+         */
+        command?: string;
+    }
+
+    /**
+     * Will be invoked once after each request to get suggested followup questions to show the user. The user can click the followup to send it to the chat.
+     * @stubbed
+     */
+    export interface ChatFollowupProvider {
+        /**
+         * Provide followups for the given result.
+         * @param result This object has the same properties as the result returned from the participant callback, including `metadata`, but is not the same instance.
+         * @param context Extra context passed to a participant.
+         * @param token A cancellation token.
+         */
+        provideFollowups(result: ChatResult, context: ChatContext, token: CancellationToken): ProviderResult<ChatFollowup[]>;
+    }
+
+    /**
+     * A chat request handler is a callback that will be invoked when a request is made to a chat participant.
+     * @stubbed
+     */
+    export type ChatRequestHandler = (request: ChatRequest, context: ChatContext, response: ChatResponseStream, token: CancellationToken) => ProviderResult<ChatResult | void>;
+
+    /**
+     * A chat participant can be invoked by the user in a chat session, using the `@` prefix. When it is invoked, it handles the chat request and is solely
+     * responsible for providing a response to the user. A ChatParticipant is created using {@link chat.createChatParticipant}.
+     * @stubbed
+     */
+    export interface ChatParticipant {
+        /**
+         * A unique ID for this participant.
+         * @stubbed
+         */
+        readonly id: string;
+
+        /**
+         * An icon for the participant shown in UI.
+         * @stubbed
+         */
+        iconPath?: IconPath;
+
+        /**
+         * The handler for requests to this participant.
+         * @stubbed
+         */
+        requestHandler: ChatRequestHandler;
+
+        /**
+         * This provider will be called once after each request to retrieve suggested followup questions.
+         * @stubbed
+         */
+        followupProvider?: ChatFollowupProvider;
+
+        /**
+         * An event that fires whenever feedback for a result is received, e.g. when a user up- or down-votes
+         * a result.
+         *
+         * The passed {@link ChatResultFeedback.result result} is guaranteed to be the same instance that was
+         * previously returned from this chat participant.
+         * @stubbed
+         */
+        onDidReceiveFeedback: Event<ChatResultFeedback>;
+
+        /**
+         * Dispose this participant and free resources.
+         * @stubbed
+         */
+        dispose(): void;
+    }
+
+    /**
+     * A reference to a value that the user added to their chat request.
+     * @stubbed
+     */
+    export interface ChatPromptReference {
+        /**
+         * A unique identifier for this kind of reference.
+         * @stubbed
+         */
+        readonly id: string;
+
+        /**
+         * The start and end index of the reference in the {@link ChatRequest.prompt prompt}. When undefined, the reference was not part of the prompt text.
+         *
+         * *Note* that the indices take the leading `#`-character into account which means they can
+         * used to modify the prompt as-is.
+         * @stubbed
+         */
+        readonly range?: [start: number, end: number];
+
+        /**
+         * A description of this value that could be used in an LLM prompt.
+         * @stubbed
+         */
+        readonly modelDescription?: string;
+
+        /**
+         * The value of this reference. The `string | Uri | Location` types are used today, but this could expand in the future.
+         * @stubbed
+         */
+        readonly value: string | Uri | Location | unknown;
+    }
+
+    /**
+     * A request to a chat participant.
+     * @stubbed
+     */
+    export interface ChatRequest {
+        /**
+         * The prompt as entered by the user.
+         *
+         * Information about references used in this request is stored in {@link ChatRequest.references}.
+         *
+         * *Note* that the {@link ChatParticipant.name name} of the participant and the {@link ChatCommand.name command}
+         * are not part of the prompt.
+         * @stubbed
+         */
+        readonly prompt: string;
+
+        /**
+         * The name of the {@link ChatCommand command} that was selected for this request.
+         * @stubbed
+         */
+        readonly command: string | undefined;
+
+        /**
+         * The list of references and their values that are referenced in the prompt.
+         *
+         * *Note* that the prompt contains references as authored and that it is up to the participant
+         * to further modify the prompt, for instance by inlining reference values or creating links to
+         * headings which contain the resolved values. References are sorted in reverse by their range
+         * in the prompt. That means the last reference in the prompt is the first in this list. This simplifies
+         * string-manipulation of the prompt.
+         * @stubbed
+         */
+        readonly references: readonly ChatPromptReference[];
+
+        /**
+         * The list of tools that the user attached to their request.
+         *
+         * When a tool reference is present, the chat participant should make a chat request using
+         * {@link LanguageModelChatToolMode.Required} to force the language model to generate input for the tool. Then, the
+         * participant can use {@link lm.invokeTool} to use the tool attach the result to its request for the user's prompt. The
+         * tool may contribute useful extra context for the user's request.
+         * @stubbed
+         */
+        readonly toolReferences: readonly ChatLanguageModelToolReference[];
+
+        /**
+         * A token that can be passed to {@link lm.invokeTool} when invoking a tool inside the context of handling a chat request.
+         * This associates the tool invocation to a chat session.
+         * @stubbed
+         */
+        readonly toolInvocationToken: ChatParticipantToolToken;
+
+        /**
+         * This is the model that is currently selected in the UI. Extensions can use this or use {@link chat.selectChatModels} to
+         * pick another model. Don't hold onto this past the lifetime of the request.
+         * @stubbed
+         */
+        readonly model: LanguageModelChat;
+    }
+
+    /**
+     * The ChatResponseStream is how a participant is able to return content to the chat view. It provides several methods for streaming different types of content
+     * which will be rendered in an appropriate way in the chat view. A participant can use the helper method for the type of content it wants to return, or it
+     * can instantiate a {@link ChatResponsePart} and use the generic {@link ChatResponseStream.push} method to return it.
+     * @stubbed
+     */
+    export interface ChatResponseStream {
+        /**
+         * Push a markdown part to this stream. Short-hand for
+         * `push(new ChatResponseMarkdownPart(value))`.
+         *
+         * @see {@link ChatResponseStream.push}
+         * @param value A markdown string or a string that should be interpreted as markdown. The boolean form of {@link MarkdownString.isTrusted} is NOT supported.
+         * @stubbed
+         */
+        markdown(value: string | MarkdownString): void;
+
+        /**
+         * Push an anchor part to this stream. Short-hand for
+         * `push(new ChatResponseAnchorPart(value, title))`.
+         * An anchor is an inline reference to some type of resource.
+         *
+         * @param value A uri or location.
+         * @param title An optional title that is rendered with value.
+         * @stubbed
+         */
+        anchor(value: Uri | Location, title?: string): void;
+
+        /**
+         * Push a command button part to this stream. Short-hand for
+         * `push(new ChatResponseCommandButtonPart(value, title))`.
+         *
+         * @param command A Command that will be executed when the button is clicked.
+         * @stubbed
+         */
+        button(command: Command): void;
+
+        /**
+         * Push a filetree part to this stream. Short-hand for
+         * `push(new ChatResponseFileTreePart(value))`.
+         *
+         * @param value File tree data.
+         * @param baseUri The base uri to which this file tree is relative.
+         * @stubbed
+         */
+        filetree(value: ChatResponseFileTree[], baseUri: Uri): void;
+
+        /**
+         * Push a progress part to this stream. Short-hand for
+         * `push(new ChatResponseProgressPart(value))`.
+         *
+         * @param value A progress message
+         * @stubbed
+         */
+        progress(value: string): void;
+
+        /**
+         * Push a reference to this stream. Short-hand for
+         * `push(new ChatResponseReferencePart(value))`.
+         *
+         * *Note* that the reference is not rendered inline with the response.
+         *
+         * @param value A uri or location
+         * @param iconPath Icon for the reference shown in UI
+         * @stubbed
+         */
+        reference(value: Uri | Location, iconPath?: IconPath): void;
+
+        /**
+         * Pushes a part to this stream.
+         *
+         * @param part A response part, rendered or metadata
+         * @stubbed
+         */
+        push(part: ChatResponsePart): void;
+    }
+
+    /**
+     * Represents a part of a chat response that is formatted as Markdown.
+     * @stubbed
+     */
+    export class ChatResponseMarkdownPart {
+        /**
+         * A markdown string or a string that should be interpreted as markdown.
+         * @stubbed
+         */
+        value: MarkdownString;
+
+        /**
+         * Create a new ChatResponseMarkdownPart.
+         *
+         * @param value A markdown string or a string that should be interpreted as markdown. The boolean form of {@link MarkdownString.isTrusted} is NOT supported.
+         * @stubbed
+         */
+        constructor(value: string | MarkdownString);
+    }
+
+    /**
+     * Represents a file tree structure in a chat response.
+     * @stubbed
+     */
+    export interface ChatResponseFileTree {
+        /**
+         * The name of the file or directory.
+         * @stubbed
+         */
+        name: string;
+
+        /**
+         * An array of child file trees, if the current file tree is a directory.
+         * @stubbed
+         */
+        children?: ChatResponseFileTree[];
+    }
+
+    /**
+     * Represents a part of a chat response that is a file tree.
+     * @stubbed
+     */
+    export class ChatResponseFileTreePart {
+        /**
+         * File tree data.
+         * @stubbed
+         */
+        value: ChatResponseFileTree[];
+
+        /**
+         * The base uri to which this file tree is relative
+         * @stubbed
+         */
+        baseUri: Uri;
+
+        /**
+         * Create a new ChatResponseFileTreePart.
+         * @param value File tree data.
+         * @param baseUri The base uri to which this file tree is relative.
+         * @stubbed
+         */
+        constructor(value: ChatResponseFileTree[], baseUri: Uri);
+    }
+
+    /**
+     * Represents a part of a chat response that is an anchor, that is rendered as a link to a target.
+     * @stubbed
+     */
+    export class ChatResponseAnchorPart {
+        /**
+         * The target of this anchor.
+         * @stubbed
+         */
+        value: Uri | Location;
+
+        /**
+         * An optional title that is rendered with value.
+         * @stubbed
+         */
+        title?: string;
+
+        /**
+         * Create a new ChatResponseAnchorPart.
+         * @param value A uri or location.
+         * @param title An optional title that is rendered with value.
+         * @stubbed
+         */
+        constructor(value: Uri | Location, title?: string);
+    }
+
+    /**
+     * Represents a part of a chat response that is a progress message.
+     * @stubbed
+     */
+    export class ChatResponseProgressPart {
+        /**
+         * The progress message
+         * @stubbed
+         */
+        value: string;
+
+        /**
+         * Create a new ChatResponseProgressPart.
+         * @param value A progress message
+         * @stubbed
+         */
+        constructor(value: string);
+    }
+
+    /**
+     * Represents a part of a chat response that is a reference, rendered separately from the content.
+     * @stubbed
+     */
+    export class ChatResponseReferencePart {
+        /**
+         * The reference target.
+         * @stubbed
+         */
+        value: Uri | Location;
+
+        /**
+         * The icon for the reference.
+         * @stubbed
+         */
+        iconPath?: IconPath;
+
+        /**
+         * Create a new ChatResponseReferencePart.
+         * @param value A uri or location
+         * @param iconPath Icon for the reference shown in UI
+         * @stubbed
+         */
+        constructor(value: Uri | Location, iconPath?: IconPath);
+    }
+
+    /**
+     * Represents a part of a chat response that is a button that executes a command.
+     * @stubbed
+     */
+    export class ChatResponseCommandButtonPart {
+        /**
+         * The command that will be executed when the button is clicked.
+         * @stubbed
+         */
+        value: Command;
+
+        /**
+         * Create a new ChatResponseCommandButtonPart.
+         * @param value A Command that will be executed when the button is clicked.
+         * @stubbed
+         */
+        constructor(value: Command);
+    }
+
+    /**
+     * Represents the different chat response types.
+     */
+    export type ChatResponsePart = ChatResponseMarkdownPart | ChatResponseFileTreePart | ChatResponseAnchorPart
+        | ChatResponseProgressPart | ChatResponseReferencePart | ChatResponseCommandButtonPart;
+
+    /**
+     * Namespace for chat functionality. Users interact with chat participants by sending messages
+     * to them in the chat view. Chat participants can respond with markdown or other types of content
+     * via the {@link ChatResponseStream}.
+     */
+    export namespace chat {
+        /**
+         * Create a new {@link ChatParticipant chat participant} instance.
+         *
+         * @param id A unique identifier for the participant.
+         * @param handler A request handler for the participant.
+         * @returns A new chat participant
+         * @stubbed
+         */
+        export function createChatParticipant(id: string, handler: ChatRequestHandler): ChatParticipant;
+    }
+
+    /**
+     * Represents the role of a chat message. This is either the user or the assistant.
+     */
+    export enum LanguageModelChatMessageRole {
+        /**
+         * The user role, e.g the human interacting with a language model.
+         */
+        User = 1,
+
+        /**
+         * The assistant role, e.g. the language model generating responses.
+         */
+        Assistant = 2
+    }
+
+    /**
+     * Represents a message in a chat. Can assume different roles, like user or assistant.
+     * @stubbed
+     */
+    export class LanguageModelChatMessage {
+
+        /**
+         * Utility to create a new user message.
+         *
+         * @param content The content of the message.
+         * @param name The optional name of a user for the message.
+         * @stubbed
+         */
+        static User(content: string | Array<LanguageModelTextPart | LanguageModelToolResultPart>, name?: string): LanguageModelChatMessage;
+
+        /**
+         * Utility to create a new assistant message.
+         *
+         * @param content The content of the message.
+         * @param name The optional name of a user for the message.
+         * @stubbed
+         */
+        static Assistant(content: string | Array<(LanguageModelTextPart | LanguageModelToolCallPart)>, name?: string): LanguageModelChatMessage;
+
+        /**
+         * The role of this message.
+         * @stubbed
+         */
+        role: LanguageModelChatMessageRole;
+
+        /**
+         * A string or heterogeneous array of things that a message can contain as content. Some parts may be message-type
+         * specific for some models.
+         * @stubbed
+         */
+        content: Array<(LanguageModelTextPart | LanguageModelToolResultPart | LanguageModelToolCallPart)>;
+
+        /**
+         * The optional name of a user for this message.
+         * @stubbed
+         */
+        name: string | undefined;
+
+        /**
+         * Create a new user message.
+         * @stubbed
+         *
+         * @param role The role of the message.
+         * @param content The content of the message.
+         * @param name The optional name of a user for the message.
+         */
+        constructor(role: LanguageModelChatMessageRole, content: string | Array<LanguageModelTextPart | LanguageModelToolResultPart | LanguageModelToolCallPart>, name?: string);
+    }
+
+    /**
+     * Represents a language model response.
+     *
+     * @see {@link LanguageModelAccess.chatRequest}
+     * @stubbed
+     */
+    export interface LanguageModelChatResponse {
+
+        /**
+         * An async iterable that is a stream of text and tool-call parts forming the overall response. A
+         * {@link LanguageModelTextPart} is part of the assistant's response to be shown to the user. A
+         * {@link LanguageModelToolCallPart} is a request from the language model to call a tool. The latter will
+         * only be returned if tools were passed in the request via {@link LanguageModelChatRequestOptions.tools}. The
+         * `unknown`-type is used as a placeholder for future parts, like image data parts.
+         *
+         * *Note* that this stream will error when during data receiving an error occurs. Consumers of the stream should handle
+         * the errors accordingly.
+         *
+         * To cancel the stream, the consumer can {@link CancellationTokenSource.cancel cancel} the token that was used to make
+         * the request or break from the for-loop.
+         *
+         * @example
+         * ```ts
+         * try {
+         *   // consume stream
+         *   for await (const chunk of response.stream) {
+         *      if (chunk instanceof LanguageModelTextPart) {
+         *        console.log("TEXT", chunk);
+         *      } else if (chunk instanceof LanguageModelToolCallPart) {
+         *        console.log("TOOL CALL", chunk);
+         *      }
+         *   }
+         *
+         * } catch(e) {
+         *   // stream ended with an error
+         *   console.error(e);
+         * }
+         * ```
+         * @stubbed
+         */
+        stream: AsyncIterable<LanguageModelTextPart | LanguageModelToolCallPart | unknown>;
+
+        /**
+         * This is equivalent to filtering everything except for text parts from a {@link LanguageModelChatResponse.stream}.
+         *
+         * @see {@link LanguageModelChatResponse.stream}
+         * @stubbed
+         */
+        text: AsyncIterable<string>;
+    }
+
+    /**
+     * Represents a language model for making chat requests.
+     *
+     * @see {@link lm.selectChatModels}
+     * @stubbed
+     */
+    export interface LanguageModelChat {
+
+        /**
+         * Human-readable name of the language model.
+         * @stubbed
+         */
+        readonly name: string;
+
+        /**
+         * Opaque identifier of the language model.
+         * @stubbed
+         */
+        readonly id: string;
+
+        /**
+         * A well-known identifier of the vendor of the language model. An example is `copilot`, but
+         * values are defined by extensions contributing chat models and need to be looked up with them.
+         * @stubbed
+         */
+        readonly vendor: string;
+
+        /**
+         * Opaque family-name of the language model. Values might be `gpt-3.5-turbo`, `gpt4`, `phi2`, or `llama`
+         * but they are defined by extensions contributing languages and subject to change.
+         * @stubbed
+         */
+        readonly family: string;
+
+        /**
+         * Opaque version string of the model. This is defined by the extension contributing the language model
+         * and subject to change.
+         * @stubbed
+         */
+        readonly version: string;
+
+        /**
+         * The maximum number of tokens that can be sent to the model in a single request.
+         * @stubbed
+         */
+        readonly maxInputTokens: number;
+
+        /**
+         * Make a chat request using a language model.
+         *
+         * *Note* that language model use may be subject to access restrictions and user consent. Calling this function
+         * for the first time (for an extension) will show a consent dialog to the user and because of that this function
+         * must _only be called in response to a user action!_ Extensions can use {@link LanguageModelAccessInformation.canSendRequest}
+         * to check if they have the necessary permissions to make a request.
+         *
+         * This function will return a rejected promise if making a request to the language model is not
+         * possible. Reasons for this can be:
+         *
+         * - user consent not given, see {@link LanguageModelError.NoPermissions `NoPermissions`}
+         * - model does not exist anymore, see {@link LanguageModelError.NotFound `NotFound`}
+         * - quota limits exceeded, see {@link LanguageModelError.Blocked `Blocked`}
+         * - other issues in which case extension must check {@link LanguageModelError.cause `LanguageModelError.cause`}
+         *
+         * An extension can make use of language model tool calling by passing a set of tools to
+         * {@link LanguageModelChatRequestOptions.tools}. The language model will return a {@link LanguageModelToolCallPart} and
+         * the extension can invoke the tool and make another request with the result.
+         *
+         * @param messages An array of message instances.
+         * @param options Options that control the request.
+         * @param token A cancellation token which controls the request. See {@link CancellationTokenSource} for how to create one.
+         * @returns A thenable that resolves to a {@link LanguageModelChatResponse}. The promise will reject when the request couldn't be made.
+         * @stubbed
+         */
+        sendRequest(messages: LanguageModelChatMessage[], options?: LanguageModelChatRequestOptions, token?: CancellationToken): Thenable<LanguageModelChatResponse>;
+
+        /**
+         * Count the number of tokens in a message using the model specific tokenizer-logic.
+         * @param text A string or a message instance.
+         * @param token Optional cancellation token.  See {@link CancellationTokenSource} for how to create one.
+         * @returns A thenable that resolves to the number of tokens.
+         * @stubbed
+         */
+        countTokens(text: string | LanguageModelChatMessage, token?: CancellationToken): Thenable<number>;
+    }
+
+    /**
+     * Describes how to select language models for chat requests.
+     *
+     * @see {@link lm.selectChatModels}
+     * @stubbed
+     */
+    export interface LanguageModelChatSelector {
+
+        /**
+         * A vendor of language models.
+         * @see {@link LanguageModelChat.vendor}
+         * @stubbed
+         */
+        vendor?: string;
+
+        /**
+         * A family of language models.
+         * @see {@link LanguageModelChat.family}
+         * @stubbed
+         */
+        family?: string;
+
+        /**
+         * The version of a language model.
+         * @see {@link LanguageModelChat.version}
+         * @stubbed
+         */
+        version?: string;
+
+        /**
+         * The identifier of a language model.
+         * @see {@link LanguageModelChat.id}
+         * @stubbed
+         */
+        id?: string;
+    }
+
+    /**
+     * An error type for language model specific errors.
+     *
+     * Consumers of language models should check the code property to determine specific
+     * failure causes, like `if(someError.code === vscode.LanguageModelError.NotFound.name) {...}`
+     * for the case of referring to an unknown language model. For unspecified errors the `cause`-property
+     * will contain the actual error.
+     * @stubbed
+     */
+    export class LanguageModelError extends Error {
+
+        /**
+         * The requestor does not have permissions to use this
+         * language model
+         * @stubbed
+         */
+        static NoPermissions(message?: string): LanguageModelError;
+
+        /**
+         * The requestor is blocked from using this language model.
+         * @stubbed
+         */
+        static Blocked(message?: string): LanguageModelError;
+
+        /**
+         * The language model does not exist.
+         * @stubbed
+         */
+        static NotFound(message?: string): LanguageModelError;
+
+        /**
+         * A code that identifies this error.
+         *
+         * Possible values are names of errors, like {@linkcode LanguageModelError.NotFound NotFound},
+         * or `Unknown` for unspecified errors from the language model itself. In the latter case the
+         * `cause`-property will contain the actual error.
+         * @stubbed
+         */
+        readonly code: string;
+    }
+
+    /**
+     * Options for making a chat request using a language model.
+     *
+     * @see {@link LanguageModelChat.sendRequest}
+     * @stubbed
+     */
+    export interface LanguageModelChatRequestOptions {
+
+        /**
+         * A human-readable message that explains why access to a language model is needed and what feature is enabled by it.
+         * @stubbed
+         */
+        justification?: string;
+
+        /**
+         * A set of options that control the behavior of the language model. These options are specific to the language model
+         * and need to be lookup in the respective documentation.
+         * @stubbed
+         */
+        modelOptions?: { [name: string]: any };
+
+        /**
+         * An optional list of tools that are available to the language model. These could be registered tools available via
+         * {@link lm.tools}, or private tools that are just implemented within the calling extension.
+         *
+         * If the LLM requests to call one of these tools, it will return a {@link LanguageModelToolCallPart} in
+         * {@link LanguageModelChatResponse.stream}. It's the caller's responsibility to invoke the tool. If it's a tool
+         * registered in {@link lm.tools}, that means calling {@link lm.invokeTool}.
+         *
+         * Then, the tool result can be provided to the LLM by creating an Assistant-type {@link LanguageModelChatMessage} with a
+         * {@link LanguageModelToolCallPart}, followed by a User-type message with a {@link LanguageModelToolResultPart}.
+         * @stubbed
+         */
+        tools?: LanguageModelChatTool[];
+
+        /**
+         * The tool-selecting mode to use. {@link LanguageModelChatToolMode.Auto} by default.
+         * @stubbed
+         */
+        toolMode?: LanguageModelChatToolMode;
+    }
+
+    /**
+     * Namespace for language model related functionality.
+     */
+    export namespace lm {
+
+        /**
+         * An event that is fired when the set of available chat models changes.
+         * @stubbed
+         */
+        export const onDidChangeChatModels: Event<void>;
+
+        /**
+         * Select chat models by a {@link LanguageModelChatSelector selector}. This can yield multiple or no chat models and
+         * extensions must handle these cases, esp. when no chat model exists, gracefully.
+         *
+         * ```ts
+         * const models = await vscode.lm.selectChatModels({ family: 'gpt-3.5-turbo' });
+         * if (models.length > 0) {
+         *  const [first] = models;
+         *  const response = await first.sendRequest(...)
+         *  // ...
+         * } else {
+         *  // NO chat models available
+         * }
+         * ```
+         *
+         * A selector can be written to broadly match all models of a given vendor or family, or it can narrowly select one model by ID.
+         * Keep in mind that the available set of models will change over time, but also that prompts may perform differently in
+         * different models.
+         *
+         * *Note* that extensions can hold on to the results returned by this function and use them later. However, when the
+         * {@link onDidChangeChatModels}-event is fired the list of chat models might have changed and extensions should re-query.
+         *
+         * @param selector A chat model selector. When omitted all chat models are returned.
+         * @returns An array of chat models, can be empty!
+         * @stubbed
+         */
+        export function selectChatModels(selector?: LanguageModelChatSelector): Thenable<LanguageModelChat[]>;
+
+        /**
+         * Register a LanguageModelTool. The tool must also be registered in the package.json `languageModelTools` contribution
+         * point. A registered tool is available in the {@link lm.tools} list for any extension to see. But in order for it to
+         * be seen by a language model, it must be passed in the list of available tools in {@link LanguageModelChatRequestOptions.tools}.
+         * @returns A {@link Disposable} that unregisters the tool when disposed.
+         * @stubbed
+         */
+        export function registerTool<T>(name: string, tool: LanguageModelTool<T>): Disposable;
+
+        /**
+         * A list of all available tools that were registered by all extensions using {@link lm.registerTool}. They can be called
+         * with {@link lm.invokeTool} with input that match their declared `inputSchema`.
+         * @stubbed
+         */
+        export const tools: readonly LanguageModelToolInformation[];
+
+        /**
+         * Invoke a tool listed in {@link lm.tools} by name with the given input. The input will be validated against
+         * the schema declared by the tool
+         *
+         * A tool can be invoked by a chat participant, in the context of handling a chat request, or globally by any extension in
+         * any custom flow.
+         *
+         * In the former case, the caller shall pass the
+         * {@link LanguageModelToolInvocationOptions.toolInvocationToken toolInvocationToken}, which comes with the a
+         * {@link ChatRequest.toolInvocationToken chat request}. This makes sure the chat UI shows the tool invocation for the
+         * correct conversation.
+         *
+         * A tool {@link LanguageModelToolResult result} is an array of {@link LanguageModelTextPart text-} and
+         * {@link LanguageModelPromptTsxPart prompt-tsx}-parts. If the tool caller is using `@vscode/prompt-tsx`, it can
+         * incorporate the response parts into its prompt using a `ToolResult`. If not, the parts can be passed along to the
+         * {@link LanguageModelChat} via a user message with a {@link LanguageModelToolResultPart}.
+         *
+         * If a chat participant wants to preserve tool results for requests across multiple turns, it can store tool results in
+         * the {@link ChatResult.metadata} returned from the handler and retrieve them on the next turn from
+         * {@link ChatResponseTurn.result}.
+         *
+         * @param name The name of the tool to call.
+         * @param options The options to use when invoking the tool.
+         * @param token A cancellation token. See {@link CancellationTokenSource} for how to create one.
+         * @returns The result of the tool invocation.
+         * @stubbed
+         */
+        export function invokeTool(name: string, options: LanguageModelToolInvocationOptions<object>, token?: CancellationToken): Thenable<LanguageModelToolResult>;
+    }
+
+    /**
+     * Represents extension specific information about the access to language models.
+     * @stubbed
+     */
+    export interface LanguageModelAccessInformation {
+
+        /**
+         * An event that fires when access information changes.
+         * @stubbed
+         */
+        onDidChange: Event<void>;
+
+        /**
+         * Checks if a request can be made to a language model.
+         *
+         * *Note* that calling this function will not trigger a consent UI but just checks for a persisted state.
+         *
+         * @param chat A language model chat object.
+         * @return `true` if a request can be made, `false` if not, `undefined` if the language
+         * model does not exist or consent hasn't been asked for.
+         * @stubbed
+         */
+        canSendRequest(chat: LanguageModelChat): boolean | undefined;
+
+    }
+
+    /**
+     * A tool that is available to the language model via {@link LanguageModelChatRequestOptions}. A language model uses all the
+     * properties of this interface to decide which tool to call, and how to call it.
+     * @stubbed
+     */
+    export interface LanguageModelChatTool {
+        /**
+         * The name of the tool.
+         * @stubbed
+         */
+        name: string;
+
+        /**
+         * The description of the tool.
+         * @stubbed
+         */
+        description: string;
+
+        /**
+         * A JSON schema for the input this tool accepts.
+         * @stubbed
+         */
+        inputSchema?: object;
+    }
+
+    /**
+     * A tool-calling mode for the language model to use.
+     */
+    export enum LanguageModelChatToolMode {
+        /**
+         * The language model can choose to call a tool or generate a message. Is the default.
+         */
+        Auto = 1,
+
+        /**
+         * The language model must call one of the provided tools. Note- some models only support a single tool when using this
+         * mode.
+         */
+        Required = 2
+    }
+
+    /**
+     * A language model response part indicating a tool call, returned from a {@link LanguageModelChatResponse}, and also can be
+     * included as a content part on a {@link LanguageModelChatMessage}, to represent a previous tool call in a chat request.
+     * @stubbed
+     */
+    export class LanguageModelToolCallPart {
+        /**
+         * The ID of the tool call. This is a unique identifier for the tool call within the chat request.
+         * @stubbed
+         */
+        callId: string;
+
+        /**
+         * The name of the tool to call.
+         * @stubbed
+         */
+        name: string;
+
+        /**
+         * The input with which to call the tool.
+         * @stubbed
+         */
+        input: object;
+
+        /**
+         * Create a new LanguageModelToolCallPart.
+         *
+         * @param callId The ID of the tool call.
+         * @param name The name of the tool to call.
+         * @param input The input with which to call the tool.
+         * @stubbed
+         */
+        constructor(callId: string, name: string, input: object);
+    }
+
+    /**
+     * The result of a tool call. This is the counterpart of a {@link LanguageModelToolCallPart tool call} and
+     * it can only be included in the content of a User message
+     * @stubbed
+     */
+    export class LanguageModelToolResultPart {
+        /**
+         * The ID of the tool call.
+         *
+         * *Note* that this should match the {@link LanguageModelToolCallPart.callId callId} of a tool call part.
+         * @stubbed
+         */
+        callId: string;
+
+        /**
+         * The value of the tool result.
+         * @stubbed
+         */
+        content: Array<LanguageModelTextPart | LanguageModelPromptTsxPart | unknown>;
+
+        /**
+         * @param callId The ID of the tool call.
+         * @param content The content of the tool result.
+         * @stubbed
+         */
+        constructor(callId: string, content: Array<(LanguageModelTextPart | LanguageModelPromptTsxPart | unknown)>);
+    }
+
+    /**
+     * A language model response part containing a piece of text, returned from a {@link LanguageModelChatResponse}.
+     * @stubbed
+     */
+    export class LanguageModelTextPart {
+        /**
+         * The text content of the part.
+         * @stubbed
+         */
+        value: string;
+
+        /**
+         * Construct a text part with the given content.
+         * @param value The text content of the part.
+         * @stubbed
+         */
+        constructor(value: string);
+    }
+
+    /**
+     * A language model response part containing a PromptElementJSON from `@vscode/prompt-tsx`.
+     * @see {@link LanguageModelToolResult}
+     * @stubbed
+     */
+    export class LanguageModelPromptTsxPart {
+        /**
+         * The value of the part.
+         * @stubbed
+         */
+        value: unknown;
+
+        /**
+         * Construct a prompt-tsx part with the given content.
+         * @param value The value of the part, the result of `renderPromptElementJSON` from `@vscode/prompt-tsx`.
+         * @stubbed
+         */
+        constructor(value: unknown);
+    }
+
+    /**
+     * A result returned from a tool invocation. If using `@vscode/prompt-tsx`, this result may be rendered using a `ToolResult`.
+     * @stubbed
+     */
+    export class LanguageModelToolResult {
+        /**
+         * A list of tool result content parts. Includes `unknown` becauses this list may be extended with new content types in
+         * the future.
+         * @see {@link lm.invokeTool}.
+         * @stubbed
+         */
+        content: Array<(LanguageModelTextPart | LanguageModelPromptTsxPart | unknown)>;
+
+        /**
+         * Create a LanguageModelToolResult
+         * @param content A list of tool result content parts
+         * @stubbed
+         */
+        constructor(content: Array<(LanguageModelTextPart | LanguageModelPromptTsxPart)>);
+    }
+
+    /**
+     * A token that can be passed to {@link lm.invokeTool} when invoking a tool inside the context of handling a chat request.
+     */
+    export type ChatParticipantToolToken = never;
+
+    /**
+     * Options provided for tool invocation.
+     * @stubbed
+     */
+    export interface LanguageModelToolInvocationOptions<T> {
+        /**
+         * An opaque object that ties a tool invocation to a chat request from a {@link ChatParticipant chat participant}.
+         *
+         * The _only_ way to get a valid tool invocation token is using the provided {@link ChatRequest.toolInvocationToken toolInvocationToken}
+         * from a chat request. In that case, a progress bar will be automatically shown for the tool invocation in the chat response view, and if
+         * the tool requires user confirmation, it will show up inline in the chat view.
+         *
+         * If the tool is being invoked outside of a chat request, `undefined` should be passed instead, and no special UI except for
+         * confirmations will be shown.
+         *
+         * *Note* that a tool that invokes another tool during its invocation, can pass along the `toolInvocationToken` that it received.
+         * @stubbed
+         */
+        toolInvocationToken: ChatParticipantToolToken | undefined;
+
+        /**
+         * The input with which to invoke the tool. The input must match the schema defined in
+         * {@link LanguageModelToolInformation.inputSchema}
+         * @stubbed
+         */
+        input: T;
+
+        /**
+         * Options to hint at how many tokens the tool should return in its response, and enable the tool to count tokens
+         * accurately.
+         * @stubbed
+         */
+        tokenizationOptions?: LanguageModelToolTokenizationOptions;
+    }
+
+    /**
+     * Options related to tokenization for a tool invocation.
+     * @stubbed
+     */
+    export interface LanguageModelToolTokenizationOptions {
+        /**
+         * If known, the maximum number of tokens the tool should emit in its result.
+         * @stubbed
+         */
+        tokenBudget: number;
+
+        /**
+         * Count the number of tokens in a message using the model specific tokenizer-logic.
+         * @param text A string.
+         * @param token Optional cancellation token.  See {@link CancellationTokenSource} for how to create one.
+         * @returns A thenable that resolves to the number of tokens.
+         * @stubbed
+         */
+        countTokens(text: string, token?: CancellationToken): Thenable<number>;
+    }
+
+    /**
+     * Information about a registered tool available in {@link lm.tools}.
+     * @stubbed
+     */
+    export interface LanguageModelToolInformation {
+        /**
+         * A unique name for the tool.
+         * @stubbed
+         */
+        readonly name: string;
+
+        /**
+         * A description of this tool that may be passed to a language model.
+         * @stubbed
+         */
+        readonly description: string;
+
+        /**
+         * A JSON schema for the input this tool accepts.
+         * @stubbed
+         */
+        readonly inputSchema: object | undefined;
+
+        /**
+         * A set of tags, declared by the tool, that roughly describe the tool's capabilities. A tool user may use these to filter
+         * the set of tools to just ones that are relevant for the task at hand.
+         * @stubbed
+         */
+        readonly tags: readonly string[];
+    }
+
+    /**
+     * Options for {@link LanguageModelTool.prepareInvocation}.
+     * @stubbed
+     */
+    export interface LanguageModelToolInvocationPrepareOptions<T> {
+        /**
+         * The input that the tool is being invoked with.
+         * @stubbed
+         */
+        input: T;
+    }
+
+    /**
+     * A tool that can be invoked by a call to a {@link LanguageModelChat}.
+     * @stubbed
+     */
+    export interface LanguageModelTool<T> {
+        /**
+         * Invoke the tool with the given input and return a result.
+         *
+         * The provided {@link LanguageModelToolInvocationOptions.input} has been validated against the declared schema.
+         * @stubbed
+         */
+        invoke(options: LanguageModelToolInvocationOptions<T>, token: CancellationToken): ProviderResult<LanguageModelToolResult>;
+
+        /**
+         * Called once before a tool is invoked. It's recommended to implement this to customize the progress message that appears
+         * while the tool is running, and to provide a more useful message with context from the invocation input. Can also
+         * signal that a tool needs user confirmation before running, if appropriate.
+         *
+         * * *Note 1:* Must be free of side-effects.
+         * * *Note 2:* A call to `prepareInvocation` is not necessarily followed by a call to `invoke`.
+         * @stubbed
+         */
+        prepareInvocation?(options: LanguageModelToolInvocationPrepareOptions<T>, token: CancellationToken): ProviderResult<PreparedToolInvocation>;
+    }
+
+    /**
+     * When this is returned in {@link PreparedToolInvocation}, the user will be asked to confirm before running the tool. These
+     * messages will be shown with buttons that say "Continue" and "Cancel".
+     * @stubbed
+     */
+    export interface LanguageModelToolConfirmationMessages {
+        /**
+         * The title of the confirmation message.
+         * @stubbed
+         */
+        title: string;
+
+        /**
+         * The body of the confirmation message.
+         * @stubbed
+         */
+        message: string | MarkdownString;
+    }
+
+    /**
+     * The result of a call to {@link LanguageModelTool.prepareInvocation}.
+     * @stubbed
+     */
+    export interface PreparedToolInvocation {
+        /**
+         * A customized progress message to show while the tool runs.
+         * @stubbed
+         */
+        invocationMessage?: string | MarkdownString;
+
+        /**
+         * The presence of this property indicates that the user should be asked to confirm before running the tool. The user
+         * should be asked for confirmation for any tool that has a side-effect or may potentially be dangerous.
+         * @stubbed
+         */
+        confirmationMessages?: LanguageModelToolConfirmationMessages;
+    }
+
+    /**
+     * A reference to a tool that the user manually attached to their request, either using the `#`-syntax inline, or as an
+     * attachment via the paperclip button.
+     * @stubbed
+     */
+    export interface ChatLanguageModelToolReference {
+        /**
+         * The tool name. Refers to a tool listed in {@link lm.tools}.
+         * @stubbed
+         */
+        readonly name: string;
+
+        /**
+         * The start and end index of the reference in the {@link ChatRequest.prompt prompt}. When undefined, the reference was
+         * not part of the prompt text.
+         *
+         * *Note* that the indices take the leading `#`-character into account which means they can be used to modify the prompt
+         * as-is.
+         * @stubbed
+         */
+        readonly range?: [start: number, end: number];
+    }
+
+    /**
+     * Thenable is a common denominator between ES6 promises, Q, jquery.Deferred, WinJS.Promise,
+     * and others. This API makes no assumption about what promise library is being used which
+     * enables reusing existing code without migrating to a specific promise implementation. Still,
+     * we recommend the use of native promises which are available in this editor.
+     */
+    interface Thenable<T> {
+        /**
+         * Attaches callbacks for the resolution and/or rejection of the Promise.
+         * @param onfulfilled The callback to execute when the Promise is resolved.
+         * @param onrejected The callback to execute when the Promise is rejected.
+         * @returns A Promise for the completion of which ever callback is executed.
+         */
+        then<TResult>(onfulfilled?: (value: T) => TResult | Thenable<TResult>, onrejected?: (reason: any) => TResult | Thenable<TResult>): Thenable<TResult>;
+        then<TResult>(onfulfilled?: (value: T) => TResult | Thenable<TResult>, onrejected?: (reason: any) => void): Thenable<TResult>;
+    }
 }
-
-/**
- * A TestRunRequest is a precursor to a {@link TestRun}, which in turn is
- * created by passing a request to {@link tests.runTests}. The TestRunRequest
- * contains information about which tests should be run, which should not be
- * run, and how they are run (via the {@link TestRunRequest.profile profile}).
- *
- * In general, TestRunRequests are created by the editor and pass to
- * {@link TestRunProfile.runHandler}, however you can also create test
- * requests and runs outside of the `runHandler`.
- */
-export class TestRunRequest {
-    /**
-     * A filter for specific tests to run. If given, the extension should run
-     * all of the included tests and all their children, excluding any tests
-     * that appear in {@link TestRunRequest.exclude}. If this property is
-     * undefined, then the extension should simply run all tests.
-     *
-     * The process of running tests should resolve the children of any test
-     * items who have not yet been resolved.
-     */
-    readonly include: readonly TestItem[] | undefined;
-
-    /**
-     * An array of tests the user has marked as excluded from the test included
-     * in this run; exclusions should apply after inclusions.
-     *
-     * May be omitted if no exclusions were requested. Test controllers should
-     * not run excluded tests or any children of excluded tests.
-     */
-    readonly exclude: readonly TestItem[] | undefined;
-
-    /**
-     * The profile used for this request. This will always be defined
-     * for requests issued from the editor UI, though extensions may
-     * programmatically create requests not associated with any profile.
-     */
-    readonly profile: TestRunProfile | undefined;
-
-    /**
-     * @param include Array of specific tests to run, or undefined to run all tests
-     * @param exclude An array of tests to exclude from the run.
-     * @param profile The run profile used for this request.
-     */
-    constructor(include?: readonly TestItem[], exclude?: readonly TestItem[], profile?: TestRunProfile);
-}
-
-/**
- * Options given to {@link TestController.runTests}
- */
-export interface TestRun {
-    /**
-     * The human-readable name of the run. This can be used to
-     * disambiguate multiple sets of results in a test run. It is useful if
-     * tests are run across multiple platforms, for example.
-     * @stubbed
-     */
-    readonly name: string | undefined;
-
-    /**
-     * A cancellation token which will be triggered when the test run is
-     * canceled from the UI.
-     * @stubbed
-     */
-    readonly token: CancellationToken;
-
-    /**
-     * Whether the test run will be persisted across reloads by the editor.
-     * @stubbed
-     */
-    readonly isPersisted: boolean;
-
-    /**
-     * Indicates a test is queued for later execution.
-     * @param test Test item to update.
-     * @stubbed
-     */
-    enqueued(test: TestItem): void;
-
-    /**
-     * Indicates a test has started running.
-     * @param test Test item to update.
-     * @stubbed
-     */
-    started(test: TestItem): void;
-
-    /**
-     * Indicates a test has been skipped.
-     * @param test Test item to update.
-     * @stubbed
-     */
-    skipped(test: TestItem): void;
-
-    /**
-     * Indicates a test has failed. You should pass one or more
-     * {@link TestMessage TestMessages} to describe the failure.
-     * @param test Test item to update.
-     * @param message Messages associated with the test failure.
-     * @param duration How long the test took to execute, in milliseconds.
-     * @stubbed
-     */
-    failed(test: TestItem, message: TestMessage | readonly TestMessage[], duration?: number): void;
-
-    /**
-     * Indicates a test has errored. You should pass one or more
-     * {@link TestMessage TestMessages} to describe the failure. This differs
-     * from the "failed" state in that it indicates a test that couldn't be
-     * executed at all, from a compilation error for example.
-     * @param test Test item to update.
-     * @param message Messages associated with the test failure.
-     * @param duration How long the test took to execute, in milliseconds.
-     * @stubbed
-     */
-    errored(test: TestItem, message: TestMessage | readonly TestMessage[], duration?: number): void;
-
-    /**
-     * Indicates a test has passed.
-     * @param test Test item to update.
-     * @param duration How long the test took to execute, in milliseconds.
-     * @stubbed
-     */
-    passed(test: TestItem, duration?: number): void;
-
-    /**
-     * Appends raw output from the test runner. On the user's request, the
-     * output will be displayed in a terminal. ANSI escape sequences,
-     * such as colors and text styles, are supported.
-     *
-     * @param output Output text to append.
-     * @param location Indicate that the output was logged at the given
-     * location.
-     * @param test Test item to associate the output with.
-     * @stubbed
-     */
-    appendOutput(output: string, location?: Location, test?: TestItem): void;
-
-    /**
-     * Signals that the end of the test run. Any tests included in the run whose
-     * states have not been updated will have their state reset.
-     * @stubbed
-     */
-    end(): void;
-}
-
-/**
- * Collection of test items, found in {@link TestItem.children} and
- * {@link TestController.items}.
- */
-export interface TestItemCollection extends Iterable<[id: string, testItem: TestItem]> {
-    /**
-     * Gets the number of items in the collection.
-     * @stubbed
-     */
-    readonly size: number;
-
-    /**
-     * Replaces the items stored by the collection.
-     * @param items Items to store.
-     * @stubbed
-     */
-    replace(items: readonly TestItem[]): void;
-
-    /**
-     * Iterate over each entry in this collection.
-     *
-     * @param callback Function to execute for each entry.
-     * @param thisArg The `this` context used when invoking the handler function.
-     * @stubbed
-     */
-    forEach(callback: (item: TestItem, collection: TestItemCollection) => unknown, thisArg?: any): void;
-
-    /**
-     * Adds the test item to the children. If an item with the same ID already
-     * exists, it'll be replaced.
-     * @param item Item to add.
-     * @stubbed
-     */
-    add(item: TestItem): void;
-
-    /**
-     * Removes a single test item from the collection.
-     * @param itemId Item ID to delete.
-     * @stubbed
-     */
-    delete(itemId: string): void;
-
-    /**
-     * Efficiently gets a test item by ID, if it exists, in the children.
-     * @param itemId Item ID to get.
-     * @returns The found item or undefined if it does not exist.
-     * @stubbed
-     */
-    get(itemId: string): TestItem | undefined;
-}
-
-/**
- * An item shown in the "test explorer" view.
- *
- * A `TestItem` can represent either a test suite or a test itself, since
- * they both have similar capabilities.
- */
-export interface TestItem {
-    /**
-     * Identifier for the `TestItem`. This is used to correlate
-     * test results and tests in the document with those in the workspace
-     * (test explorer). This cannot change for the lifetime of the `TestItem`,
-     * and must be unique among its parent's direct children.
-     * @stubbed
-     */
-    readonly id: string;
-
-    /**
-     * URI this `TestItem` is associated with. May be a file or directory.
-     * @stubbed
-     */
-    readonly uri: Uri | undefined;
-
-    /**
-     * The children of this test item. For a test suite, this may contain the
-     * individual test cases or nested suites.
-     * @stubbed
-     */
-    readonly children: TestItemCollection;
-
-    /**
-     * The parent of this item. It's set automatically, and is undefined
-     * top-level items in the {@link TestController.items} and for items that
-     * aren't yet included in another item's {@link TestItem.children children}.
-     * @stubbed
-     */
-    readonly parent: TestItem | undefined;
-
-    /**
-     * Tags associated with this test item. May be used in combination with
-     * {@link TestRunProfile.tags}, or simply as an organizational feature.
-     * @stubbed
-     */
-    tags: readonly TestTag[];
-
-    /**
-     * Indicates whether this test item may have children discovered by resolving.
-     *
-     * If true, this item is shown as expandable in the Test Explorer view and
-     * expanding the item will cause {@link TestController.resolveHandler}
-     * to be invoked with the item.
-     *
-     * Default to `false`.
-     * @stubbed
-     */
-    canResolveChildren: boolean;
-
-    /**
-     * Controls whether the item is shown as "busy" in the Test Explorer view.
-     * This is useful for showing status while discovering children.
-     *
-     * Defaults to `false`.
-     * @stubbed
-     */
-    busy: boolean;
-
-    /**
-     * Display name describing the test case.
-     * @stubbed
-     */
-    label: string;
-
-    /**
-     * Optional description that appears next to the label.
-     * @stubbed
-     */
-    description?: string;
-
-    /**
-     * A string that should be used when comparing this item
-     * with other items. When `falsy` the {@link TestItem.label label}
-     * is used.
-     * @stubbed
-     */
-    sortText?: string | undefined;
-
-    /**
-     * Location of the test item in its {@link TestItem.uri uri}.
-     *
-     * This is only meaningful if the `uri` points to a file.
-     * @stubbed
-     */
-    range: Range | undefined;
-
-    /**
-     * Optional error encountered while loading the test.
-     *
-     * Note that this is not a test result and should only be used to represent errors in
-     * test discovery, such as syntax errors.
-     * @stubbed
-     */
-    error: string | MarkdownString | undefined;
-}
-
-/**
- * Message associated with the test state. Can be linked to a specific
- * source range -- useful for assertion failures, for example.
- */
-export class TestMessage {
-    /**
-     * Human-readable message text to display.
-     */
-    message: string | MarkdownString;
-
-    /**
-     * Expected test output. If given with {@link TestMessage.actualOutput actualOutput }, a diff view will be shown.
-     */
-    expectedOutput?: string;
-
-    /**
-     * Actual test output. If given with {@link TestMessage.expectedOutput expectedOutput }, a diff view will be shown.
-     */
-    actualOutput?: string;
-
-    /**
-     * Associated file location.
-     */
-    location?: Location;
-
-    /**
-     * Creates a new TestMessage that will present as a diff in the editor.
-     * @param message Message to display to the user.
-     * @param expected Expected output.
-     * @param actual Actual output.
-     */
-    static diff(message: string | MarkdownString, expected: string, actual: string): TestMessage;
-
-    /**
-     * Creates a new TestMessage instance.
-     * @param message The message to show to the user.
-     */
-    constructor(message: string | MarkdownString);
-}
-
-/**
- * Thenable is a common denominator between ES6 promises, Q, jquery.Deferred, WinJS.Promise,
- * and others. This API makes no assumption about what promise library is being used which
- * enables reusing existing code without migrating to a specific promise implementation. Still,
- * we recommend the use of native promises which are available in this editor.
- */
-interface Thenable<T> {
-    /**
-     * Attaches callbacks for the resolution and/or rejection of the Promise.
-     * @param onfulfilled The callback to execute when the Promise is resolved.
-     * @param onrejected The callback to execute when the Promise is rejected.
-     * @returns A Promise for the completion of which ever callback is executed.
-     */
-    then<TResult>(onfulfilled?: (value: T) => TResult | Thenable<TResult>, onrejected?: (reason: any) => TResult | Thenable<TResult>): Thenable<TResult>;
-    then<TResult>(onfulfilled?: (value: T) => TResult | Thenable<TResult>, onrejected?: (reason: any) => void): Thenable<TResult>;
-}
-

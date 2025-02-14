@@ -11,18 +11,21 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, postConstruct } from 'inversify';
 import { LoggerWatcher } from '../common/logger-watcher';
 import { LogLevelCliContribution } from './logger-cli-contribution';
-import { ILoggerServer, ILoggerClient, ConsoleLogger } from '../common/logger-protocol';
+import { ILoggerServer, ILoggerClient, ConsoleLogger, rootLoggerName } from '../common/logger-protocol';
+import { format } from 'util';
+import { EOL } from 'os';
+import * as fs from 'fs';
 
 @injectable()
 export class ConsoleLoggerServer implements ILoggerServer {
 
-    protected client: ILoggerClient | undefined = undefined;
+    protected client?: ILoggerClient;
 
     @inject(LoggerWatcher)
     protected watcher: LoggerWatcher;
@@ -30,11 +33,17 @@ export class ConsoleLoggerServer implements ILoggerServer {
     @inject(LogLevelCliContribution)
     protected cli: LogLevelCliContribution;
 
+    protected logFileStream?: fs.WriteStream;
+
     @postConstruct()
     protected init(): void {
+        this.setLogLevel(rootLoggerName, this.cli.defaultLogLevel);
         for (const name of Object.keys(this.cli.logLevels)) {
             this.setLogLevel(name, this.cli.logLevels[name]);
         }
+        this.cli.onLogConfigChanged(() => {
+            this.client?.onLogConfigChanged();
+        });
     }
 
     async setLogLevel(name: string, newLogLevel: number): Promise<void> {
@@ -45,7 +54,6 @@ export class ConsoleLoggerServer implements ILoggerServer {
         if (this.client !== undefined) {
             this.client.onLogLevelChanged(event);
         }
-        this.watcher.fireLogLevelChanged(event);
     }
 
     async getLogLevel(name: string): Promise<number> {
@@ -56,7 +64,22 @@ export class ConsoleLoggerServer implements ILoggerServer {
     async log(name: string, logLevel: number, message: string, params: any[]): Promise<void> {
         const configuredLogLevel = await this.getLogLevel(name);
         if (logLevel >= configuredLogLevel) {
-            ConsoleLogger.log(name, logLevel, message, params);
+            const fullMessage = ConsoleLogger.log(name, logLevel, message, params);
+            this.logToFile(fullMessage, params);
+        }
+    }
+
+    protected logToFile(message: string, params: any[]): void {
+        if (this.cli.logFile && !this.logFileStream) {
+            this.logFileStream = fs.createWriteStream(this.cli.logFile, { flags: 'a' });
+            // Only log errors once to avoid spamming the console
+            this.logFileStream.once('error', error => {
+                console.error(`Error writing to log file ${this.cli.logFile}`, error);
+            });
+        }
+        if (this.logFileStream) {
+            const formatted = format(message, ...params) + EOL;
+            this.logFileStream.write(formatted);
         }
     }
 
