@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { PLUGIN_RPC_CONTEXT as Ext, OpenDialogOptionsMain, DialogsMain, SaveDialogOptionsMain, UploadDialogOptionsMain } from '../common/plugin-api-rpc';
 import { OpenDialogOptions, SaveDialogOptions, UploadDialogOptions } from '@theia/plugin';
@@ -30,8 +30,8 @@ export class DialogsExtImpl {
             title: options.title,
             openLabel: options.openLabel,
             defaultUri: options.defaultUri ? options.defaultUri.path : undefined,
-            canSelectFiles: options.canSelectFiles ? options.canSelectFiles : true,
-            canSelectFolders: options.canSelectFolders ? options.canSelectFolders : false,
+            canSelectFiles: typeof options.canSelectFiles === 'boolean' ? options.canSelectFiles : true,
+            canSelectFolders: typeof options.canSelectFolders === 'boolean' ? options.canSelectFolders : false,
             canSelectMany: options.canSelectMany,
             filters: options.filters
         } as OpenDialogOptionsMain;
@@ -41,7 +41,7 @@ export class DialogsExtImpl {
                 if (result) {
                     const uris = [];
                     for (let i = 0; i < result.length; i++) {
-                        const uri = URI.parse('file://' + result[i]);
+                        const uri = URI.file(result[i]);
                         uris.push(uri);
                     }
                     resolve(uris);

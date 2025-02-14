@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import { injectable } from '@theia/core/shared/inversify';
 import { Message } from '@theia/core/shared/@phosphor/messaging';
@@ -77,8 +77,10 @@ export class ModalNotification extends AbstractDialog<string | undefined> {
             detailElement.textContent = options.detail;
         }
 
-        actions.forEach((action: MainMessageItem) => {
-            const button = this.createButton(action.title);
+        actions.forEach((action: MainMessageItem, index: number) => {
+            const button = index === 0
+                ? this.appendAcceptButton(action.title)
+                : this.createButton(action.title);
             button.classList.add('main');
             this.controlPanel.appendChild(button);
             this.addKeyListener(button,

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import debounce = require('@theia/core/shared/lodash.debounce');
@@ -96,6 +96,9 @@ export class DebugHoverWidget extends SourceTreeWidget implements monaco.editor.
         this.domNode.appendChild(this.titleNode);
         this.contentNode.className = 'theia-debug-hover-content';
         this.domNode.appendChild(this.contentNode);
+
+        // for stopping scroll events from contentNode going to the editor
+        this.contentNode.addEventListener('wheel', e => e.stopPropagation());
 
         this.editor.getControl().addContentWidget(this);
         this.source = this.hoverSource;
@@ -194,6 +197,24 @@ export class DebugHoverWidget extends SourceTreeWidget implements monaco.editor.
             }
         } else { // use fallback if no provider was registered
             matchingExpression = this.expressionProvider.get(this.editor.getControl().getModel()!, options.selection);
+            if (matchingExpression) {
+                const expressionLineContent = this.editor
+                    .getControl()
+                    .getModel()!
+                    .getLineContent(this.options.selection.startLineNumber);
+                const startColumn =
+                    expressionLineContent.indexOf(
+                        matchingExpression,
+                        this.options.selection.startColumn - matchingExpression.length
+                    ) + 1;
+                const endColumn = startColumn + matchingExpression.length;
+                this.options.selection = new monaco.Range(
+                    this.options.selection.startLineNumber,
+                    startColumn,
+                    this.options.selection.startLineNumber,
+                    endColumn
+                );
+            }
         }
 
         if (!matchingExpression) {

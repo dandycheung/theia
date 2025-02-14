@@ -11,21 +11,21 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ConnectionErrorHandler, ContributionProvider, ILogger, MessageService } from '@theia/core/lib/common';
 import { Deferred } from '@theia/core/lib/common/promise-util';
+import { BinaryMessagePipe } from '@theia/core/lib/node/messaging/binary-message-pipe';
 import { createIpcEnv } from '@theia/core/lib/node/messaging/ipc-protocol';
 import { inject, injectable, named } from '@theia/core/shared/inversify';
 import * as cp from 'child_process';
+import { Duplex } from 'stream';
+import { DeployedPlugin, HostedPluginClient, PLUGIN_HOST_BACKEND, PluginHostEnvironmentVariable, PluginIdentifiers, ServerPluginRunner } from '../../common/plugin-protocol';
 import { HostedPluginCliContribution } from './hosted-plugin-cli-contribution';
 import { HostedPluginLocalizationService } from './hosted-plugin-localization-service';
-import { ProcessTerminatedMessage, ProcessTerminateMessage } from './hosted-plugin-protocol';
-import { BinaryMessagePipe } from '@theia/core/lib/node/messaging/binary-message-pipe';
-import { DeployedPlugin, HostedPluginClient, PluginHostEnvironmentVariable, PluginIdentifiers, PLUGIN_HOST_BACKEND, ServerPluginRunner } from '../../common/plugin-protocol';
+import { ProcessTerminateMessage, ProcessTerminatedMessage } from './hosted-plugin-protocol';
 import psTree = require('ps-tree');
-import { Duplex } from 'stream';
 
 export interface IPCConnectionOptions {
     readonly serverName: string;
@@ -126,7 +126,7 @@ export class HostedPluginProcess implements ServerPluginRunner {
             await waitForTerminated.promise;
         }
 
-        this.killProcessTree(cp.pid);
+        this.killProcessTree(cp.pid!);
     }
 
     killProcessTree(parentPid: number): void {
@@ -149,13 +149,13 @@ export class HostedPluginProcess implements ServerPluginRunner {
         }
     }
 
-    public runPluginServer(): void {
+    public runPluginServer(serverName?: string): void {
         if (this.childProcess) {
             this.terminatePluginServer();
         }
         this.terminatingPluginServer = false;
         this.childProcess = this.fork({
-            serverName: 'hosted-plugin',
+            serverName: serverName ?? 'hosted-plugin',
             logger: this.logger,
             args: []
         });
@@ -192,13 +192,12 @@ export class HostedPluginProcess implements ServerPluginRunner {
             // 5th element MUST be 'overlapped' for it to work properly on Windows.
             // 'overlapped' works just like 'pipe' on non-Windows platforms.
             // See: https://nodejs.org/docs/latest-v14.x/api/child_process.html#child_process_options_stdio
-            // Note: For some reason `@types/node` does not know about 'overlapped'.
-            stdio: ['pipe', 'pipe', 'pipe', 'ipc', 'overlapped' as 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe', 'ipc', 'overlapped']
         };
         const inspectArgPrefix = `--${options.serverName}-inspect`;
         const inspectArg = process.argv.find(v => v.startsWith(inspectArgPrefix));
         if (inspectArg !== undefined) {
-            forkOptions.execArgv = ['--nolazy', `--inspect${inspectArg.substr(inspectArgPrefix.length)}`];
+            forkOptions.execArgv = ['--nolazy', `--inspect${inspectArg.substring(inspectArgPrefix.length)}`];
         }
 
         const childProcess = cp.fork(this.configuration.path, options.args, forkOptions);
@@ -206,7 +205,7 @@ export class HostedPluginProcess implements ServerPluginRunner {
         childProcess.stderr!.on('data', data => this.logger.error(`[${options.serverName}: ${childProcess.pid}] ${data.toString().trim()}`));
 
         this.logger.debug(`[${options.serverName}: ${childProcess.pid}] IPC started`);
-        childProcess.once('exit', (code: number, signal: string) => this.onChildProcessExit(options.serverName, childProcess.pid, code, signal));
+        childProcess.once('exit', (code: number, signal: string) => this.onChildProcessExit(options.serverName, childProcess.pid!, code, signal));
         childProcess.on('error', err => this.onChildProcessError(err));
         return childProcess;
     }

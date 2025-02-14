@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, interfaces } from 'inversify';
@@ -182,25 +182,79 @@ export class TabbarStylingParticipant implements StylingParticipant {
 
         if (highContrast && focusBorder) {
             collector.addRule(`
+                #theia-bottom-content-panel .p-TabBar .p-TabBar-tab,
                 #theia-main-content-panel .p-TabBar .p-TabBar-tab {
                     outline-offset: -4px;
                 }
+                #theia-bottom-content-panel .p-TabBar .p-TabBar-tab.p-mod-current,
                 #theia-main-content-panel .p-TabBar .p-TabBar-tab.p-mod-current {
                     outline: 1px solid ${focusBorder};
                 }
+                #theia-bottom-content-panel .p-TabBar:not(.theia-tabBar-active) .p-TabBar-tab.p-mod-current,
+                #theia-main-content-panel .p-TabBar:not(.theia-tabBar-active) .p-TabBar-tab.p-mod-current {
+                    outline: 1px dotted ${focusBorder};
+                }
+                #theia-bottom-content-panel .p-TabBar .p-TabBar-tab:not(.p-mod-current):hover,
                 #theia-main-content-panel .p-TabBar .p-TabBar-tab:not(.p-mod-current):hover {
                     outline: 1px dashed ${focusBorder};
                 }
             `);
         }
         const tabActiveBackground = theme.getColor('tab.activeBackground');
-        const tabActiveBorderTop = theme.getColor('tab.activeBorderTop') || (highContrast && contrastBorder) || 'transparent';
+        const tabActiveBorderTop = theme.getColor('tab.activeBorderTop');
+        const tabUnfocusedActiveBorderTop = theme.getColor('tab.unfocusedActiveBorderTop');
         const tabActiveBorder = theme.getColor('tab.activeBorder') || (highContrast && contrastBorder) || 'transparent';
+        const tabUnfocusedActiveBorder = theme.getColor('tab.unfocusedActiveBorder') || (highContrast && contrastBorder) || 'transparent';
         collector.addRule(`
             #theia-main-content-panel .p-TabBar .p-TabBar-tab.p-mod-current {
                 color: var(--theia-tab-activeForeground);
-                ${tabActiveBackground && `background: ${tabActiveBackground};`}
-                box-shadow: 0 1px 0 ${tabActiveBorderTop} inset, 0 -1px 0 ${tabActiveBorder} inset;
+                ${tabActiveBackground ? `background: ${tabActiveBackground};` : ''}
+                ${tabActiveBorderTop ? `border-top: 1px solid ${tabActiveBorderTop};` : ''}
+                border-bottom: 1px solid ${tabActiveBorder};
+            }
+            #theia-main-content-panel .p-TabBar:not(.theia-tabBar-active) .p-TabBar-tab.p-mod-current {
+                background: var(--theia-tab-unfocusedActiveBackground);
+                color: var(--theia-tab-unfocusedActiveForeground);
+                ${tabUnfocusedActiveBorderTop ? `border-top: 1px solid ${tabUnfocusedActiveBorderTop};` : ''}
+                border-bottom: 1px solid ${tabUnfocusedActiveBorder};
+            }
+        `);
+
+        // Highlight Modified Tabs
+        const tabActiveModifiedBorder = theme.getColor('tab.activeModifiedBorder');
+        const tabUnfocusedInactiveModifiedBorder = theme.getColor('tab.unfocusedInactiveModifiedBorder');
+        const tabInactiveModifiedBorder = theme.getColor('tab.inactiveModifiedBorder');
+        if (tabActiveModifiedBorder || tabInactiveModifiedBorder) {
+            collector.addRule(`
+                body.theia-editor-highlightModifiedTabs
+                #theia-main-content-panel .p-TabBar .p-TabBar-tab.theia-mod-dirty {
+                    border-top: 2px solid ${tabInactiveModifiedBorder};
+                    padding-bottom: 1px;
+                }
+
+                body.theia-editor-highlightModifiedTabs
+                #theia-main-content-panel .p-TabBar.theia-tabBar-active .p-TabBar-tab.theia-mod-dirty.p-mod-current {
+                    border-top: 2px solid ${tabActiveModifiedBorder};
+                }
+                
+                body.theia-editor-highlightModifiedTabs
+                #theia-main-content-panel .p-TabBar:not(.theia-tabBar-active) .p-TabBar-tab.theia-mod-dirty:not(.p-mod-current) {
+                    border-top: 2px solid ${tabUnfocusedInactiveModifiedBorder};
+                }
+            `);
+        }
+
+        // Activity Bar Active Border
+        const activityBarActiveBorder = theme.getColor('activityBar.activeBorder') || 'var(--theia-activityBar-foreground)';
+        collector.addRule(`
+            .p-TabBar.theia-app-left .p-TabBar-tab.p-mod-current {
+                border-top-color: transparent;
+                box-shadow: 2px 0 0 ${activityBarActiveBorder} inset;
+            }
+          
+            .p-TabBar.theia-app-right .p-TabBar-tab.p-mod-current {
+                border-top-color: transparent;
+                box-shadow: -2px 0 0 ${activityBarActiveBorder} inset;
             }
         `);
         // Hover Background

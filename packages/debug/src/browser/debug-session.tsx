@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -33,7 +33,7 @@ import { DebugSourceBreakpoint } from './model/debug-source-breakpoint';
 import debounce = require('p-debounce');
 import URI from '@theia/core/lib/common/uri';
 import { BreakpointManager } from './breakpoint/breakpoint-manager';
-import { DebugConfigurationSessionOptions, InternalDebugSessionOptions } from './debug-session-options';
+import { DebugConfigurationSessionOptions, InternalDebugSessionOptions, TestRunReference } from './debug-session-options';
 import { DebugConfiguration, DebugConsoleMode } from '../common/debug-common';
 import { SourceBreakpoint, ExceptionBreakpoint } from './breakpoint/breakpoint-marker';
 import { TerminalWidgetOptions, TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
@@ -43,12 +43,27 @@ import { DebugContribution } from './debug-contribution';
 import { Deferred, waitForEvent } from '@theia/core/lib/common/promise-util';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { DebugInstructionBreakpoint } from './model/debug-instruction-breakpoint';
+import { nls } from '@theia/core';
+import { TestService, TestServices } from '@theia/test/lib/browser/test-service';
+import { DebugSessionManager } from './debug-session-manager';
 
 export enum DebugState {
     Inactive,
     Initializing,
     Running,
     Stopped
+}
+/**
+ * The mapped string values must not change as they are used for the `debugState` when context closure.
+ * For more details see the `Debugger contexts` section of the [official doc](https://code.visualstudio.com/api/references/when-clause-contexts#available-contexts).
+ */
+export function debugStateContextValue(state: DebugState): string {
+    switch (state) {
+        case DebugState.Initializing: return 'initializing';
+        case DebugState.Stopped: return 'stopped';
+        case DebugState.Running: return 'running';
+        default: return 'inactive';
+    }
 }
 
 // FIXME: make injectable to allow easily inject services
@@ -65,6 +80,11 @@ export class DebugSession implements CompositeTreeElement {
         return this.onDidFocusStackFrameEmitter.event;
     }
 
+    protected readonly onDidFocusThreadEmitter = new Emitter<DebugThread | undefined>();
+    get onDidFocusThread(): Event<DebugThread | undefined> {
+        return this.onDidFocusThreadEmitter.event;
+    }
+
     protected readonly onDidChangeBreakpointsEmitter = new Emitter<URI>();
     readonly onDidChangeBreakpoints: Event<URI> = this.onDidChangeBreakpointsEmitter.event;
     protected fireDidChangeBreakpoints(uri: URI): void {
@@ -74,12 +94,15 @@ export class DebugSession implements CompositeTreeElement {
     protected readonly childSessions = new Map<string, DebugSession>();
     protected readonly toDispose = new DisposableCollection();
 
-    private isStopping: boolean = false;
+    protected isStopping: boolean = false;
 
     constructor(
         readonly id: string,
         readonly options: DebugConfigurationSessionOptions,
         readonly parentSession: DebugSession | undefined,
+        testService: TestService,
+        testRun: TestRunReference | undefined,
+        sessionManager: DebugSessionManager,
         protected readonly connection: DebugSessionConnection,
         protected readonly terminalServer: TerminalService,
         protected readonly editorManager: EditorManager,
@@ -89,6 +112,10 @@ export class DebugSession implements CompositeTreeElement {
         protected readonly fileService: FileService,
         protected readonly debugContributionProvider: ContributionProvider<DebugContribution>,
         protected readonly workspaceService: WorkspaceService,
+        /**
+         * Number of millis after a `stop` request times out. It's 5 seconds by default.
+         */
+        protected readonly stopTimeout = 5_000,
     ) {
         this.connection.onRequest('runInTerminal', (request: DebugProtocol.RunInTerminalRequest) => this.runInTerminal(request));
         this.connection.onDidClose(() => {
@@ -102,6 +129,19 @@ export class DebugSession implements CompositeTreeElement {
                 this.parentSession?.childSessions?.delete(id);
             }));
         }
+        if (testRun) {
+            try {
+                const run = TestServices.withTestRun(testService, testRun.controllerId, testRun.runId);
+                run.onDidChangeProperty(evt => {
+                    if (evt.isRunning === false) {
+                        sessionManager.terminateSession(this);
+                    }
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
         this.connection.onDidClose(() => this.toDispose.dispose());
         this.toDispose.pushAll([
             this.onDidChangeEmitter,
@@ -237,8 +277,12 @@ export class DebugSession implements CompositeTreeElement {
         return this._currentThread;
     }
     set currentThread(thread: DebugThread | undefined) {
+        if (this._currentThread?.id === thread?.id) {
+            return;
+        }
         this.toDisposeOnCurrentThread.dispose();
         this._currentThread = thread;
+        this.onDidFocusThreadEmitter.fire(thread);
         this.fireDidChange();
         if (thread) {
             this.toDisposeOnCurrentThread.push(thread.onDidChanged(() => this.fireDidChange()));
@@ -268,44 +312,63 @@ export class DebugSession implements CompositeTreeElement {
         return currentFrame ? currentFrame.getScopes() : [];
     }
 
+    showMessage(messageType: MessageType, message: string): void {
+        this.messages.showMessage({
+            type: messageType,
+            text: message,
+            options: {
+                timeout: 10000
+            }
+        });
+    }
+
     async start(): Promise<void> {
         await this.initialize();
         await this.launchOrAttach();
     }
 
     protected async initialize(): Promise<void> {
-        const response = await this.connection.sendRequest('initialize', {
-            clientID: 'Theia',
-            clientName: 'Theia IDE',
-            adapterID: this.configuration.type,
-            locale: 'en-US',
-            linesStartAt1: true,
-            columnsStartAt1: true,
-            pathFormat: 'path',
-            supportsVariableType: false,
-            supportsVariablePaging: false,
-            supportsRunInTerminalRequest: true
-        });
-        this.updateCapabilities(response?.body || {});
+        try {
+            const response = await this.connection.sendRequest('initialize', {
+                clientID: 'Theia',
+                clientName: 'Theia IDE',
+                adapterID: this.configuration.type,
+                locale: 'en-US',
+                linesStartAt1: true,
+                columnsStartAt1: true,
+                pathFormat: 'path',
+                supportsVariableType: false,
+                supportsVariablePaging: false,
+                supportsRunInTerminalRequest: true
+            });
+            this.updateCapabilities(response?.body || {});
+            this.didReceiveCapabilities.resolve();
+        } catch (err) {
+            this.didReceiveCapabilities.reject(err);
+            throw err;
+        }
     }
 
     protected async launchOrAttach(): Promise<void> {
         try {
             await this.sendRequest((this.configuration.request as keyof DebugRequestTypes), this.configuration);
         } catch (reason) {
-            this.messages.showMessage({
-                type: MessageType.Error,
-                text: reason.message || 'Debug session initialization failed. See console for details.',
-                options: {
-                    timeout: 10000
-                }
-            });
+            this.showMessage(MessageType.Error, reason.message || 'Debug session initialization failed. See console for details.');
             throw reason;
         }
     }
 
+    /**
+     * The `send('initialize')` request could resolve later than `on('initialized')` emits the event.
+     * Hence, the `configure` would use the empty object `capabilities`.
+     * Using the empty `capabilities` could result in missing exception breakpoint filters, as
+     * always `capabilities.exceptionBreakpointFilters` is falsy. This deferred promise works
+     * around this timing issue. https://github.com/eclipse-theia/theia/issues/11886
+     */
+    protected didReceiveCapabilities = new Deferred<void>();
     protected initialized = false;
     protected async configure(): Promise<void> {
+        await this.didReceiveCapabilities.promise;
         if (this.capabilities.exceptionBreakpointFilters) {
             const exceptionBreakpoints = [];
             for (const filter of this.capabilities.exceptionBreakpointFilters) {
@@ -314,11 +377,12 @@ export class DebugSession implements CompositeTreeElement {
             }
             this.breakpoints.setExceptionBreakpoints(exceptionBreakpoints);
         }
+        // mark as initialized, so updated breakpoints are shown in editor
+        this.initialized = true;
         await this.updateBreakpoints({ sourceModified: false });
         if (this.capabilities.supportsConfigurationDoneRequest) {
             await this.sendRequest('configurationDone', {});
         }
-        this.initialized = true;
         await this.updateThreads(undefined);
     }
 
@@ -340,22 +404,37 @@ export class DebugSession implements CompositeTreeElement {
         if (!this.isStopping) {
             this.isStopping = true;
             if (this.canTerminate()) {
-                const terminated = this.waitFor('terminated', 5000);
+                const terminated = this.waitFor('terminated', this.stopTimeout);
                 try {
-                    await this.connection.sendRequest('terminate', { restart: isRestart }, 5000);
+                    await this.connection.sendRequest('terminate', { restart: isRestart }, this.stopTimeout);
                     await terminated;
                 } catch (e) {
-                    console.error('Did not receive terminated event in time', e);
+                    this.handleTerminateError(e);
                 }
             } else {
+                const terminateDebuggee = this.initialized && this.capabilities.supportTerminateDebuggee;
                 try {
-                    await this.sendRequest('disconnect', { restart: isRestart }, 5000);
+                    await this.sendRequest('disconnect', { restart: isRestart, terminateDebuggee }, this.stopTimeout);
                 } catch (e) {
-                    console.error('Error on disconnect', e);
+                    this.handleDisconnectError(e);
                 }
             }
             callback();
         }
+    }
+
+    /**
+     * Invoked when sending the `terminate` request to the debugger is rejected or timed out.
+     */
+    protected handleTerminateError(err: unknown): void {
+        console.error('Did not receive terminated event in time', err);
+    }
+
+    /**
+     * Invoked when sending the `disconnect` request to the debugger is rejected or timed out.
+     */
+    protected handleDisconnectError(err: unknown): void {
+        console.error('Error on disconnect', err);
     }
 
     async disconnect(isRestart: boolean, callback: () => void): Promise<void> {
@@ -527,7 +606,7 @@ export class DebugSession implements CompositeTreeElement {
 
     getInstructionBreakpoints(): DebugInstructionBreakpoint[] {
         if (this.capabilities.supportsInstructionBreakpoints) {
-            return this.getBreakpoints(BreakpointManager.FUNCTION_URI)
+            return this.getBreakpoints(BreakpointManager.INSTRUCTION_URI)
                 .filter((breakpoint): breakpoint is DebugInstructionBreakpoint => breakpoint instanceof DebugInstructionBreakpoint);
         }
         return this.breakpoints.getInstructionBreakpoints().map(origin => new DebugInstructionBreakpoint(origin, this.asDebugBreakpointOptions()));
@@ -582,7 +661,7 @@ export class DebugSession implements CompositeTreeElement {
                     }
                 }
             }
-            if (body.reason === 'removed' && raw.id) {
+            if (body.reason === 'removed' && typeof raw.id === 'number') {
                 const toRemove = this.findBreakpoint(b => b.idFromAdapter === raw.id);
                 if (toRemove) {
                     toRemove.remove();
@@ -594,7 +673,7 @@ export class DebugSession implements CompositeTreeElement {
                     }
                 }
             }
-            if (body.reason === 'changed' && raw.id) {
+            if (body.reason === 'changed' && typeof raw.id === 'number') {
                 const toUpdate = this.findBreakpoint(b => b.idFromAdapter === raw.id);
                 if (toUpdate) {
                     toUpdate.update({ raw });
@@ -646,13 +725,21 @@ export class DebugSession implements CompositeTreeElement {
     }
 
     protected async sendExceptionBreakpoints(): Promise<void> {
-        const filters = [];
+        const filters: string[] = [];
+        const filterOptions: DebugProtocol.ExceptionFilterOptions[] | undefined = this.capabilities.supportsExceptionFilterOptions ? [] : undefined;
         for (const breakpoint of this.breakpoints.getExceptionBreakpoints()) {
             if (breakpoint.enabled) {
-                filters.push(breakpoint.raw.filter);
+                if (filterOptions) {
+                    filterOptions.push({
+                        filterId: breakpoint.raw.filter,
+                        condition: breakpoint.condition
+                    });
+                } else {
+                    filters.push(breakpoint.raw.filter);
+                }
             }
         }
-        await this.sendRequest('setExceptionBreakpoints', { filters });
+        await this.sendRequest('setExceptionBreakpoints', { filters, filterOptions });
     }
 
     protected async sendFunctionBreakpoints(affectedUri: URI): Promise<void> {
@@ -665,12 +752,17 @@ export class DebugSession implements CompositeTreeElement {
                 const response = await this.sendRequest('setFunctionBreakpoints', {
                     breakpoints: enabled.map(b => b.origin.raw)
                 });
-                response.body.breakpoints.forEach((raw, index) => {
-                    // node debug adapter returns more breakpoints sometimes
-                    if (enabled[index]) {
-                        enabled[index].update({ raw });
-                    }
-                });
+                // Apparently, `body` and `breakpoints` can be missing.
+                // https://github.com/eclipse-theia/theia/issues/11885
+                // https://github.com/microsoft/vscode/blob/80004351ccf0884b58359f7c8c801c91bb827d83/src/vs/workbench/contrib/debug/browser/debugSession.ts#L448-L449
+                if (response && response.body) {
+                    response.body.breakpoints.forEach((raw, index) => {
+                        // node debug adapter returns more breakpoints sometimes
+                        if (enabled[index]) {
+                            enabled[index].update({ raw });
+                        }
+                    });
+                }
             } catch (error) {
                 // could be error or promise rejection of DebugProtocol.SetFunctionBreakpoints
                 if (error instanceof Error) {
@@ -699,10 +791,12 @@ export class DebugSession implements CompositeTreeElement {
         );
         const enabled = all.filter(b => b.enabled);
         try {
+            const breakpoints = enabled.map(({ origin }) => origin.raw);
             const response = await this.sendRequest('setBreakpoints', {
                 source: source.raw,
                 sourceModified,
-                breakpoints: enabled.map(({ origin }) => origin.raw)
+                breakpoints,
+                lines: breakpoints.map(({ line }) => line)
             });
             response.body.breakpoints.forEach((raw, index) => {
                 // node debug adapter returns more breakpoints sometimes
@@ -807,6 +901,7 @@ export class DebugSession implements CompositeTreeElement {
 
     render(): React.ReactNode {
         let label = '';
+        const state = this.state === DebugState.Stopped ? nls.localizeByDefault('Paused') : nls.localizeByDefault('Running');
         const child = this.getSingleChildSession();
         if (child && child.configuration.compact) {
             // Inlines the name of the child debug session
@@ -814,7 +909,7 @@ export class DebugSession implements CompositeTreeElement {
         }
         return <div className='theia-debug-session' title='Session'>
             <span className='label'>{this.label + label}</span>
-            <span className='status'>{this.state === DebugState.Stopped ? 'Paused' : 'Running'}</span>
+            <span className='status'>{state}</span>
         </div>;
     }
 
@@ -856,7 +951,8 @@ export class DebugSession implements CompositeTreeElement {
         if (reason === 'started') {
             this.scheduleUpdateThreads();
         } else if (reason === 'exited') {
-            this.clearThread(threadId);
+            this._threads.delete(threadId);
+            this.updateCurrentThread();
         }
     };
 

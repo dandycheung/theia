@@ -14,10 +14,17 @@
 
 The `@theia/api-samples` extension contains programming examples on how to use internal APIs.
 The purpose of the extension is to:
+
 - provide developers with real-world coding examples using internal APIs, dependency injection, etc.
 - provide easy-to-use and test examples for features when reviewing pull-requests.
 
 The extension is for reference and test purposes only and is not published on `npm` (`private: true`).
+
+### Sample mock OpenVSX server
+
+These samples contain a mock implementation of an OpenVSX server. This is done
+for testing purposes only. It is currently hosted at
+`<backend-host>/mock-open-vsx/api/...`.
 
 ## Additional Information
 
@@ -30,5 +37,6 @@ The extension is for reference and test purposes only and is not published on `n
 - [一 (Secondary) GNU General Public License, version 2 with the GNU Classpath Exception](https://projects.eclipse.org/license/secondary-gpl-2.0-cp)
 
 ## Trademark
+
 "Theia" is a trademark of the Eclipse Foundation
-https://www.eclipse.org/theia
+<https://www.eclipse.org/theia>

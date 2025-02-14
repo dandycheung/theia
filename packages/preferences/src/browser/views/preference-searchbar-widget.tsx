@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { codicon, ReactWidget, StatefulWidget, Widget } from '@theia/core/lib/browser';
@@ -148,7 +148,7 @@ export class PreferencesSearchbarWidget extends ReactWidget implements StatefulW
                         type="text"
                         id={PreferencesSearchbarWidget.SEARCHBAR_ID}
                         spellCheck={false}
-                        placeholder={nls.localizeByDefault('Search Settings')}
+                        placeholder={nls.localizeByDefault('Search settings')}
                         className="settings-search-input theia-input"
                         onChange={this.handleSearch}
                         ref={this.searchbarRef}

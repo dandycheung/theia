@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, postConstruct } from 'inversify';
 import { PreferenceSchema } from '../../common/preferences/preference-schema';
-import { Disposable, DisposableCollection, Emitter, Event, MaybePromise } from '../../common';
+import { Disposable, DisposableCollection, Emitter, Event, isObject, MaybePromise } from '../../common';
 import { PreferenceChangeEvent, PreferenceEventEmitter, PreferenceProxy, PreferenceProxyOptions, PreferenceRetrieval } from './preference-proxy';
 import { PreferenceChange, PreferenceChangeImpl, PreferenceChanges, PreferenceScope, PreferenceService } from './preference-service';
 import { JSONValue } from '@phosphor/coreutils';
@@ -48,7 +48,7 @@ export class InjectablePreferenceProxy<T extends Record<string, JSONValue>> impl
 
     @inject(PreferenceProxyOptions) protected readonly options: PreferenceProxyOptions;
     @inject(PreferenceService) protected readonly preferences: PreferenceService;
-    @inject(PreferenceProxySchema) protected readonly promisedSchema: PreferenceSchema | Promise<PreferenceSchema>;
+    @inject(PreferenceProxySchema) protected readonly promisedSchema: () => PreferenceSchema | Promise<PreferenceSchema>;
     @inject(PreferenceProxyFactory) protected readonly factory: PreferenceProxyFactory;
     protected toDispose = new DisposableCollection();
     protected _onPreferenceChangedEmitter: Emitter<PreferenceChangeEvent<T>> | undefined;
@@ -95,15 +95,18 @@ export class InjectablePreferenceProxy<T extends Record<string, JSONValue>> impl
 
     @postConstruct()
     protected init(): void {
-        if (this.promisedSchema instanceof Promise) {
-            this.promisedSchema.then(schema => this.schema = schema);
+        const schema = this.promisedSchema();
+        if (schema instanceof Promise) {
+            schema.then(resolvedSchema => this.schema = resolvedSchema);
         } else {
-            this.schema = this.promisedSchema;
+            this.schema = schema;
         }
     }
 
     get(target: unknown, property: string, receiver: unknown): unknown {
-        if (typeof property !== 'string') { throw new Error(`Unexpected property: ${String(property)}`); }
+        if (typeof property !== 'string') {
+            throw new Error(`Unexpected property: ${String(property)}`);
+        }
         const preferenceName = this.prefix + property;
         if (this.schema && (this.isFlat || !property.includes('.')) && this.schema.properties[preferenceName]) {
             const { overrideIdentifier } = this;
@@ -143,7 +146,7 @@ export class InjectablePreferenceProxy<T extends Record<string, JSONValue>> impl
             } while (parentSegment && value === undefined);
 
             let segment;
-            while (typeof value === 'object' && (segment = segments.pop())) {
+            while (isObject(value) && (segment = segments.pop())) {
                 value = value[segment];
             }
             return segments.length ? undefined : value;

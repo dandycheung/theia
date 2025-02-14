@@ -11,27 +11,32 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ContainerModule } from 'inversify';
 import { localizationPath } from '../../common/i18n/localization';
 import { LocalizationProvider } from './localization-provider';
-import { ConnectionHandler, JsonRpcConnectionHandler, bindContributionProvider } from '../../common';
+import { ConnectionHandler, RpcConnectionHandler, bindContributionProvider } from '../../common';
 import { LocalizationRegistry, LocalizationContribution } from './localization-contribution';
-import { LocalizationBackendContribution } from './localization-backend-contribution';
-import { BackendApplicationContribution } from '../backend-application';
+import { LocalizationServerImpl } from './localization-server';
 import { TheiaLocalizationContribution } from './theia-localization-contribution';
+import { LocalizationServer, LocalizationServerPath } from '../../common/i18n/localization-server';
+import { BackendApplicationContribution } from '../backend-application';
 
 export default new ContainerModule(bind => {
     bind(LocalizationProvider).toSelf().inSingletonScope();
     bind(ConnectionHandler).toDynamicValue(ctx =>
-        new JsonRpcConnectionHandler(localizationPath, () => ctx.container.get(LocalizationProvider))
+        new RpcConnectionHandler(localizationPath, () => ctx.container.get(LocalizationProvider))
     ).inSingletonScope();
     bind(LocalizationRegistry).toSelf().inSingletonScope();
     bindContributionProvider(bind, LocalizationContribution);
-    bind(LocalizationBackendContribution).toSelf().inSingletonScope();
-    bind(BackendApplicationContribution).toService(LocalizationBackendContribution);
+    bind(LocalizationServerImpl).toSelf().inSingletonScope();
+    bind(LocalizationServer).toService(LocalizationServerImpl);
+    bind(BackendApplicationContribution).toService(LocalizationServerImpl);
+    bind(ConnectionHandler).toDynamicValue(ctx =>
+        new RpcConnectionHandler(LocalizationServerPath, () => ctx.container.get(LocalizationServer))
+    ).inSingletonScope();
     bind(TheiaLocalizationContribution).toSelf().inSingletonScope();
     bind(LocalizationContribution).toService(TheiaLocalizationContribution);
 });

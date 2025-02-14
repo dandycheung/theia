@@ -11,23 +11,21 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { Message } from '@theia/core/shared/@phosphor/messaging';
 import URI from '@theia/core/lib/common/uri';
 import { CommandService } from '@theia/core/lib/common';
-import { Key, TreeModel, SelectableTreeNode, OpenerService, ContextMenuRenderer, ExpandableTreeNode, TreeProps, TreeNode } from '@theia/core/lib/browser';
-import { FileNode, DirNode } from '@theia/filesystem/lib/browser';
+import { Key, TreeModel, ContextMenuRenderer, ExpandableTreeNode, TreeProps, TreeNode } from '@theia/core/lib/browser';
+import { DirNode, FileStatNodeData } from '@theia/filesystem/lib/browser';
 import { WorkspaceService, WorkspaceCommands } from '@theia/workspace/lib/browser';
-import { ApplicationShell } from '@theia/core/lib/browser/shell/application-shell';
 import { WorkspaceNode, WorkspaceRootNode } from './navigator-tree';
 import { FileNavigatorModel } from './navigator-model';
 import { isOSX, environment } from '@theia/core';
 import * as React from '@theia/core/shared/react';
 import { NavigatorContextKeyService } from './navigator-context-key-service';
-import { FileNavigatorCommands } from './file-navigator-commands';
 import { nls } from '@theia/core/lib/common/nls';
 import { AbstractNavigatorTreeWidget } from './abstract-navigator-tree-widget';
 
@@ -38,10 +36,8 @@ export const CLASS = 'theia-Files';
 @injectable()
 export class FileNavigatorWidget extends AbstractNavigatorTreeWidget {
 
-    @inject(ApplicationShell) protected readonly shell: ApplicationShell;
     @inject(CommandService) protected readonly commandService: CommandService;
     @inject(NavigatorContextKeyService) protected readonly contextKeyService: NavigatorContextKeyService;
-    @inject(OpenerService) protected readonly openerService: OpenerService;
     @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService;
 
     constructor(
@@ -97,36 +93,6 @@ export class FileNavigatorWidget extends AbstractNavigatorTreeWidget {
         }
     }
 
-    protected enableDndOnMainPanel(): void {
-        const mainPanelNode = this.shell.mainPanel.node;
-        this.addEventListener(mainPanelNode, 'drop', async ({ dataTransfer }) => {
-            const treeNodes = dataTransfer && this.getSelectedTreeNodesFromData(dataTransfer) || [];
-            if (treeNodes.length > 0) {
-                treeNodes.filter(FileNode.is).forEach(treeNode => {
-                    if (!SelectableTreeNode.isSelected(treeNode)) {
-                        this.model.toggleNode(treeNode);
-                    }
-                });
-                this.commandService.executeCommand(FileNavigatorCommands.OPEN.id);
-            } else if (dataTransfer && dataTransfer.files?.length > 0) {
-                // the files were dragged from the outside the workspace
-                Array.from(dataTransfer.files).forEach(async file => {
-                    const fileUri = new URI(file.path);
-                    const opener = await this.openerService.getOpener(fileUri);
-                    opener.open(fileUri);
-                });
-            }
-        });
-        const handler = (e: DragEvent) => {
-            if (e.dataTransfer) {
-                e.dataTransfer.dropEffect = 'link';
-                e.preventDefault();
-            }
-        };
-        this.addEventListener(mainPanelNode, 'dragover', handler);
-        this.addEventListener(mainPanelNode, 'dragenter', handler);
-    }
-
     override getContainerTreeNode(): TreeNode | undefined {
         const root = this.model.root;
         if (this.workspaceService.isMultiRootWorkspaceOpened) {
@@ -153,7 +119,6 @@ export class FileNavigatorWidget extends AbstractNavigatorTreeWidget {
         super.onAfterAttach(msg);
         this.addClipboardListener(this.node, 'copy', e => this.handleCopy(e));
         this.addClipboardListener(this.node, 'paste', e => this.handlePaste(e));
-        this.enableDndOnMainPanel();
     }
 
     protected handleCopy(event: ClipboardEvent): void {
@@ -210,14 +175,13 @@ export class FileNavigatorWidget extends AbstractNavigatorTreeWidget {
      * Instead of displaying an empty navigator tree, this will show a button to add more folders.
      */
     protected renderEmptyMultiRootWorkspace(): React.ReactNode {
-        // TODO: @msujew Implement a markdown renderer and use vscode/explorerViewlet/noFolderHelp
         return <div className='theia-navigator-container'>
-            <div className='center'>You have not yet added a folder to the workspace.</div>
+            <div className='center'>{nls.localizeByDefault('You have not yet added a folder to the workspace.\n{0}', '')}</div>
             <div className='open-workspace-button-container'>
-                <button className='theia-button open-workspace-button' title='Add a folder to your workspace'
+                <button className='theia-button open-workspace-button' title={nls.localizeByDefault('Add Folder to Workspace')}
                     onClick={this.addFolder}
                     onKeyUp={this.keyUpHandler}>
-                    Add Folder
+                    {nls.localizeByDefault('Open Folder')}
                 </button>
             </div>
         </div>;
@@ -246,6 +210,10 @@ export class FileNavigatorWidget extends AbstractNavigatorTreeWidget {
 
     protected updateSelectionContextKeys(): void {
         this.contextKeyService.explorerResourceIsFolder.set(DirNode.is(this.model.selectedNodes[0]));
+        // As `FileStatNode` only created if `FileService.resolve` was successful, we can safely assume that
+        // a valid `FileSystemProvider` is available for the selected node. So we skip an additional check
+        // for provider availability here and check the node type.
+        this.contextKeyService.isFileSystemResource.set(FileStatNodeData.is(this.model.selectedNodes[0]));
     }
 
 }

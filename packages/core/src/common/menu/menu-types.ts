@@ -11,14 +11,15 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Disposable } from '../disposable';
+import { isObject } from '../types';
 
 export type MenuPath = string[];
 export const MAIN_MENU_BAR: MenuPath = ['menubar'];
-export const SETTINGS_MENU: MenuPath = ['settings_menu'];
+export const MANAGE_MENU: MenuPath = ['manage_menu'];
 export const ACCOUNTS_MENU: MenuPath = ['accounts_menu'];
 export const ACCOUNTS_SUBMENU = [...ACCOUNTS_MENU, '1_accounts_submenu'];
 
@@ -67,6 +68,7 @@ export interface MenuNodeBase extends MenuNodeMetadata, MenuNodeRenderingData { 
  * A menu entry representing an action, e.g. "New File".
  */
 export interface MenuAction extends MenuNodeRenderingData, Pick<MenuNodeMetadata, 'when'> {
+
     /**
      * The command to execute.
      */
@@ -86,7 +88,7 @@ export interface MenuAction extends MenuNodeRenderingData, Pick<MenuNodeMetadata
 export namespace MenuAction {
     /* Determine whether object is a MenuAction */
     export function is(arg: unknown): arg is MenuAction {
-        return !!arg && typeof arg === 'object' && 'commandId' in arg;
+        return isObject(arg) && 'commandId' in arg;
     }
 }
 

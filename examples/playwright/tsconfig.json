@@ -3,11 +3,14 @@
   "compilerOptions": {
     "composite": true,
     "rootDir": "src",
-    "outDir": "lib",
-    "baseUrl": "."
+    "outDir": "lib"
   },
   "include": [
     "src"
   ],
-  "references": []
+  "references": [
+    {
+      "path": "../../dev-packages/cli"
+    }
+  ]
 }

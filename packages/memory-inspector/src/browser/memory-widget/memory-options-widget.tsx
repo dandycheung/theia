@@ -11,7 +11,7 @@
  * with the GNU Classpath Exception which is available at
  * https://www.gnu.org/software/classpath/license.html.
  *
- * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
  ********************************************************************************/
 
 import { deepFreeze, Disposable, DisposableCollection, Emitter, nls } from '@theia/core';
@@ -21,7 +21,7 @@ import { inject, injectable, postConstruct } from '@theia/core/shared/inversify'
 import * as React from '@theia/core/shared/react';
 import { DebugSession, DebugState } from '@theia/debug/lib/browser/debug-session';
 import { DebugSessionManager } from '@theia/debug/lib/browser/debug-session-manager';
-import * as Long from 'long';
+import Long from 'long';
 import { MemoryProviderService } from '../memory-provider/memory-provider-service';
 import { Recents } from '../utils/memory-recents';
 import { MWInput, MWInputWithSelect, MWSelect } from '../utils/memory-widget-components';
@@ -67,7 +67,7 @@ export class MemoryOptionsWidget extends ReactWidget implements StatefulWidget {
     protected memoryReadResult: Interfaces.MemoryReadResult = EMPTY_MEMORY;
     protected columnsDisplayed: Interfaces.ColumnsDisplayed = {
         address: {
-            label: nls.localize('theia/memory-inspector/address', 'Address'),
+            label: nls.localizeByDefault('Address'),
             doRender: true
         },
         data: {
@@ -391,7 +391,7 @@ export class MemoryOptionsWidget extends ReactWidget implements StatefulWidget {
                 <div className='t-mv-group view-group'>
                     <MWInputWithSelect
                         id={LOCATION_FIELD_ID}
-                        label={nls.localize('theia/memory-inspector/address', 'Address')}
+                        label={nls.localizeByDefault('Address')}
                         title={nls.localize('theia/memory-inspector/addressTooltip', 'Memory location to display, an address or expression evaluating to an address')}
                         defaultValue={`${this.address}`}
                         onSelectChange={this.setAddressFromSelect}

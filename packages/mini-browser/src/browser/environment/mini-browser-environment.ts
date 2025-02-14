@@ -11,14 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Endpoint, FrontendApplicationContribution } from '@theia/core/lib/browser';
 import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
 import { environment } from '@theia/core/shared/@theia/application-package/lib/environment';
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { v4 } from 'uuid';
+import { generateUuid } from '@theia/core/lib/common/uuid';
 import { MiniBrowserEndpoint } from '../../common/mini-browser-endpoint';
 
 /**
@@ -35,7 +35,7 @@ export class MiniBrowserEnvironment implements FrontendApplicationContribution {
     protected environment: EnvVariablesServer;
 
     @postConstruct()
-    protected postConstruct(): void {
+    protected init(): void {
         this._hostPatternPromise = this.getHostPattern()
             .then(pattern => this._hostPattern = pattern);
     }
@@ -71,7 +71,7 @@ export class MiniBrowserEnvironment implements FrontendApplicationContribution {
      * Throws if `hostPatternPromise` is not yet resolved.
      */
     getRandomEndpoint(): Endpoint {
-        return this.getEndpoint(v4());
+        return this.getEndpoint(generateUuid());
     }
 
     protected async getHostPattern(): Promise<string> {

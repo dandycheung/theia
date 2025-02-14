@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
@@ -82,15 +82,23 @@ export class NotificationManager extends MessageClient {
 
     protected notificationToastsVisibleKey: ContextKey<boolean>;
     protected notificationCenterVisibleKey: ContextKey<boolean>;
+    protected notificationsVisible: ContextKey<boolean>;
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         this.notificationToastsVisibleKey = this.contextKeyService.createKey<boolean>('notificationToastsVisible', false);
         this.notificationCenterVisibleKey = this.contextKeyService.createKey<boolean>('notificationCenterVisible', false);
+        this.notificationsVisible = this.contextKeyService.createKey<boolean>('notificationsVisible', false);
     }
+
     protected updateContextKeys(): void {
         this.notificationToastsVisibleKey.set(this.toastsVisible);
         this.notificationCenterVisibleKey.set(this.centerVisible);
+        this.notificationsVisible.set(this.toastsVisible || this.centerVisible);
     }
 
     get toastsVisible(): boolean {
@@ -131,8 +139,8 @@ export class NotificationManager extends MessageClient {
             return;
         }
         this.deferredResults.delete(messageId);
-        if (this.centerVisible && this.notifications.size === 0) {
-            this.visibilityState = 'hidden';
+        if ((this.centerVisible && !this.notifications.size) || (this.toastsVisible && !this.toasts.size)) {
+            this.setVisibilityState('hidden');
         }
         result.resolve(action);
         this.fireUpdatedEvent();
@@ -172,18 +180,23 @@ export class NotificationManager extends MessageClient {
     override showMessage(plainMessage: PlainMessage): Promise<string | undefined> {
         const messageId = this.getMessageId(plainMessage);
 
-        let notification = this.notifications.get(messageId);
-        if (!notification) {
-            const message = this.contentRenderer.renderMessage(plainMessage.text);
-            const type = this.toNotificationType(plainMessage.type);
-            const actions = Array.from(new Set(plainMessage.actions));
-            const source = plainMessage.source;
-            const expandable = this.isExpandable(message, source, actions);
-            const collapsed = expandable;
-            notification = { messageId, message, type, actions, expandable, collapsed };
-            this.notifications.set(messageId, notification);
+        this.toasts.delete(messageId);
+        this.notifications.delete(messageId);
+        const existingDeferred = this.deferredResults.get(messageId);
+        if (existingDeferred) {
+            this.deferredResults.delete(messageId);
+            existingDeferred.resolve(undefined);
         }
-        const result = this.deferredResults.get(messageId) || new Deferred<string | undefined>();
+
+        const message = this.contentRenderer.renderMessage(plainMessage.text);
+        const type = this.toNotificationType(plainMessage.type);
+        const actions = Array.from(new Set(plainMessage.actions));
+        const source = plainMessage.source;
+        const expandable = this.isExpandable(message, source, actions);
+        const collapsed = expandable;
+        const notification = { messageId, message, type, actions, expandable, collapsed };
+        this.notifications.set(messageId, notification);
+        const result = new Deferred<string | undefined>();
         this.deferredResults.set(messageId, result);
 
         if (!this.centerVisible) {

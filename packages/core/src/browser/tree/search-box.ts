@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { SearchBoxDebounce, SearchBoxDebounceOptions } from '../tree/search-box-debounce';
@@ -254,7 +254,7 @@ export class SearchBox extends BaseWidget {
                 SearchBox.Styles.BUTTON,
                 ...SearchBox.Styles.FILTER,
             );
-            filter.title = nls.localizeByDefault('Enable Filter on Type');
+            filter.title = nls.localizeByDefault('Filter on Type');
             buttons.appendChild(filter);
             filter.onclick = this.fireFilterToggle.bind(this);
         }

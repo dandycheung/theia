@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from 'react';
@@ -151,6 +151,9 @@ export class StatusBarImpl extends ReactWidget implements StatusBar {
         } else {
             attrs['aria-label'] = [entry.text, entry.tooltip].join(', ');
         }
+        if (entry.backgroundColor) {
+            attrs.className += ' has-background';
+        }
 
         attrs.style = {
             color: entry.color || this.color,
@@ -165,7 +168,7 @@ export class StatusBarImpl extends ReactWidget implements StatusBar {
         const children: JSX.Element[] = [];
 
         childStrings.forEach((val, key) => {
-            if (!(typeof val === 'string') && LabelIcon.is(val)) {
+            if (LabelIcon.is(val)) {
                 const animation = val.animation ? ` fa-${val.animation}` : '';
                 if (val.name.startsWith('codicon-')) {
                     children.push(<span key={key} className={`codicon ${val.name}${animation}`}></span>);
@@ -178,8 +181,9 @@ export class StatusBarImpl extends ReactWidget implements StatusBar {
                 children.push(<span key={key}>{val}</span>);
             }
         });
-        const elementInnerDiv = <React.Fragment>{children}</React.Fragment>;
-        return React.createElement('div', { key: entry.id, ...this.createAttributes(entry) }, elementInnerDiv);
+        return <div key={entry.id} {...this.createAttributes(entry)}>
+            {children}
+        </div>;
     }
 
 }

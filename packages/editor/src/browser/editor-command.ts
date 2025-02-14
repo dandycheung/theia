@@ -11,20 +11,17 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, optional, postConstruct } from '@theia/core/shared/inversify';
-import { CommandContribution, CommandRegistry, Command } from '@theia/core/lib/common';
-import URI from '@theia/core/lib/common/uri';
-import { CommonCommands, PreferenceService, LabelProvider, ApplicationShell, QuickInputService, QuickPickValue, QuickPickItemOrSeparator } from '@theia/core/lib/browser';
+import { CommonCommands, PreferenceService, LabelProvider, ApplicationShell, QuickInputService, QuickPickValue, SaveableService } from '@theia/core/lib/browser';
 import { EditorManager } from './editor-manager';
-import { EditorPreferences } from './editor-preferences';
-import { ResourceProvider, MessageService } from '@theia/core';
-import { LanguageService, Language } from '@theia/core/lib/browser/language-service';
+import { CommandContribution, CommandRegistry, Command, ResourceProvider, MessageService, nls } from '@theia/core';
+import { LanguageService } from '@theia/core/lib/browser/language-service';
 import { SUPPORTED_ENCODINGS } from '@theia/core/lib/browser/supported-encodings';
 import { EncodingMode } from './editor';
-import { nls } from '@theia/core/lib/common/nls';
+import { EditorLanguageQuickPickService } from './editor-language-quick-pick-service';
 
 export namespace EditorCommands {
 
@@ -147,8 +144,7 @@ export namespace EditorCommands {
      */
     export const TOGGLE_WORD_WRAP = Command.toDefaultLocalizedCommand({
         id: 'editor.action.toggleWordWrap',
-        category: CommonCommands.VIEW_CATEGORY,
-        label: 'Toggle Word Wrap'
+        label: 'View: Toggle Word Wrap'
     });
     /**
      * Command that toggles sticky scroll.
@@ -210,7 +206,8 @@ export namespace EditorCommands {
 @injectable()
 export class EditorCommandContribution implements CommandContribution {
 
-    public static readonly AUTOSAVE_PREFERENCE: string = 'files.autoSave';
+    static readonly AUTOSAVE_PREFERENCE: string = 'files.autoSave';
+    static readonly AUTOSAVE_DELAY_PREFERENCE: string = 'files.autoSaveDelay';
 
     @inject(ApplicationShell)
     protected readonly shell: ApplicationShell;
@@ -218,13 +215,14 @@ export class EditorCommandContribution implements CommandContribution {
     @inject(PreferenceService)
     protected readonly preferencesService: PreferenceService;
 
-    @inject(EditorPreferences)
-    protected readonly editorPreferences: EditorPreferences;
+    @inject(SaveableService)
+    protected readonly saveResourceService: SaveableService;
 
     @inject(QuickInputService) @optional()
     protected readonly quickInputService: QuickInputService;
 
-    @inject(MessageService) protected readonly messageService: MessageService;
+    @inject(MessageService)
+    protected readonly messageService: MessageService;
 
     @inject(LabelProvider)
     protected readonly labelProvider: LabelProvider;
@@ -238,11 +236,20 @@ export class EditorCommandContribution implements CommandContribution {
     @inject(ResourceProvider)
     protected readonly resourceProvider: ResourceProvider;
 
+    @inject(EditorLanguageQuickPickService)
+    protected readonly codeLanguageQuickPickService: EditorLanguageQuickPickService;
+
     @postConstruct()
     protected init(): void {
-        this.editorPreferences.onPreferenceChanged(e => {
-            if (e.preferenceName === 'files.autoSave' && e.newValue !== 'off') {
-                this.shell.saveAll();
+        this.preferencesService.ready.then(() => {
+            this.saveResourceService.autoSave = this.preferencesService.get(EditorCommandContribution.AUTOSAVE_PREFERENCE) ?? 'off';
+            this.saveResourceService.autoSaveDelay = this.preferencesService.get(EditorCommandContribution.AUTOSAVE_DELAY_PREFERENCE) ?? 1000;
+        });
+        this.preferencesService.onPreferenceChanged(e => {
+            if (e.preferenceName === EditorCommandContribution.AUTOSAVE_PREFERENCE) {
+                this.saveResourceService.autoSave = this.preferencesService.get(EditorCommandContribution.AUTOSAVE_PREFERENCE) ?? 'off';
+            } else if (e.preferenceName === EditorCommandContribution.AUTOSAVE_DELAY_PREFERENCE) {
+                this.saveResourceService.autoSaveDelay = this.preferencesService.get(EditorCommandContribution.AUTOSAVE_DELAY_PREFERENCE) ?? 1000;
             }
         });
     }
@@ -294,12 +301,7 @@ export class EditorCommandContribution implements CommandContribution {
             return;
         }
         const current = editor.document.languageId;
-        const items: Array<QuickPickValue<'autoDetect' | Language> | QuickPickItemOrSeparator> = [
-            { label: nls.localizeByDefault('Auto Detect'), value: 'autoDetect' },
-            { type: 'separator', label: nls.localizeByDefault('languages (identifier)') },
-            ... (this.languages.languages.map(language => this.toQuickPickLanguage(language, current))).sort((e, e2) => e.label.localeCompare(e2.label))
-        ];
-        const selectedMode = await this.quickInputService?.showQuickPick(items, { placeholder: nls.localizeByDefault('Select Language Mode') });
+        const selectedMode = await this.codeLanguageQuickPickService.pickEditorLanguage(current);
         if (selectedMode && ('value' in selectedMode)) {
             if (selectedMode.value === 'autoDetect') {
                 editor.detectLanguage();
@@ -373,35 +375,11 @@ export class EditorCommandContribution implements CommandContribution {
             return;
         }
         if (editor.document.dirty && isReopenWithEncoding) {
-            this.messageService.info(nls.localizeByDefault('The file is dirty. Please save it first before reopening it with another encoding.'));
+            this.messageService.info(nls.localize('theia/editor/dirtyEncoding', 'The file is dirty. Please save it first before reopening it with another encoding.'));
             return;
         } else if (selectedFileEncoding.value) {
             editor.setEncoding(selectedFileEncoding.value.id, isReopenWithEncoding ? EncodingMode.Decode : EncodingMode.Encode);
         }
-    }
-
-    protected toQuickPickLanguage(value: Language, current: string): QuickPickValue<Language> {
-        const languageUri = this.toLanguageUri(value);
-        const icon = this.labelProvider.getIcon(languageUri);
-        const iconClasses = icon !== '' ? [icon + ' file-icon'] : undefined;
-        const configured = current === value.id;
-        return {
-            value,
-            label: value.name,
-            description: nls.localizeByDefault(`({0})${configured ? ' - Configured Language' : ''}`, value.id),
-            iconClasses
-        };
-    }
-    protected toLanguageUri(language: Language): URI {
-        const extension = language.extensions.values().next();
-        if (extension.value) {
-            return new URI('file:///' + extension.value);
-        }
-        const filename = language.filenames.values().next();
-        if (filename.value) {
-            return new URI('file:///' + filename.value);
-        }
-        return new URI('file:///.txt');
     }
 
     protected isAutoSaveOn(): boolean {

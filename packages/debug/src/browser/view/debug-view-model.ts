@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import debounce from 'p-debounce';
@@ -218,9 +218,7 @@ export class DebugViewModel implements Disposable {
     protected refreshWatchExpressions = debounce(() => {
         this.refreshWatchExpressionsQueue = this.refreshWatchExpressionsQueue.then(async () => {
             try {
-                for (const watchExpression of this.watchExpressions) {
-                    await watchExpression.evaluate();
-                }
+                await Promise.all(Array.from(this.watchExpressions).map(expr => expr.evaluate()));
             } catch (e) {
                 console.error('Failed to refresh watch expressions: ', e);
             }

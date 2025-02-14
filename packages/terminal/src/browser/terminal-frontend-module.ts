@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../src/browser/style/terminal.css';
@@ -20,7 +20,7 @@ import 'xterm/css/xterm.css';
 import { ContainerModule, Container } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution, nls } from '@theia/core/lib/common';
 import { bindContributionProvider } from '@theia/core';
-import { KeybindingContribution, WebSocketConnectionProvider, WidgetFactory, KeybindingContext, FrontendApplicationContribution } from '@theia/core/lib/browser';
+import { KeybindingContribution, WebSocketConnectionProvider, WidgetFactory, FrontendApplicationContribution } from '@theia/core/lib/browser';
 import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { TerminalFrontendContribution } from './terminal-frontend-contribution';
 import { TerminalWidgetImpl, TERMINAL_WIDGET_FACTORY_ID } from './terminal-widget-impl';
@@ -28,8 +28,6 @@ import { TerminalWidget, TerminalWidgetOptions } from './base/terminal-widget';
 import { ITerminalServer, terminalPath } from '../common/terminal-protocol';
 import { TerminalWatcher } from '../common/terminal-watcher';
 import { IShellTerminalServer, shellTerminalPath, ShellTerminalServerProxy } from '../common/shell-terminal-protocol';
-import { TerminalActiveContext, TerminalSearchVisibleContext } from './terminal-keybinding-contexts';
-import { createCommonBindings } from '../common/terminal-common-module';
 import { TerminalService } from './base/terminal-service';
 import { bindTerminalPreferences } from './terminal-preferences';
 import { TerminalContribution } from './terminal-contribution';
@@ -42,12 +40,14 @@ import { TerminalThemeService } from './terminal-theme-service';
 import { QuickAccessContribution } from '@theia/core/lib/browser/quick-input/quick-access';
 import { createXtermLinkFactory, TerminalLinkProvider, TerminalLinkProviderContribution, XtermLinkFactory } from './terminal-link-provider';
 import { UrlLinkProvider } from './terminal-url-link-provider';
-import { FileDiffPostLinkProvider, FileDiffPreLinkProvider, FileLinkProvider } from './terminal-file-link-provider';
+import { FileDiffPostLinkProvider, FileDiffPreLinkProvider, FileLinkProvider, LocalFileLinkProvider } from './terminal-file-link-provider';
+import {
+    ContributedTerminalProfileStore, DefaultProfileStore, DefaultTerminalProfileService,
+    TerminalProfileService, TerminalProfileStore, UserTerminalProfileStore
+} from './terminal-profile-service';
 
 export default new ContainerModule(bind => {
     bindTerminalPreferences(bind);
-    bind(KeybindingContext).to(TerminalActiveContext).inSingletonScope();
-    bind(KeybindingContext).to(TerminalSearchVisibleContext).inSingletonScope();
 
     bind(TerminalWidget).to(TerminalWidgetImpl).inTransientScope();
     bind(TerminalWatcher).toSelf().inSingletonScope();
@@ -103,8 +103,6 @@ export default new ContainerModule(bind => {
     }).inSingletonScope();
     bind(IShellTerminalServer).toService(ShellTerminalServerProxy);
 
-    createCommonBindings(bind);
-
     bindContributionProvider(bind, TerminalContribution);
 
     // terminal link provider contribution point
@@ -122,6 +120,16 @@ export default new ContainerModule(bind => {
     bind(TerminalLinkProvider).toService(FileDiffPreLinkProvider);
     bind(FileDiffPostLinkProvider).toSelf().inSingletonScope();
     bind(TerminalLinkProvider).toService(FileDiffPostLinkProvider);
+    bind(LocalFileLinkProvider).toSelf().inSingletonScope();
+    bind(TerminalLinkProvider).toService(LocalFileLinkProvider);
 
-    bind(FrontendApplicationContribution).to(TerminalFrontendContribution);
+    bind(ContributedTerminalProfileStore).to(DefaultProfileStore).inSingletonScope();
+    bind(UserTerminalProfileStore).to(DefaultProfileStore).inSingletonScope();
+    bind(TerminalProfileService).toDynamicValue(ctx => {
+        const userStore = ctx.container.get<TerminalProfileStore>(UserTerminalProfileStore);
+        const contributedStore = ctx.container.get<TerminalProfileStore>(ContributedTerminalProfileStore);
+        return new DefaultTerminalProfileService(userStore, contributedStore);
+    }).inSingletonScope();
+
+    bind(FrontendApplicationContribution).toService(TerminalFrontendContribution);
 });

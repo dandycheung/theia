@@ -11,14 +11,14 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as fs from 'fs-extra';
 import { inject, injectable, named } from 'inversify';
-import { ContributionProvider } from '../../common';
+import { ContributionProvider, isObject } from '../../common';
 import { LanguageInfo, Localization } from '../../common/i18n/localization';
-import { LocalizationProvider } from './localization-provider';
+import { LazyLocalization, LocalizationProvider } from './localization-provider';
 
 export const LocalizationContribution = Symbol('LocalizationContribution');
 
@@ -41,50 +41,54 @@ export class LocalizationRegistry {
         ));
     }
 
-    registerLocalization(localization: Localization): void {
+    registerLocalization(localization: Localization | LazyLocalization): void {
+        if (!LazyLocalization.is(localization)) {
+            localization = LazyLocalization.fromLocalization(localization);
+        }
         this.localizationProvider.addLocalizations(localization);
     }
 
     registerLocalizationFromRequire(locale: string | LanguageInfo, required: unknown): void {
         const translations = this.flattenTranslations(required);
-        this.registerLocalization(this.createLocalization(locale, translations));
+        this.registerLocalization(this.createLocalization(locale, () => Promise.resolve(translations)));
     }
 
-    async registerLocalizationFromFile(localizationPath: string, locale?: string | LanguageInfo): Promise<void> {
+    registerLocalizationFromFile(localizationPath: string, locale?: string | LanguageInfo): void {
         if (!locale) {
             locale = this.identifyLocale(localizationPath);
         }
         if (!locale) {
             throw new Error('Could not determine locale from path.');
         }
-        const translationJson = await fs.readJson(localizationPath);
-        const translations = this.flattenTranslations(translationJson);
-        this.registerLocalization(this.createLocalization(locale, translations));
+        this.registerLocalization(this.createLocalization(locale, async () => {
+            const translationJson = await fs.readJson(localizationPath);
+            return this.flattenTranslations(translationJson);
+        }));
     }
 
-    protected createLocalization(locale: string | LanguageInfo, translations: Record<string, string>): Localization {
-        let localization: Localization;
+    protected createLocalization(locale: string | LanguageInfo, translations: () => Promise<Record<string, string>>): LazyLocalization {
+        let localization: LazyLocalization;
         if (typeof locale === 'string') {
             localization = {
                 languageId: locale,
-                translations
+                getTranslations: translations
             };
         } else {
             localization = {
                 ...locale,
-                translations
+                getTranslations: translations
             };
         }
         return localization;
     }
 
     protected flattenTranslations(localization: unknown): Record<string, string> {
-        if (typeof localization === 'object' && localization) {
+        if (isObject(localization)) {
             const record: Record<string, string> = {};
             for (const [key, value] of Object.entries(localization)) {
                 if (typeof value === 'string') {
                     record[key] = value;
-                } else if (value && typeof value === 'object') {
+                } else if (isObject(value)) {
                     const flattened = this.flattenTranslations(value);
                     for (const [flatKey, flatValue] of Object.entries(flattened)) {
                         record[`${key}/${flatKey}`] = flatValue;

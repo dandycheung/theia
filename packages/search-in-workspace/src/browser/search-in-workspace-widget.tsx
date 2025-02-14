@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Widget, Message, BaseWidget, Key, StatefulWidget, MessageLoop, KeyCode, codicon } from '@theia/core/lib/browser';
@@ -28,6 +28,7 @@ import { ProgressBarFactory } from '@theia/core/lib/browser/progress-bar-factory
 import { EditorManager } from '@theia/editor/lib/browser';
 import { SearchInWorkspacePreferences } from './search-in-workspace-preferences';
 import { SearchInWorkspaceInput } from './components/search-in-workspace-input';
+import { SearchInWorkspaceTextArea } from './components/search-in-workspace-textarea';
 import { nls } from '@theia/core/lib/common/nls';
 
 export interface SearchFieldState {
@@ -65,8 +66,8 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
     protected searchTerm = '';
     protected replaceTerm = '';
 
-    private searchRef = React.createRef<SearchInWorkspaceInput>();
-    private replaceRef = React.createRef<SearchInWorkspaceInput>();
+    private searchRef = React.createRef<SearchInWorkspaceTextArea>();
+    private replaceRef = React.createRef<SearchInWorkspaceTextArea>();
     private includeRef = React.createRef<SearchInWorkspaceInput>();
     private excludeRef = React.createRef<SearchInWorkspaceInput>();
 
@@ -142,6 +143,7 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
             matchCase: false,
             matchWholeWord: false,
             useRegExp: false,
+            multiline: false,
             includeIgnored: false,
             include: [],
             exclude: [],
@@ -323,6 +325,8 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
 
     protected override onResize(msg: Widget.ResizeMessage): void {
         super.onResize(msg);
+        this.searchRef.current?.forceUpdate();
+        this.replaceRef.current?.forceUpdate();
         MessageLoop.sendMessage(this.resultTreeWidget, Widget.ResizeMessage.UnknownSize);
     }
 
@@ -447,7 +451,8 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
         const searchOptions: SearchInWorkspaceOptions = {
             ...this.searchInWorkspaceOptions,
             followSymlinks: this.shouldFollowSymlinks(),
-            matchCase: this.shouldMatchCase()
+            matchCase: this.shouldMatchCase(),
+            multiline: this.searchTerm.includes('\n')
         };
         this.resultTreeWidget.search(this.searchTerm, searchOptions);
     }
@@ -471,12 +476,10 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
     }
 
     protected renderSearchField(): React.ReactNode {
-        const input = <SearchInWorkspaceInput
+        const input = <SearchInWorkspaceTextArea
             id='search-input-field'
             className='theia-input'
             title={SearchInWorkspaceWidget.LABEL}
-            type='text'
-            size={1}
             placeholder={SearchInWorkspaceWidget.LABEL}
             defaultValue={this.searchTerm}
             autoComplete='off'
@@ -498,16 +501,21 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
             {notification}
         </div>;
     }
-
-    protected handleFocusSearchInputBox = () => this.contextKeyService.setSearchInputBoxFocus(true);
-    protected handleBlurSearchInputBox = () => this.contextKeyService.setSearchInputBoxFocus(false);
+    protected handleFocusSearchInputBox = (event: React.FocusEvent<HTMLTextAreaElement>) => {
+        event.target.placeholder = SearchInWorkspaceWidget.LABEL + nls.localizeByDefault(' ({0} for history)', '⇅');
+        this.contextKeyService.setSearchInputBoxFocus(true);
+    };
+    protected handleBlurSearchInputBox = (event: React.FocusEvent<HTMLTextAreaElement>) => {
+        event.target.placeholder = SearchInWorkspaceWidget.LABEL;
+        this.contextKeyService.setSearchInputBoxFocus(false);
+    };
 
     protected readonly updateReplaceTerm = (e: React.KeyboardEvent) => this.doUpdateReplaceTerm(e);
     protected doUpdateReplaceTerm(e: React.KeyboardEvent): void {
         if (e.target) {
             this.replaceTerm = (e.target as HTMLInputElement).value;
             this.resultTreeWidget.replaceTerm = this.replaceTerm;
-            this.performSearch();
+            if (KeyCode.createKeyCode(e.nativeEvent).key?.keyCode === Key.ENTER.keyCode) { this.performSearch(); }
             this.update();
         }
     }
@@ -516,12 +524,10 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
         const replaceAllButtonContainer = this.renderReplaceAllButtonContainer();
         const replace = nls.localizeByDefault('Replace');
         return <div className={`replace-field${this.showReplaceField ? '' : ' hidden'}`}>
-            <SearchInWorkspaceInput
+            <SearchInWorkspaceTextArea
                 id='replace-input-field'
                 className='theia-input'
                 title={replace}
-                type='text'
-                size={1}
                 placeholder={replace}
                 defaultValue={this.replaceTerm}
                 autoComplete='off'
@@ -534,8 +540,14 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
         </div>;
     }
 
-    protected handleFocusReplaceInputBox = () => this.contextKeyService.setReplaceInputBoxFocus(true);
-    protected handleBlurReplaceInputBox = () => this.contextKeyService.setReplaceInputBoxFocus(false);
+    protected handleFocusReplaceInputBox = (event: React.FocusEvent<HTMLTextAreaElement>) => {
+        event.target.placeholder = nls.localizeByDefault('Replace') + nls.localizeByDefault(' ({0} for history)', '⇅');
+        this.contextKeyService.setReplaceInputBoxFocus(true);
+    };
+    protected handleBlurReplaceInputBox = (event: React.FocusEvent<HTMLTextAreaElement>) => {
+        event.target.placeholder = nls.localizeByDefault('Replace');
+        this.contextKeyService.setReplaceInputBoxFocus(false);
+    };
 
     protected renderReplaceAllButtonContainer(): React.ReactNode {
         // The `Replace All` button is enabled if there is a search term present with results.
@@ -563,7 +575,7 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
 
     protected renderOptionElement(opt: SearchFieldState): React.ReactNode {
         return <span
-            className={`${opt.className} option ${opt.enabled ? 'enabled' : ''}`}
+            className={`${opt.className} option action-label ${opt.enabled ? 'enabled' : ''}`}
             title={opt.title}
             onClick={() => this.handleOptionClick(opt)}></span>;
     }
@@ -619,6 +631,10 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
                 defaultValue={value}
                 autoComplete='off'
                 id={kind + '-glob-field'}
+                placeholder={kind === 'include'
+                    ? nls.localizeByDefault('e.g. *.ts, src/**/include')
+                    : nls.localizeByDefault('e.g. *.ts, src/**/exclude')
+                }
                 onKeyUp={e => {
                     if (e.target) {
                         const targetValue = (e.target as HTMLInputElement).value || '';
@@ -652,8 +668,8 @@ export class SearchInWorkspaceWidget extends BaseWidget implements StatefulWidge
         </div>;
     }
 
-    protected handleFocusIncludesInputBox = () => this.contextKeyService.setPatternExcludesInputBoxFocus(true);
-    protected handleBlurIncludesInputBox = () => this.contextKeyService.setPatternExcludesInputBoxFocus(false);
+    protected handleFocusIncludesInputBox = () => this.contextKeyService.setPatternIncludesInputBoxFocus(true);
+    protected handleBlurIncludesInputBox = () => this.contextKeyService.setPatternIncludesInputBoxFocus(false);
 
     protected handleFocusExcludesInputBox = () => this.contextKeyService.setPatternExcludesInputBoxFocus(true);
     protected handleBlurExcludesInputBox = () => this.contextKeyService.setPatternExcludesInputBoxFocus(false);

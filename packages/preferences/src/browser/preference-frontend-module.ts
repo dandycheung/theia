@@ -11,13 +11,13 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import '../../src/browser/style/index.css';
 import './preferences-monaco-contribution';
 import { ContainerModule, interfaces } from '@theia/core/shared/inversify';
-import { bindViewContribution, OpenHandler } from '@theia/core/lib/browser';
+import { bindViewContribution, FrontendApplicationContribution, noopWidgetStatusBarContribution, OpenHandler, WidgetStatusBarContribution } from '@theia/core/lib/browser';
 import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { PreferenceTreeGenerator } from './util/preference-tree-generator';
 import { bindPreferenceProviders } from './preference-bindings';
@@ -29,12 +29,18 @@ import { PreferencesJsonSchemaContribution } from './preferences-json-schema-con
 import { MonacoJSONCEditor } from './monaco-jsonc-editor';
 import { PreferenceTransaction, PreferenceTransactionFactory, preferenceTransactionFactoryCreator } from './preference-transaction-manager';
 import { PreferenceOpenHandler } from './preference-open-handler';
+import { CliPreferences, CliPreferencesPath } from '../common/cli-preferences';
+import { ServiceConnectionProvider } from '@theia/core/lib/browser/messaging/service-connection-provider';
+import { PreferenceFrontendContribution } from './preference-frontend-contribution';
+import { PreferenceLayoutProvider } from './util/preference-layout';
+import { PreferencesWidget } from './views/preference-widget';
 
 export function bindPreferences(bind: interfaces.Bind, unbind: interfaces.Unbind): void {
     bindPreferenceProviders(bind, unbind);
     bindPreferencesWidgets(bind);
 
     bind(PreferenceTreeGenerator).toSelf().inSingletonScope();
+    bind(PreferenceLayoutProvider).toSelf().inSingletonScope();
 
     bindViewContribution(bind, PreferencesContribution);
 
@@ -50,6 +56,12 @@ export function bindPreferences(bind: interfaces.Bind, unbind: interfaces.Unbind
     bind(MonacoJSONCEditor).toSelf().inSingletonScope();
     bind(PreferenceTransaction).toSelf();
     bind(PreferenceTransactionFactory).toFactory(preferenceTransactionFactoryCreator);
+
+    bind(CliPreferences).toDynamicValue(ctx => ServiceConnectionProvider.createProxy<CliPreferences>(ctx.container, CliPreferencesPath)).inSingletonScope();
+    bind(PreferenceFrontendContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(PreferenceFrontendContribution);
+
+    bind(WidgetStatusBarContribution).toConstantValue(noopWidgetStatusBarContribution(PreferencesWidget));
 }
 
 export default new ContainerModule((bind, unbind, isBound, rebind) => {

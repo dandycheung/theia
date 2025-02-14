@@ -11,14 +11,23 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from '@theia/core/shared/inversify';
 import { DirtyDiffDecorator } from './dirty-diff-decorator';
+import { DirtyDiffNavigator } from './dirty-diff-navigator';
+import { DirtyDiffWidget, DirtyDiffWidgetFactory, DirtyDiffWidgetProps } from './dirty-diff-widget';
 
 import '../../../src/browser/style/dirty-diff.css';
 
 export function bindDirtyDiff(bind: interfaces.Bind): void {
     bind(DirtyDiffDecorator).toSelf().inSingletonScope();
+    bind(DirtyDiffNavigator).toSelf().inSingletonScope();
+    bind(DirtyDiffWidgetFactory).toFactory(({ container }) => props => {
+        const child = container.createChild();
+        child.bind(DirtyDiffWidgetProps).toConstantValue(props);
+        child.bind(DirtyDiffWidget).toSelf();
+        return child.get(DirtyDiffWidget);
+    });
 }

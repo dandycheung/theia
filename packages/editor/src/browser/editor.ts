@@ -11,15 +11,16 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { Position, Range, Location } from '@theia/core/shared/vscode-languageserver-protocol';
 import * as lsp from '@theia/core/shared/vscode-languageserver-protocol';
 import URI from '@theia/core/lib/common/uri';
-import { Event, Disposable, TextDocumentContentChangeDelta, Reference } from '@theia/core/lib/common';
+import { Event, Disposable, TextDocumentContentChangeDelta, Reference, isObject } from '@theia/core/lib/common';
 import { Saveable, Navigatable, Widget } from '@theia/core/lib/browser';
 import { EditorDecoration } from './decorations/editor-decoration';
+import { MarkdownString } from '@theia/core/lib/common/markdown-rendering';
 
 export { Position, Range, Location };
 
@@ -33,6 +34,17 @@ export interface TextEditorDocument extends lsp.TextDocument, Saveable, Disposab
      * @since 1.8.0
      */
     findMatches?(options: FindMatchesOptions): FindMatch[];
+    /**
+     * Creates a valid position. If the position is outside of the backing document, this method will return a position that is ensured to be inside the document and valid.
+     * For example, when the `position` is `{ line: 1, character: 0 }` and the document is empty, this method will return with `{ line: 0, character: 0 }`.
+     */
+    toValidPosition(position: Position): Position;
+    /**
+     * Creates a valid range. If the `range` argument is outside of the document, this method will return with a new range that does not exceed the boundaries of the document.
+     * For example, if the argument is `{ start: { line: 1, character: 0 }, end: { line: 1, character: 0 } }` and the document is empty, the return value is
+     * `{ start: { line: 0, character: 0 }, end: { line: 0, character: 0 } }`.
+     */
+    toValidRange(range: Range): Range;
 }
 
 // Refactoring
@@ -196,15 +208,16 @@ export interface TextEditor extends Disposable, TextEditorSelection, Navigatable
     readonly node: HTMLElement;
 
     readonly uri: URI;
-    readonly isReadonly: boolean;
+    readonly isReadonly: boolean | MarkdownString;
+    readonly onDidChangeReadOnly: Event<boolean | MarkdownString>;
     readonly document: TextEditorDocument;
     readonly onDocumentContentChanged: Event<TextDocumentChangeEvent>;
 
     cursor: Position;
     readonly onCursorPositionChanged: Event<Position>;
 
-    selection: Range;
-    readonly onSelectionChanged: Event<Range>;
+    selection: Selection;
+    readonly onSelectionChanged: Event<Selection>;
 
     /**
      * The text editor should be revealed,
@@ -280,6 +293,14 @@ export interface TextEditor extends Disposable, TextEditorSelection, Navigatable
     setEncoding(encoding: string, mode: EncodingMode): void;
 
     readonly onEncodingChanged: Event<string>;
+
+    shouldDisplayDirtyDiff(): boolean;
+
+    handleVisibilityChanged(nowVisible: boolean): void;
+}
+
+export interface Selection extends Range {
+    direction: 'ltr' | 'rtl';
 }
 
 export interface Dimension {
@@ -330,8 +351,8 @@ export interface ReplaceOperation {
 }
 
 export namespace TextEditorSelection {
-    export function is(e: unknown): e is TextEditorSelection {
-        return !!e && typeof e === 'object' && (e as TextEditorSelection).uri instanceof URI;
+    export function is(arg: unknown): arg is TextEditorSelection {
+        return isObject<TextEditorSelection>(arg) && arg.uri instanceof URI;
     }
 }
 

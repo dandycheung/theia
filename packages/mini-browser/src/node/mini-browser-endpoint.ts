@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 const vhost = require('vhost');
@@ -20,7 +20,7 @@ import * as fs from '@theia/core/shared/fs-extra';
 import { lookup } from 'mime-types';
 import { injectable, inject, named } from '@theia/core/shared/inversify';
 import { Application, Request, Response } from '@theia/core/shared/express';
-import { FileUri } from '@theia/core/lib/node/file-uri';
+import { FileUri } from '@theia/core/lib/common/file-uri';
 import { ILogger } from '@theia/core/lib/common/logger';
 import { MaybePromise } from '@theia/core/lib/common/types';
 import { ContributionProvider } from '@theia/core/lib/common/contribution-provider';

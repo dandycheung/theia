@@ -11,12 +11,11 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, postConstruct } from '@theia/core/shared/inversify';
-import { InMemoryResources } from '@theia/core';
-import { JsonSchemaContribution, JsonSchemaRegisterContext } from '@theia/core/lib/browser/json-schema-store';
+import { JsonSchemaContribution, JsonSchemaDataStore, JsonSchemaRegisterContext } from '@theia/core/lib/browser/json-schema-store';
 import { IJSONSchema } from '@theia/core/lib/common/json-schema';
 import URI from '@theia/core/lib/common/uri';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
@@ -56,12 +55,12 @@ export const extensionsConfigurationSchema: IJSONSchema = {
 @injectable()
 export class ExtensionSchemaContribution implements JsonSchemaContribution {
     protected readonly uri = new URI(extensionsSchemaID);
-    @inject(InMemoryResources) protected readonly inmemoryResources: InMemoryResources;
+    @inject(JsonSchemaDataStore) protected readonly schemaStore: JsonSchemaDataStore;
     @inject(WorkspaceService) protected readonly workspaceService: WorkspaceService;
 
     @postConstruct()
     protected init(): void {
-        this.inmemoryResources.add(this.uri, JSON.stringify(extensionsConfigurationSchema));
+        this.schemaStore.setSchema(this.uri, extensionsConfigurationSchema);
     }
 
     registerSchemas(context: JsonSchemaRegisterContext): void {

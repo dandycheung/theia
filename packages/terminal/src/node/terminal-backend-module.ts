@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ContainerModule, Container, interfaces } from '@theia/core/shared/inversify';
 import { TerminalBackendContribution } from './terminal-backend-contribution';
-import { ConnectionHandler, JsonRpcConnectionHandler } from '@theia/core/lib/common/messaging';
+import { ConnectionHandler, RpcConnectionHandler } from '@theia/core/lib/common/messaging';
 import { ShellProcess, ShellProcessFactory, ShellProcessOptions } from './shell-process';
 import { ITerminalServer, terminalPath } from '../common/terminal-protocol';
 import { IBaseTerminalClient, DispatchingBaseTerminalClient, IBaseTerminalServer } from '../common/base-terminal-protocol';
@@ -24,7 +24,6 @@ import { TerminalServer } from './terminal-server';
 import { IShellTerminalServer, shellTerminalPath } from '../common/shell-terminal-protocol';
 import { ShellTerminalServer } from '../node/shell-terminal-server';
 import { TerminalWatcher } from '../common/terminal-watcher';
-import { createCommonBindings } from '../common/terminal-common-module';
 import { MessagingService } from '@theia/core/lib/node/messaging/messaging-service';
 
 export function bindTerminalServer(bind: interfaces.Bind, { path, identifier, constructor }: {
@@ -45,7 +44,7 @@ export function bindTerminalServer(bind: interfaces.Bind, { path, identifier, co
         return terminalServer;
     });
     bind(ConnectionHandler).toDynamicValue(ctx =>
-        new JsonRpcConnectionHandler<IBaseTerminalClient>(path, client => {
+        new RpcConnectionHandler<IBaseTerminalClient>(path, client => {
             const disposable = dispatchingClient.push(client);
             client.onDidCloseConnection(() => disposable.dispose());
             return ctx.container.get(identifier);
@@ -77,6 +76,4 @@ export default new ContainerModule(bind => {
         identifier: IShellTerminalServer,
         constructor: ShellTerminalServer
     });
-
-    createCommonBindings(bind);
 });

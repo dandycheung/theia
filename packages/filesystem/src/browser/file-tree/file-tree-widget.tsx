@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from '@theia/core/shared/react';
@@ -25,6 +25,7 @@ import { FileUploadService } from '../file-upload-service';
 import { DirNode, FileStatNode, FileStatNodeData } from './file-tree';
 import { FileTreeModel } from './file-tree-model';
 import { IconThemeService } from '@theia/core/lib/browser/icon-theme-service';
+import { ApplicationShell } from '@theia/core/lib/browser/shell';
 import { FileStat, FileType } from '../../common/files';
 import { isOSX } from '@theia/core';
 
@@ -119,14 +120,18 @@ export class FileTreeWidget extends CompressedTreeWidget {
 
     protected handleDragStartEvent(node: TreeNode, event: React.DragEvent): void {
         event.stopPropagation();
-        let selectedNodes;
-        if (this.model.selectedNodes.find(selected => TreeNode.equals(selected, node))) {
-            selectedNodes = [...this.model.selectedNodes];
-        } else {
-            selectedNodes = [node];
-        }
-        this.setSelectedTreeNodesAsData(event.dataTransfer, node, selectedNodes);
         if (event.dataTransfer) {
+            let selectedNodes;
+            if (this.model.selectedNodes.find(selected => TreeNode.equals(selected, node))) {
+                selectedNodes = [...this.model.selectedNodes];
+            } else {
+                selectedNodes = [node];
+            }
+            this.setSelectedTreeNodesAsData(event.dataTransfer, node, selectedNodes);
+            const uris = selectedNodes.filter(FileStatNode.is).map(n => n.fileStat.resource);
+            if (uris.length > 0) {
+                ApplicationShell.setDraggedEditorUris(event.dataTransfer, uris);
+            }
             let label: string;
             if (selectedNodes.length === 1) {
                 label = this.toNodeName(node);
@@ -315,4 +320,8 @@ export class FileTreeWidget extends CompressedTreeWidget {
         return inflated;
     }
 
+    protected override getDepthPadding(depth: number): number {
+        // add additional depth so file nodes are rendered with padding in relation to the top level root node.
+        return super.getDepthPadding(depth + 1);
+    }
 }

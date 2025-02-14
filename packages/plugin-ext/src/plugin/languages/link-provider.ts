@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { URI } from '@theia/core/shared/vscode-uri';
@@ -33,7 +33,9 @@ export class LinkProviderAdapter {
     provideLinks(resource: URI, token: theia.CancellationToken): Promise<DocumentLink[] | undefined> {
         const document = this.documents.getDocumentData(resource);
         if (!document) {
-            return Promise.reject(new Error(`There is no document for ${resource}`));
+            // not all documents are replicated to the plugin host (e.g. breakpoint input)
+            console.warn(`There is no document for ${resource}`);
+            return Promise.resolve(undefined);
         }
 
         const doc = document.document;

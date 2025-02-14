@@ -11,7 +11,7 @@
  * with the GNU Classpath Exception which is available at
  * https://www.gnu.org/software/classpath/license.html.
  *
- * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+ * SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
  ********************************************************************************/
 
 import * as http from 'http';
@@ -31,7 +31,6 @@ export interface NodeRequestOptions extends RequestOptions {
 };
 
 export class NodeRequestService implements RequestService {
-
     protected proxyUrl?: string;
     protected strictSSL?: boolean;
     protected authorization?: string;
@@ -107,9 +106,14 @@ export class NodeRequestService implements RequestService {
                 opts.auth = options.user + ':' + options.password;
             }
 
+            const timeoutHandler = () => {
+                reject('timeout');
+            };
+
             const req = rawRequest(opts, async res => {
                 const followRedirects = options.followRedirects ?? 3;
                 if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && followRedirects > 0 && res.headers.location) {
+                    req.off('timeout', timeoutHandler);
                     this.request({
                         ...options,
                         url: res.headers.location,
@@ -125,6 +129,7 @@ export class NodeRequestService implements RequestService {
                     });
 
                     stream.on('end', () => {
+                        req.off('timeout', timeoutHandler);
                         const buffer = Buffer.concat(chunks);
                         resolve({
                             url: options.url,
@@ -136,11 +141,17 @@ export class NodeRequestService implements RequestService {
                         });
                     });
 
-                    stream.on('error', reject);
+                    stream.on('error', err => {
+                        reject(err);
+                    });
                 }
             });
 
-            req.on('error', reject);
+            req.on('error', err => {
+                reject(err);
+            });
+
+            req.on('timeout', timeoutHandler);
 
             if (options.timeout) {
                 req.setTimeout(options.timeout);
@@ -153,7 +164,7 @@ export class NodeRequestService implements RequestService {
             req.end();
 
             token?.onCancellationRequested(() => {
-                req.abort();
+                req.destroy();
                 reject();
             });
         });

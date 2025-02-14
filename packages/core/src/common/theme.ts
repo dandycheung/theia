@@ -11,8 +11,10 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
+
+import { URI } from 'vscode-uri';
 
 export type ThemeType = 'light' | 'dark' | 'hc' | 'hcLight';
 
@@ -33,4 +35,34 @@ export function isHighContrast(scheme: ThemeType): boolean {
 export interface ThemeChangeEvent {
     readonly newTheme: Theme;
     readonly oldTheme?: Theme;
+}
+
+export interface ThemeColor {
+    readonly id: string;
+}
+
+export interface ThemeIcon {
+    readonly id: string;
+    readonly color?: ThemeColor;
+}
+
+export interface IconDefinition {
+    font?: IconFontContribution; // undefined for the default font (codicon)
+    fontCharacter: string;
+}
+
+export interface IconFontContribution {
+    readonly id: string;
+    readonly definition: IconFontDefinition;
+}
+
+export interface IconFontDefinition {
+    readonly weight?: string;
+    readonly style?: string;
+    readonly src: IconFontSource[];
+}
+
+export interface IconFontSource {
+    readonly location: URI;
+    readonly format: string;
 }

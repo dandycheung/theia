@@ -11,26 +11,27 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as theia from '@theia/plugin';
 import { interfaces, injectable } from '@theia/core/shared/inversify';
-import { WorkspaceExt, StorageExt, MAIN_RPC_CONTEXT, WorkspaceMain, WorkspaceFolderPickOptionsMain } from '../../common/plugin-api-rpc';
+import { WorkspaceExt, StorageExt, MAIN_RPC_CONTEXT, WorkspaceMain, WorkspaceFolderPickOptionsMain, FindFilesOptions } from '../../common/plugin-api-rpc';
 import { RPCProtocol } from '../../common/rpc-protocol';
 import { URI as Uri } from '@theia/core/shared/vscode-uri';
 import { UriComponents } from '../../common/uri-components';
 import { FileSearchService } from '@theia/file-search/lib/common/file-search-service';
 import URI from '@theia/core/lib/common/uri';
-import { WorkspaceService, WorkspaceTrustService } from '@theia/workspace/lib/browser';
+import { WorkspaceService, WorkspaceTrustService, CanonicalUriService } from '@theia/workspace/lib/browser';
 import { Resource } from '@theia/core/lib/common/resource';
 import { Disposable, DisposableCollection } from '@theia/core/lib/common/disposable';
-import { Emitter, Event, ResourceResolver, CancellationToken } from '@theia/core';
+import { Emitter, Event, ResourceResolver, CancellationToken, isUndefined } from '@theia/core';
 import { PluginServer } from '../../common/plugin-protocol';
 import { FileSystemPreferences } from '@theia/filesystem/lib/browser';
 import { SearchInWorkspaceService } from '@theia/search-in-workspace/lib/browser/search-in-workspace-service';
 import { FileStat } from '@theia/filesystem/lib/common/files';
 import { MonacoQuickInputService } from '@theia/monaco/lib/browser/monaco-quick-input-service';
+import { RequestService } from '@theia/core/shared/@theia/request';
 
 export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
 
@@ -50,7 +51,11 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
 
     private pluginServer: PluginServer;
 
+    private requestService: RequestService;
+
     private workspaceService: WorkspaceService;
+
+    protected readonly canonicalUriService: CanonicalUriService;
 
     private workspaceTrustService: WorkspaceTrustService;
 
@@ -60,6 +65,8 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
 
     protected workspaceSearch: Set<number> = new Set<number>();
 
+    protected readonly canonicalUriProviders = new Map<string, Disposable>();
+
     constructor(rpc: RPCProtocol, container: interfaces.Container) {
         this.proxy = rpc.getProxy(MAIN_RPC_CONTEXT.WORKSPACE_EXT);
         this.storageProxy = rpc.getProxy(MAIN_RPC_CONTEXT.STORAGE_EXT);
@@ -68,7 +75,9 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
         this.searchInWorkspaceService = container.get(SearchInWorkspaceService);
         this.resourceResolver = container.get(TextContentResourceResolver);
         this.pluginServer = container.get(PluginServer);
+        this.requestService = container.get(RequestService);
         this.workspaceService = container.get(WorkspaceService);
+        this.canonicalUriService = container.get(CanonicalUriService);
         this.workspaceTrustService = container.get(WorkspaceTrustService);
         this.fsPreferences = container.get(FileSystemPreferences);
 
@@ -85,6 +94,10 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
 
     dispose(): void {
         this.toDispose.dispose();
+    }
+
+    $resolveProxy(url: string): Promise<string | undefined> {
+        return this.requestService.resolveProxy(url);
     }
 
     protected async processWorkspaceFoldersChanged(roots: string[]): Promise<void> {
@@ -156,8 +169,7 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
         });
     }
 
-    async $startFileSearch(includePattern: string, includeFolderUri: string | undefined, excludePatternOrDisregardExcludes?: string | false,
-        maxResults?: number): Promise<UriComponents[]> {
+    async $startFileSearch(includePattern: string, includeFolderUri: string | undefined, options: FindFilesOptions): Promise<UriComponents[]> {
         const roots: FileSearchService.RootOptions = {};
         const rootUris = includeFolderUri ? [includeFolderUri] : this.roots;
         for (const rootUri of rootUris) {
@@ -165,15 +177,16 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
         }
         const opts: FileSearchService.Options = {
             rootOptions: roots,
-            useGitIgnore: excludePatternOrDisregardExcludes !== false
+            fuzzyMatch: options.fuzzy,
+            useGitIgnore: options.useIgnoreFiles
         };
         if (includePattern) {
             opts.includePatterns = [includePattern];
         }
-        if (typeof excludePatternOrDisregardExcludes === 'string') {
-            opts.excludePatterns = [excludePatternOrDisregardExcludes];
+        if (options.exclude) {
+            opts.excludePatterns = [options.exclude];
         }
-        if (excludePatternOrDisregardExcludes !== false) {
+        if (options.useDefaultExcludes) {
             for (const rootUri of rootUris) {
                 const filesExclude = this.fsPreferences.get('files.exclude', undefined, rootUri);
                 if (filesExclude) {
@@ -188,8 +201,8 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
                 }
             }
         }
-        if (typeof maxResults === 'number') {
-            opts.limit = maxResults;
+        if (typeof options.maxResults === 'number') {
+            opts.limit = options.maxResults;
         }
         const uriStrs = await this.fileSearchService.find('', opts);
         return uriStrs.map(uriStr => Uri.parse(uriStr));
@@ -276,6 +289,34 @@ export class WorkspaceMainImpl implements WorkspaceMain, Disposable {
 
     async $requestWorkspaceTrust(_options?: theia.WorkspaceTrustRequestOptions): Promise<boolean | undefined> {
         return this.workspaceTrustService.requestWorkspaceTrust();
+    }
+
+    async $registerCanonicalUriProvider(scheme: string): Promise<void | undefined> {
+        this.canonicalUriProviders.set(scheme,
+            this.canonicalUriService.registerCanonicalUriProvider(scheme, {
+                provideCanonicalUri: async (uri, targetScheme, token) => {
+                    const canonicalUri = await this.proxy.$provideCanonicalUri(uri.toString(), targetScheme, CancellationToken.None);
+                    return isUndefined(uri) ? undefined : new URI(canonicalUri);
+                },
+                dispose: () => {
+                    this.proxy.$disposeCanonicalUriProvider(scheme);
+                },
+            }));
+    }
+
+    $unregisterCanonicalUriProvider(scheme: string): void {
+        const disposable = this.canonicalUriProviders.get(scheme);
+        if (disposable) {
+            this.canonicalUriProviders.delete(scheme);
+            disposable.dispose();
+        } else {
+            console.warn(`No canonical uri provider registered for '${scheme}'`);
+        }
+    }
+
+    async $getCanonicalUri(uri: string, targetScheme: string, token: theia.CancellationToken): Promise<string | undefined> {
+        const canonicalUri = await this.canonicalUriService.provideCanonicalUri(new URI(uri), targetScheme, token);
+        return isUndefined(canonicalUri) ? undefined : canonicalUri.toString();
     }
 }
 

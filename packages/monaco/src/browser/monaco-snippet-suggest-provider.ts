@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -26,6 +26,7 @@ import { FileService } from '@theia/filesystem/lib/browser/file-service';
 import { FileOperationError } from '@theia/filesystem/lib/common/files';
 import * as monaco from '@theia/monaco-editor-core';
 import { SnippetParser } from '@theia/monaco-editor-core/esm/vs/editor/contrib/snippet/browser/snippetParser';
+import { isObject } from '@theia/core/lib/common';
 
 @injectable()
 export class MonacoSnippetSuggestProvider implements monaco.languages.CompletionItemProvider {
@@ -157,9 +158,9 @@ export class MonacoSnippetSuggestProvider implements monaco.languages.Completion
     fromJSON(snippets: JsonSerializedSnippets | undefined, { language, source }: SnippetLoadOptions): Disposable {
         const toDispose = new DisposableCollection();
         this.parseSnippets(snippets, (name, snippet) => {
-            const { prefix, body, description } = snippet;
+            const { isFileTemplate, prefix, body, description } = snippet;
             const parsedBody = Array.isArray(body) ? body.join('\n') : body;
-            const parsedPrefixes = Array.isArray(prefix) ? prefix : [prefix];
+            const parsedPrefixes = !prefix ? [''] : Array.isArray(prefix) ? prefix : [prefix];
 
             if (typeof parsedBody !== 'string') {
                 return;
@@ -180,6 +181,7 @@ export class MonacoSnippetSuggestProvider implements monaco.languages.Completion
                 }
             }
             parsedPrefixes.forEach(parsedPrefix => toDispose.push(this.push({
+                isFileTemplate: Boolean(isFileTemplate),
                 scopes,
                 name,
                 prefix: parsedPrefix,
@@ -191,14 +193,13 @@ export class MonacoSnippetSuggestProvider implements monaco.languages.Completion
         return toDispose;
     }
     protected parseSnippets(snippets: JsonSerializedSnippets | undefined, accept: (name: string, snippet: JsonSerializedSnippet) => void): void {
-        if (typeof snippets === 'object') {
-            // eslint-disable-next-line guard-for-in
-            for (const name in snippets) {
-                const scopeOrTemplate = snippets[name];
-                if (JsonSerializedSnippet.is(scopeOrTemplate)) {
-                    accept(name, scopeOrTemplate);
-                } else {
-                    this.parseSnippets(scopeOrTemplate, accept);
+        for (const [name, scopeOrTemplate] of Object.entries(snippets ?? {})) {
+            if (JsonSerializedSnippet.is(scopeOrTemplate)) {
+                accept(name, scopeOrTemplate);
+            } else {
+                // eslint-disable-next-line @typescript-eslint/no-shadow
+                for (const [name, template] of Object.entries(scopeOrTemplate)) {
+                    accept(name, template);
                 }
             }
         }
@@ -243,18 +244,20 @@ export interface JsonSerializedSnippets {
     [name: string]: JsonSerializedSnippet | { [name: string]: JsonSerializedSnippet };
 }
 export interface JsonSerializedSnippet {
+    isFileTemplate?: boolean;
     body: string | string[];
-    scope: string;
-    prefix: string | string[];
+    scope?: string;
+    prefix?: string | string[];
     description: string;
 }
 export namespace JsonSerializedSnippet {
     export function is(obj: unknown): obj is JsonSerializedSnippet {
-        return !!obj && typeof obj === 'object' && 'body' in obj && 'prefix' in obj;
+        return isObject(obj) && 'body' in obj;
     }
 }
 
 export interface Snippet {
+    readonly isFileTemplate: boolean
     readonly scopes: string[]
     readonly name: string
     readonly prefix: string

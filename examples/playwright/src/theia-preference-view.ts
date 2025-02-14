@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ElementHandle } from '@playwright/test';
@@ -33,6 +33,9 @@ export const PreferenceIds = {
     },
     DiffEditor: {
         MaxComputationTime: 'diffEditor.maxComputationTime'
+    },
+    Files: {
+        EnableTrash: 'files.enableTrash'
     }
 };
 
@@ -59,6 +62,11 @@ export const DefaultPreferences = {
     },
     DiffEditor: {
         MaxComputationTime: '5000'
+    },
+    Files: {
+        EnableTrash: {
+            Enabled: true
+        }
     }
 };
 
@@ -78,8 +86,20 @@ export class TheiaPreferenceView extends TheiaView {
         super(TheiaSettingsViewData, app);
     }
 
-    override async open(preferenceScope = TheiaPreferenceScope.Workspace): Promise<TheiaView> {
-        await this.app.quickCommandPalette.trigger('Preferences: Open Settings (UI)');
+    /**
+     * @param preferenceScope The preference scope (Workspace or User) to open the view for. Default is Workspace.
+     * @param useMenu  If true, the view will be opened via the main menu. If false,
+     *  the view will be opened via the quick command palette. Default is using the main menu.
+     * @returns  The TheiaPreferenceView page object instance.
+     */
+    override async open(preferenceScope = TheiaPreferenceScope.Workspace, useMenu: boolean = true): Promise<TheiaView> {
+        if (useMenu) {
+            const mainMenu = await this.app.menuBar.openMenu('File');
+            await (await mainMenu.menuItemByNamePath('Preferences', 'Settings'))?.click();
+        } else {
+            await this.app.quickCommandPalette.type('Preferences:');
+            await this.app.quickCommandPalette.trigger('Preferences: Open Settings (UI)');
+        }
         await this.waitForVisible();
         await this.openPreferenceScope(preferenceScope);
         return this;

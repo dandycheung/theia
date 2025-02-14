@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
@@ -30,11 +30,10 @@ import {
 import { Disposable } from '@theia/core/lib/common';
 import { OpenEditorNode } from '@theia/navigator/lib/browser/open-editors-widget/navigator-open-editors-tree-model';
 import { EditorPreviewWidget } from './editor-preview-widget';
-import { EditorPreviewManager } from './editor-preview-manager';
 
 @injectable()
 export class EditorPreviewTreeDecorator implements TreeDecorator, FrontendApplicationContribution {
-    @inject(EditorPreviewManager) protected readonly editorPreviewManager: EditorPreviewManager;
+
     @inject(ApplicationShell) protected readonly shell: ApplicationShell;
 
     readonly id = 'theia-open-editors-file-decorator';

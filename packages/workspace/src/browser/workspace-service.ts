@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
-import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
+import { injectable, inject, postConstruct, named } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
-import { WorkspaceServer, CommonWorkspaceUtils } from '../common';
+import { WorkspaceServer, UntitledWorkspaceService, WorkspaceFileService } from '../common';
 import { WindowService } from '@theia/core/lib/browser/window/window-service';
 import { DEFAULT_WINDOW_HASH } from '@theia/core/lib/common/window';
 import {
@@ -24,7 +24,7 @@ import {
 } from '@theia/core/lib/browser';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import { EnvVariablesServer } from '@theia/core/lib/common/env-variables';
-import { ILogger, Disposable, DisposableCollection, Emitter, Event, MaybePromise, MessageService, nls } from '@theia/core';
+import { ILogger, Disposable, DisposableCollection, Emitter, Event, MaybePromise, MessageService, nls, ContributionProvider } from '@theia/core';
 import { WorkspacePreferences } from './workspace-preferences';
 import * as jsoncparser from 'jsonc-parser';
 import * as Ajv from '@theia/core/shared/ajv';
@@ -36,11 +36,19 @@ import { workspaceSchema, WorkspaceSchemaUpdater } from './workspace-schema-upda
 import { IJSONSchema } from '@theia/core/lib/common/json-schema';
 import { StopReason } from '@theia/core/lib/common/frontend-application-state';
 
+export const WorkspaceOpenHandlerContribution = Symbol('WorkspaceOpenHandlerContribution');
+
+export interface WorkspaceOpenHandlerContribution {
+    canHandle(uri: URI): MaybePromise<boolean>;
+    openWorkspace(uri: URI, options?: WorkspaceInput): MaybePromise<void>;
+    getWorkspaceLabel?(uri: URI): MaybePromise<string | undefined>;
+}
+
 /**
  * The workspace service.
  */
 @injectable()
-export class WorkspaceService implements FrontendApplicationContribution {
+export class WorkspaceService implements FrontendApplicationContribution, WorkspaceOpenHandlerContribution {
 
     protected _workspace: FileStat | undefined;
 
@@ -83,11 +91,17 @@ export class WorkspaceService implements FrontendApplicationContribution {
     @inject(WorkspaceSchemaUpdater)
     protected readonly schemaUpdater: WorkspaceSchemaUpdater;
 
-    @inject(CommonWorkspaceUtils)
-    protected readonly utils: CommonWorkspaceUtils;
+    @inject(UntitledWorkspaceService)
+    protected readonly untitledWorkspaceService: UntitledWorkspaceService;
+
+    @inject(WorkspaceFileService)
+    protected readonly workspaceFileService: WorkspaceFileService;
 
     @inject(WindowTitleService)
     protected readonly windowTitleService: WindowTitleService;
+
+    @inject(ContributionProvider) @named(WorkspaceOpenHandlerContribution)
+    protected readonly openHandlerContribution: ContributionProvider<WorkspaceOpenHandlerContribution>;
 
     protected _ready = new Deferred<void>();
     get ready(): Promise<void> {
@@ -95,7 +109,11 @@ export class WorkspaceService implements FrontendApplicationContribution {
     }
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         const wsUriString = await this.getDefaultWorkspaceUri();
         const wsStat = await this.toFileStat(wsUriString);
         await this.setWorkspace(wsStat);
@@ -343,7 +361,21 @@ export class WorkspaceService implements FrontendApplicationContribution {
         this.doOpen(uri, options);
     }
 
-    protected async doOpen(uri: URI, options?: WorkspaceInput): Promise<URI | undefined> {
+    protected async doOpen(uri: URI, options?: WorkspaceInput): Promise<void> {
+        for (const handler of [...this.openHandlerContribution.getContributions(), this]) {
+            if (await handler.canHandle(uri)) {
+                handler.openWorkspace(uri, options);
+                return;
+            }
+        }
+        throw new Error(`Could not find a handler to open the workspace with uri ${uri.toString()}.`);
+    }
+
+    async canHandle(uri: URI): Promise<boolean> {
+        return uri.scheme === 'file';
+    }
+
+    async openWorkspace(uri: URI, options?: WorkspaceInput): Promise<void> {
         const stat = await this.toFileStat(uri);
         if (stat) {
             if (!stat.isDirectory && !this.isWorkspaceFile(stat)) {
@@ -397,8 +429,12 @@ export class WorkspaceService implements FrontendApplicationContribution {
     }
 
     async spliceRoots(start: number, deleteCount?: number, ...rootsToAdd: URI[]): Promise<URI[]> {
-        if (!this._workspace) {
-            throw new Error('There is no active workspace');
+        if (!this._workspace || this._workspace.isDirectory) {
+            const untitledWorkspace = await this.getUntitledWorkspace();
+            await this.save(untitledWorkspace);
+            if (!this._workspace) {
+                throw new Error('Could not create new untitled workspace');
+            }
         }
         const dedup = new Set<string>();
         const roots = this._roots.map(root => (dedup.add(root.resource.toString()), root.resource.toString()));
@@ -414,10 +450,7 @@ export class WorkspaceService implements FrontendApplicationContribution {
         if (!toRemove.length && !toAdd.length) {
             return [];
         }
-        if (this._workspace.isDirectory) {
-            const untitledWorkspace = await this.getUntitledWorkspace();
-            await this.save(untitledWorkspace);
-        }
+
         const currentData = await this.getWorkspaceDataFromFile();
         const newData = WorkspaceData.buildWorkspaceData(roots, currentData);
         await this.writeWorkspaceFile(this._workspace, newData);
@@ -427,7 +460,7 @@ export class WorkspaceService implements FrontendApplicationContribution {
 
     async getUntitledWorkspace(): Promise<URI> {
         const configDirURI = new URI(await this.envVariableServer.getConfigDirUri());
-        return this.utils.getUntitledWorkspaceUri(
+        return this.untitledWorkspaceService.getUntitledWorkspaceUri(
             configDirURI,
             uri => this.fileService.exists(uri).then(exists => !exists),
             () => this.messageService.warn(nls.localize(
@@ -652,7 +685,7 @@ export class WorkspaceService implements FrontendApplicationContribution {
         const rootUris: URI[] = [];
         for (const root of this.tryGetRoots()) {
             const rootUri = root.resource;
-            if (rootUri && rootUri.isEqualOrParent(uri)) {
+            if (rootUri && rootUri.scheme === uri.scheme && rootUri.isEqualOrParent(uri)) {
                 rootUris.push(rootUri);
             }
         }
@@ -673,15 +706,15 @@ export class WorkspaceService implements FrontendApplicationContribution {
      * Example: We should not try to read the contents of an .exe file.
      */
     protected isWorkspaceFile(candidate: FileStat | URI): boolean {
-        return this.utils.isWorkspaceFile(candidate);
+        return this.workspaceFileService.isWorkspaceFile(candidate);
     }
 
     isUntitledWorkspace(candidate?: URI): boolean {
-        return this.utils.isUntitledWorkspace(candidate);
+        return this.untitledWorkspaceService.isUntitledWorkspace(candidate);
     }
 
     async isSafeToReload(withURI?: URI): Promise<boolean> {
-        return !withURI || !this.utils.isUntitledWorkspace(withURI) || new URI(await this.getDefaultWorkspaceUri()).isEqual(withURI);
+        return !withURI || !this.untitledWorkspaceService.isUntitledWorkspace(withURI) || new URI(await this.getDefaultWorkspaceUri()).isEqual(withURI);
     }
 
     /**
@@ -717,16 +750,16 @@ export namespace WorkspaceData {
     }
 
     export function buildWorkspaceData(folders: string[] | FileStat[], additionalFields?: Partial<WorkspaceData>): WorkspaceData {
-        let roots: string[] = [];
+        const roots = new Set<string>();
         if (folders.length > 0) {
             if (typeof folders[0] !== 'string') {
-                roots = (<FileStat[]>folders).map(folder => folder.resource.toString());
+                (<FileStat[]>folders).forEach(folder => roots.add(folder.resource.toString()));
             } else {
-                roots = <string[]>folders;
+                (<string[]>folders).forEach(folder => roots.add(folder));
             }
         }
         const data: WorkspaceData = {
-            folders: roots.map(folder => ({ path: folder }))
+            folders: Array.from(roots, folder => ({ path: folder }))
         };
         if (additionalFields) {
             delete additionalFields.folders;

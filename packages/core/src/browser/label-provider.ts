@@ -11,16 +11,15 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable, named, postConstruct } from 'inversify';
 import * as fileIcons from 'file-icons-js';
 import URI from '../common/uri';
 import { ContributionProvider } from '../common/contribution-provider';
-import { Prioritizeable } from '../common/types';
-import { Event, Emitter, Disposable, Path } from '../common';
-import { FrontendApplicationContribution } from './frontend-application';
+import { Event, Emitter, Disposable, isObject, Path, Prioritizeable } from '../common';
+import { FrontendApplicationContribution } from './frontend-application-contribution';
 import { EnvVariablesServer } from '../common/env-variables/env-variables-protocol';
 import { ResourceLabelFormatter, ResourceLabelFormatting } from '../common/label-protocol';
 import { codicon } from './widgets';
@@ -99,7 +98,7 @@ export interface URIIconReference {
 }
 export namespace URIIconReference {
     export function is(element: unknown): element is URIIconReference {
-        return !!element && typeof element === 'object' && 'kind' in element && (element as URIIconReference).kind === 'uriIconReference';
+        return isObject(element) && element.kind === 'uriIconReference';
     }
     export function create(id: URIIconReference['id'], uri?: URI): URIIconReference {
         return { kind: 'uriIconReference', id, uri };
@@ -223,7 +222,7 @@ export class DefaultUriLabelProviderContribution implements LabelProviderContrib
 
         // convert \c:\something => C:\something
         if (formatting.normalizeDriveLetter && this.hasDriveLetter(label)) {
-            label = label.charAt(1).toUpperCase() + label.substr(2);
+            label = label.charAt(1).toUpperCase() + label.substring(2);
         }
 
         if (formatting.tildify) {

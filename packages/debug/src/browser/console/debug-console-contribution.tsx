@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { ConsoleSessionManager } from '@theia/console/lib/browser/console-session-manager';
@@ -183,7 +183,8 @@ export class DebugConsoleContribution extends AbstractViewContribution<ConsoleWi
 
     protected renderSeveritySelector(widget: Widget | undefined): React.ReactNode {
         const severityElements: SelectOption[] = Severity.toArray().map(e => ({
-            value: e
+            value: e,
+            label: Severity.toLocaleString(e)
         }));
 
         return <SelectComponent

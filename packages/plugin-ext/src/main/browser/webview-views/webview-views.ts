@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 /*---------------------------------------------------------------------------------------------
 *  Copyright (c) Microsoft Corporation. All rights reserved.
@@ -25,12 +25,17 @@ import { WebviewWidget } from '../webview/webview';
 export interface WebviewView {
     title?: string;
     description?: string;
+    badge?: number | undefined;
+    badgeTooltip?: string | undefined;
     readonly webview: WebviewWidget;
     readonly onDidChangeVisibility: Event<boolean>;
     readonly onDidDispose: Event<void>;
+    readonly onDidChangeBadge: Event<void>;
+    readonly onDidChangeBadgeTooltip: Event<void>;
 
     dispose(): void;
     show(preserveFocus: boolean): void;
+    resolve(): Promise<void>;
 }
 
 export interface WebviewViewResolver {

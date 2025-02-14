@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 import * as theia from '@theia/plugin';
 import { ThemeColor, StatusBarAlignment } from '../types-impl';
@@ -40,7 +40,7 @@ export class StatusBarItemImpl implements theia.StatusBarItem {
     private _accessibilityInformation: theia.AccessibilityInformation;
 
     private _isVisible: boolean;
-    private _timeoutHandle: NodeJS.Timer | undefined;
+    private _timeoutHandle: NodeJS.Timeout | undefined;
 
     _proxy: StatusBarMessageRegistryMain;
 

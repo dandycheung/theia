@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import * as React from 'react';
@@ -55,7 +55,11 @@ export class AboutDialog extends ReactDialog<void> {
     }
 
     @postConstruct()
-    protected async init(): Promise<void> {
+    protected init(): void {
+        this.doInit();
+    }
+
+    protected async doInit(): Promise<void> {
         this.applicationInfo = await this.appServer.getApplicationInfo();
         this.extensionsInfos = await this.appServer.getExtensionsInfos();
         this.update();
@@ -66,7 +70,7 @@ export class AboutDialog extends ReactDialog<void> {
         const compatibilityUrl = 'https://eclipse-theia.github.io/vscode-theia-comparator/status.html';
 
         const detailsLabel = nls.localizeByDefault('Details');
-        const versionLabel = nls.localizeByDefault('Version');
+        const versionLabel = nls.localize('theia/core/about/version', 'Version');
         const defaultApiLabel = nls.localize('theia/core/about/defaultApi', 'Default {0} API', 'VS Code');
         const compatibilityLabel = nls.localize('theia/core/about/compatibility', '{0} Compatibility', 'VS Code');
 

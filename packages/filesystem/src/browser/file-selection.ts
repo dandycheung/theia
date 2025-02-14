@@ -11,11 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { SelectionService } from '@theia/core/lib/common/selection-service';
 import { SelectionCommandHandler } from '@theia/core/lib/common/selection-command-handler';
+import { isObject } from '@theia/core/lib/common';
 import { FileStat } from '../common/files';
 
 export interface FileSelection {
@@ -23,7 +24,7 @@ export interface FileSelection {
 }
 export namespace FileSelection {
     export function is(arg: unknown): arg is FileSelection {
-        return !!arg && typeof arg === 'object' && ('fileStat' in arg) && FileStat.is((arg as FileSelection).fileStat);
+        return isObject<FileSelection>(arg) && FileStat.is(arg.fileStat);
     }
     export class CommandHandler extends SelectionCommandHandler<FileSelection> {
 

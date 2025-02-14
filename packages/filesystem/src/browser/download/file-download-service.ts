@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { inject, injectable } from '@theia/core/shared/inversify';
@@ -21,6 +21,7 @@ import { Endpoint } from '@theia/core/lib/browser/endpoint';
 import { FileDownloadData } from '../../common/download/file-download-data';
 import { MessageService } from '@theia/core/lib/common/message-service';
 import { addClipboardListener } from '@theia/core/lib/browser/widgets';
+import { nls } from '@theia/core';
 
 @injectable()
 export class FileDownloadService {
@@ -38,7 +39,7 @@ export class FileDownloadService {
         if (downloadUrl && event.clipboardData) {
             event.clipboardData.setData('text/plain', downloadUrl);
             event.preventDefault();
-            this.messageService.info('Copied the download link to the clipboard.');
+            this.messageService.info(nls.localize('theia/filesystem/copiedToClipboard', 'Copied the download link to the clipboard.'));
         }
     }
 
@@ -53,9 +54,13 @@ export class FileDownloadService {
         }
         const copyLink = options && options.copyLink ? true : false;
         try {
+            const text: string = copyLink ?
+                nls.localize('theia/filesystem/prepareDownloadLink', 'Preparing download link...') :
+                nls.localize('theia/filesystem/prepareDownload', 'Preparing download...');
             const [progress, result] = await Promise.all([
                 this.messageService.showProgress({
-                    text: `Preparing download${copyLink ? ' link' : ''}...`, options: { cancelable: true }
+                    text: text,
+                    options: { cancelable: true }
                 }, () => { cancel = true; }),
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 new Promise<{ response: Response, jsonResponse: any }>(async resolve => {

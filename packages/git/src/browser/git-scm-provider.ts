@@ -11,11 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import URI from '@theia/core/lib/common/uri';
+import { open, OpenerService } from '@theia/core/lib/browser';
 import { DiffUris } from '@theia/core/lib/browser/diff-uris';
 import { Emitter } from '@theia/core';
 import { DisposableCollection } from '@theia/core/lib/common/disposable';
@@ -63,6 +64,9 @@ export class GitScmProvider implements ScmProvider {
         this.onDidChangeCommitTemplateEmitter,
         this.onDidChangeStatusBarCommandsEmitter
     );
+
+    @inject(OpenerService)
+    protected openerService: OpenerService;
 
     @inject(EditorManager)
     protected readonly editorManager: EditorManager;
@@ -214,7 +218,8 @@ export class GitScmProvider implements ScmProvider {
             decorations: {
                 letter: GitFileStatus.toAbbreviation(change.status, change.staged),
                 color: GitFileStatus.getColor(change.status, change.staged),
-                tooltip: GitFileStatus.toString(change.status)
+                tooltip: GitFileStatus.toString(change.status),
+                strikeThrough: GitFileStatus.toStrikethrough(change.status)
             },
             open: async () => this.open(change, { mode: 'reveal' })
         });
@@ -222,9 +227,12 @@ export class GitScmProvider implements ScmProvider {
 
     async open(change: GitFileChange, options?: EditorOpenerOptions): Promise<void> {
         const uriToOpen = this.getUriToOpen(change);
-        await this.editorManager.open(uriToOpen, options);
+        await open(this.openerService, uriToOpen, options);
     }
 
+    // note: the implementation has to ensure that `GIT_RESOURCE_SCHEME` URIs it returns either directly or within a diff-URI always have a query;
+    // as an example of an issue that can otherwise arise, the VS Code `media-preview` plugin is known to mangle resource URIs without the query:
+    // https://github.com/microsoft/vscode/blob/6eaf6487a4d8301b981036bfa53976546eb6694f/extensions/media-preview/src/imagePreview/index.ts#L205-L209
     getUriToOpen(change: GitFileChange): URI {
         const changeUri: URI = new URI(change.uri);
         const fromFileUri = change.oldUri ? new URI(change.oldUri) : changeUri; // set oldUri on renamed and copied
@@ -232,21 +240,29 @@ export class GitScmProvider implements ScmProvider {
             if (change.staged) {
                 return changeUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('HEAD');
             } else {
-                return changeUri.withScheme(GIT_RESOURCE_SCHEME);
+                return changeUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('index');
             }
         }
         if (change.status !== GitFileStatus.New) {
             if (change.staged) {
                 return DiffUris.encode(
                     fromFileUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('HEAD'),
-                    changeUri.withScheme(GIT_RESOURCE_SCHEME),
-                    this.labelProvider.getName(changeUri) + ' (Index)');
+                    changeUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('index'),
+                    nls.localize(
+                        'theia/git/tabTitleIndex',
+                        '{0} (Index)',
+                        this.labelProvider.getName(changeUri)
+                    ));
             }
             if (this.stagedChanges.find(c => c.uri === change.uri)) {
                 return DiffUris.encode(
-                    fromFileUri.withScheme(GIT_RESOURCE_SCHEME),
+                    fromFileUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('index'),
                     changeUri,
-                    this.labelProvider.getName(changeUri) + ' (Working tree)');
+                    nls.localize(
+                        'theia/git/tabTitleWorkingTree',
+                        '{0} (Working tree)',
+                        this.labelProvider.getName(changeUri)
+                    ));
             }
             if (this.mergeChanges.find(c => c.uri === change.uri)) {
                 return changeUri;
@@ -254,16 +270,24 @@ export class GitScmProvider implements ScmProvider {
             return DiffUris.encode(
                 fromFileUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('HEAD'),
                 changeUri,
-                this.labelProvider.getName(changeUri) + ' (Working tree)');
+                nls.localize(
+                    'theia/git/tabTitleWorkingTree',
+                    '{0} (Working tree)',
+                    this.labelProvider.getName(changeUri)
+                ));
         }
         if (change.staged) {
-            return changeUri.withScheme(GIT_RESOURCE_SCHEME);
+            return changeUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('index');
         }
         if (this.stagedChanges.find(c => c.uri === change.uri)) {
             return DiffUris.encode(
-                changeUri.withScheme(GIT_RESOURCE_SCHEME),
+                changeUri.withScheme(GIT_RESOURCE_SCHEME).withQuery('index'),
                 changeUri,
-                this.labelProvider.getName(changeUri) + ' (Working tree)');
+                nls.localize(
+                    'theia/git/tabTitleWorkingTree',
+                    '{0} (Working tree)',
+                    this.labelProvider.getName(changeUri)
+                ));
         }
         return changeUri;
     }
@@ -414,14 +438,14 @@ export class GitScmProvider implements ScmProvider {
             fileText = `${paths.length} files`;
         }
         return new ConfirmDialog({
-            title: 'Discard changes',
+            title: nls.localize('vscode.git/package/command.clean', 'Discard Changes'),
             msg: nls.localize('vscode.git/commands/confirm discard', 'Do you really want to discard changes in {0}?', fileText)
         }).open();
     }
 
     protected confirmAll(): Promise<boolean | undefined> {
         return new ConfirmDialog({
-            title: 'Discard All Changes',
+            title: nls.localize('vscode.git/package/command.cleanAll', 'Discard All Changes'),
             msg: nls.localize('vscode.git/commands/confirm discard all', 'Do you really want to discard all changes?')
         }).open();
     }

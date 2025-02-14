@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { LanguageQuickPickItem, LanguageQuickPickService } from '@theia/core/lib/browser/i18n/language-quick-pick-service';
@@ -22,6 +22,8 @@ import { PluginPackage, PluginServer } from '@theia/plugin-ext';
 import { OVSXClientProvider } from '../common/ovsx-client-provider';
 import { VSXSearchEntry } from '@theia/ovsx-client';
 import { VSCodeExtensionUri } from '@theia/plugin-ext-vscode/lib/common/plugin-vscode-uri';
+import { nls } from '@theia/core/lib/common/nls';
+import { MessageService } from '@theia/core/lib/common/message-service';
 
 @injectable()
 export class VSXLanguageQuickPickService extends LanguageQuickPickService {
@@ -35,41 +37,54 @@ export class VSXLanguageQuickPickService extends LanguageQuickPickService {
     @inject(PluginServer)
     protected readonly pluginServer: PluginServer;
 
+    @inject(MessageService)
+    protected readonly messageService: MessageService;
+
     protected override async getAvailableLanguages(): Promise<LanguageQuickPickItem[]> {
         const client = await this.clientProvider();
-        const searchResult = await client.search({
-            category: 'Language Packs',
-            sortBy: 'downloadCount',
-            sortOrder: 'desc',
-            size: 20
-        });
-        if (searchResult.error) {
-            throw new Error('Error while loading available languages: ' + searchResult.error);
-        }
+        try {
+            const searchResult = await client.search({
+                category: 'Language Packs',
+                sortBy: 'downloadCount',
+                sortOrder: 'desc',
+                size: 20
+            });
 
-        const extensionLanguages = await Promise.all(
-            searchResult.extensions.map(async extension => ({
-                extension,
-                languages: await this.loadExtensionLanguages(extension)
-            }))
-        );
+            const extensionLanguages = await Promise.all(
+                searchResult.extensions.map(async extension => ({
+                    extension,
+                    languages: await this.loadExtensionLanguages(extension)
+                }))
+            );
 
-        const languages = new Map<string, LanguageQuickPickItem>();
+            const languages = new Map<string, LanguageQuickPickItem>();
 
-        for (const extension of extensionLanguages) {
-            for (const localizationContribution of extension.languages) {
-                if (!languages.has(localizationContribution.languageId)) {
-                    languages.set(localizationContribution.languageId, {
-                        ...this.createLanguageQuickPickItem(localizationContribution),
-                        execute: async () => {
-                            const extensionUri = VSCodeExtensionUri.toUri(extension.extension.name, extension.extension.namespace).toString();
-                            await this.pluginServer.deploy(extensionUri);
-                        }
-                    });
+            for (const extension of extensionLanguages) {
+                for (const localizationContribution of extension.languages) {
+                    if (!languages.has(localizationContribution.languageId)) {
+                        languages.set(localizationContribution.languageId, {
+                            ...this.createLanguageQuickPickItem(localizationContribution),
+                            execute: async () => {
+                                const progress = await this.messageService.showProgress({
+                                    text: nls.localizeByDefault('Installing {0} language support...',
+                                        localizationContribution.localizedLanguageName ?? localizationContribution.languageName ?? localizationContribution.languageId),
+                                });
+                                try {
+                                    const extensionUri = VSCodeExtensionUri.fromId(`${extension.extension.namespace}.${extension.extension.name}`).toString();
+                                    await this.pluginServer.deploy(extensionUri);
+                                } finally {
+                                    progress.cancel();
+                                }
+                            }
+                        });
+                    }
                 }
             }
+            return Array.from(languages.values());
+        } catch (error) {
+            console.error(error);
+            return [];
         }
-        return Array.from(languages.values());
     }
 
     protected async loadExtensionLanguages(extension: VSXSearchEntry): Promise<LanguageInfo[]> {

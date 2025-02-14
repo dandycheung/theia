@@ -1,16 +1,54 @@
 {
-  "disassemblyView": "Vue du démontage",
+  "aiConfiguration:open": "Ouvrir la vue Configuration AI",
+  "aiHistory:clear": "Histoire de l'IA : Effacer l'historique",
+  "aiHistory:open": "Ouvrir la vue de l'historique de l'IA",
+  "aiHistory:sortChronologically": "Histoire de l'IA : Classer par ordre chronologique",
+  "aiHistory:sortReverseChronologically": "Histoire de l'IA : Trier par ordre chronologique inverse",
+  "debug.breakpoint.editCondition": "Edit Condition...",
+  "notebook.cell.changeToCode": "Changer la cellule en code",
+  "notebook.cell.changeToMarkdown": "Changer la cellule en Mardown",
+  "notebook.cell.insertMarkdownCellAbove": "Insérer une cellule Markdown au-dessus",
+  "notebook.cell.insertMarkdownCellBelow": "Insérer une cellule Markdown en dessous",
+  "terminal:new:profile": "Créer un nouveau terminal intégré à partir d'un profil",
+  "terminal:profile:default": "Choisissez le profil du terminal par défaut",
   "theia": {
     "callhierarchy": {
       "noCallers": "Aucun appelant n'a été détecté.",
       "open": "Hiérarchie des appels ouverts"
     },
+    "collaboration": {
+      "collaborate": "Collaborer",
+      "collaboration": "Collaboration",
+      "collaborationWorkspace": "Espace de travail collaboratif",
+      "connected": "Connecté",
+      "connectedSession": "Connecté à une session de collaboration",
+      "copiedInvitation": "Code d'invitation copié dans le presse-papiers.",
+      "copyAgain": "Copier à nouveau",
+      "createRoom": "Créer une nouvelle session de collaboration",
+      "creatingRoom": "Création d'une session",
+      "end": "Fin de la session de collaboration",
+      "endDetail": "Mettre fin à la session, cesser le partage de contenu et révoquer l'accès pour d'autres personnes.",
+      "enterCode": "Enter collaboration session code",
+      "failedCreate": "Échec de la création d'une salle : {0}",
+      "failedJoin": "N'a pas réussi à rejoindre la salle : {0}",
+      "invite": "Inviter d'autres personnes",
+      "inviteDetail": "Copiez le code d'invitation pour le partager avec d'autres personnes afin de participer à la session.",
+      "joinRoom": "Participer à une session de collaboration",
+      "joiningRoom": "Session d'adhésion",
+      "leave": "Quitter la session de collaboration",
+      "leaveDetail": "Se déconnecter de la session de collaboration en cours et fermer l'espace de travail.",
+      "selectCollaboration": "Sélectionner l'option de collaboration",
+      "sharedSession": "Partager une session de collaboration",
+      "startSession": "Démarrer ou rejoindre une session de collaboration",
+      "userWantsToJoin": "User '{0}' wants to join the collaboration room",
+      "whatToDo": "Qu'aimeriez-vous faire avec d'autres collaborateurs ?"
+    },
     "core": {
       "about": {
         "compatibility": "{0} Compatibilité",
-        "defaultApi": "API par défaut {0} "
+        "defaultApi": "API par défaut {0} ",
+        "version": "Version"
       },
-      "availableLanguages": "Langues disponibles",
       "common": {
         "closeAll": "Fermer tous les onglets",
         "closeAllTabMain": "Fermer tous les onglets de la zone principale",
@@ -28,11 +66,18 @@
         "showPreviousTabInGroup": "Passer à l'onglet précédent dans le groupe",
         "toggleMaximized": "Toggle Maximisé"
       },
+      "copyInfo": "Ouvrir d'abord un fichier pour copier son chemin d'accès",
+      "copyWarn": "Veuillez utiliser la commande de copie du navigateur ou un raccourci.",
+      "cutWarn": "Veuillez utiliser la commande ou le raccourci \"couper\" du navigateur.",
+      "enhancedPreview": {
+        "classic": "Affiche un simple aperçu de l'onglet avec des informations de base.",
+        "enhanced": "Affiche un aperçu amélioré de l'onglet avec des informations supplémentaires.",
+        "visual": "Affiche un aperçu visuel de l'onglet."
+      },
       "file": {
         "browse": "Parcourir"
       },
       "highlightModifiedTabs": "Contrôle si une bordure supérieure est dessinée sur les onglets d'éditeur modifiés (sales) ou non.",
-      "installedLanguages": "Langues installées",
       "keybindingStatus": "{0} a été appuyé, en attendant d'autres touches.",
       "keyboard": {
         "choose": "Choisir la disposition du clavier",
@@ -43,132 +88,103 @@
         "pc": "Claviers pour PC",
         "tryDetect": "Essayez de détecter la disposition du clavier à partir des informations du navigateur et des touches pressées."
       },
-      "mouseBackForwardToNavigate": "Permet d'utiliser les boutons quatre et cinq de la souris pour les commandes \"Retour\" et \"Avance\".",
+      "navigator": {
+        "clipboardWarn": "L'accès au presse-papiers est refusé. Vérifiez les autorisations de votre navigateur.",
+        "clipboardWarnFirefox": "L'API Presse-papiers n'est pas disponible. Elle peut être activée par la préférence '{0}' sur la page '{1}'. Rechargez ensuite Theia. Notez que cela permettra à FireFox d'avoir un accès complet au presse-papiers du système."
+      },
       "offline": "Hors ligne",
-      "proxySupportFallback": "Active la prise en charge du proxy pour les extensions, se rabat sur les options de requête, si aucun proxy n'est trouvé.",
+      "pasteWarn": "Veuillez utiliser la commande \"coller\" du navigateur ou un raccourci.",
       "quitMessage": "Les modifications non sauvegardées ne seront pas enregistrées.",
-      "quitTitle": "Tu es sûr de vouloir arrêter?",
       "resetWorkbenchLayout": "Réinitialisation de la disposition de l'établi",
       "searchbox": {
         "close": "Fermer (Escape)",
         "next": "Suivant (en bas)",
         "previous": "Précédent (en haut)"
       },
+      "secondaryWindow": {
+        "alwaysOnTop": "Lorsqu'elle est activée, la fenêtre secondaire reste au-dessus de toutes les autres fenêtres, y compris celles des différentes applications.",
+        "description": "Définit la position et la taille initiales de la fenêtre secondaire extraite.",
+        "fullSize": "La position et la taille du widget extrait seront identiques à celles de l'application Theia en cours d'exécution.",
+        "halfWidth": "La position et la taille du widget extrait correspondront à la moitié de la largeur de l'application Theia en cours d'exécution.",
+        "originalSize": "La position et la taille du widget extrait seront identiques à celles du widget original."
+      },
       "silentNotifications": "Contrôle la suppression des popups de notification.",
-      "tabMaximize": "Contrôle si les onglets doivent être maximisés lors d'un double-clic."
+      "tabDefaultSize": "Spécifie la taille par défaut des onglets.",
+      "tabMaximize": "Contrôle si les onglets doivent être maximisés lors d'un double-clic.",
+      "tabMinimumSize": "Spécifie la taille minimale des onglets.",
+      "tabShrinkToFit": "Réduire les onglets pour les adapter à l'espace disponible."
     },
     "debug": {
       "addConfigurationPlaceholder": "Sélectionnez la racine de l'espace de travail pour y ajouter la configuration",
+      "breakpoint": "point de rupture",
       "compound-cycle": "La configuration de lancement '{0}' contient un cycle avec elle-même",
       "continueAll": "Continuer tout",
       "copyExpressionValue": "Copier la valeur de l'expression",
-      "debugSessionActive": "Il y a une session de débogage active, êtes-vous sûr de vouloir l'arrêter?",
-      "debugSessionActiveMultiple": "Il y a des sessions de débogage actives, êtes-vous sûr de vouloir les arrêter?",
-      "disassembly-view": {
-        "show-source-code": "Afficher le code source en vue du désassemblage."
-      },
+      "dataBreakpoint": "point d'arrêt des données",
+      "debugVariableInput": "Définir la valeur de {0} ",
+      "entry": "entrée",
+      "exception": "exception",
+      "functionBreakpoint": "point d'arrêt de la fonction",
+      "goto": "goto",
       "instruction-breakpoint": "Point d'arrêt de l'instruction",
-      "instructionAddress": "Adresse",
-      "instructionBytes": "Octets",
-      "instructionNotAvailable": "Démontage non disponible.",
-      "instructionText": "Instruction",
+      "instructionBreakpoint": "point d'arrêt de l'instruction",
       "missingConfiguration": "La configuration dynamique '{0}:{1}' est manquante ou non applicable.",
-      "open-disassembly-view": "Vue du démontage ouvert",
+      "pause": "pause",
       "pauseAll": "Pause tout",
       "reveal": "Révéler",
+      "step": "étape",
       "threads": "Les fils",
       "toggleTracing": "Activer/désactiver le traçage des communications avec les adaptateurs de débogage"
     },
-    "disassembly-view": {
-      "disassemblyTableColumnLabel": "instructions"
-    },
     "editor": {
-      "diffEditor.diffAlgorithm.experimental": "Utilise un algorithme de différenciation expérimental.",
-      "diffEditor.diffAlgorithm.smart": "Utilise l'algorithme de différenciation par défaut.",
-      "diffEditor.maxFileSize": "Taille maximale du fichier en Mo pour laquelle il faut calculer les différences. Utilisez 0 pour ne pas avoir de limite.",
-      "diffEditor.renderMarginRevertIcon": "Lorsqu'il est activé, l'éditeur de différences affiche des flèches dans sa marge de glyphes pour annuler les modifications.",
-      "editor.accessibilityPageSize": "Contrôle le nombre de lignes de l'éditeur qui peuvent être lues en une seule fois par un lecteur d'écran. Lorsque nous détectons un lecteur d'écran, nous fixons automatiquement la valeur par défaut à 500. Attention : ceci a une implication sur la performance pour les nombres plus grands que la valeur par défaut.",
-      "editor.bracketPairColorization.enabled": "Contrôle si la colorisation des paires de crochets est activée ou non. Utilisez 'workbench.colorCustomizations' pour modifier les couleurs de surbrillance des crochets.",
-      "editor.bracketPairColorization.independentColorPoolPerBracketType": "Contrôle si chaque type de support a son propre pool de couleurs indépendant.",
-      "editor.codeActionWidget.showHeaders": "Activez/désactivez l'affichage des en-têtes de groupe dans le menu d'action du code.",
-      "editor.codeLensFontSize": "Contrôle la taille de la police en pixels pour CodeLens. Lorsqu'il a pour valeur `0`, 90% de `#editor.fontSize#` est utilisé.",
-      "editor.dropIntoEditor.enabled": "Contrôle si vous pouvez glisser et déposer un fichier dans un éditeur de texte en maintenant la touche `shift` enfoncée (au lieu d'ouvrir le fichier dans un éditeur).",
-      "editor.experimental.pasteActions.enabled": "Activer/désactiver l'exécution des modifications des extensions lors du collage.",
-      "editor.find.seedSearchStringFromSelection0": "Ne jamais ensemencer la chaîne de recherche à partir de la sélection de l'éditeur.",
-      "editor.find.seedSearchStringFromSelection1": "Toujours ensemencer la chaîne de recherche à partir de la sélection de l'éditeur, y compris le mot à la position du curseur.",
-      "editor.find.seedSearchStringFromSelection2": "N'ensemence que la chaîne de recherche de la sélection de l'éditeur.",
-      "editor.foldingImportsByDefault": "Contrôle si l'éditeur réduit automatiquement les plages d'importation.",
-      "editor.foldingMaximumRegions": "Le nombre maximum de régions pliables. L'augmentation de cette valeur peut rendre l'éditeur moins réactif lorsque la source de courant possède un grand nombre de régions pliables.",
-      "editor.formatOnSaveMode.modificationsIfAvailable": "Tentera de formater uniquement les modifications (nécessite le contrôle de la source). Si le contrôle de la source ne peut pas être utilisé, alors le fichier entier sera formaté.",
-      "editor.guides.bracketPairs": "Contrôle si les guides de paires de supports sont activés ou non.",
-      "editor.guides.bracketPairs0": "Active les guides de paires de supports.",
-      "editor.guides.bracketPairs1": "Active les guides de paires de supports uniquement pour la paire de supports active.",
-      "editor.guides.bracketPairs2": "Désactive les guides de paires de supports.",
-      "editor.guides.bracketPairsHorizontal": "Contrôle si les guides horizontaux de paires de supports sont activés ou non.",
-      "editor.guides.bracketPairsHorizontal0": "Active les guides horizontaux en plus des guides verticaux de la paire de supports.",
-      "editor.guides.bracketPairsHorizontal1": "Active les guides horizontaux uniquement pour la paire de supports active.",
-      "editor.guides.bracketPairsHorizontal2": "Désactive les guides de paires de supports horizontaux.",
-      "editor.guides.highlightActiveBracketPair": "Contrôle si l'éditeur doit mettre en évidence la paire de crochets active.",
-      "editor.guides.highlightActiveIndentation0": "Met en évidence le guide d'indentation actif.",
-      "editor.guides.highlightActiveIndentation1": "Met en évidence le guide d'indentation actif, même si les guides de support sont mis en évidence.",
-      "editor.guides.highlightActiveIndentation2": "Ne mettez pas en surbrillance le guide d'indentation actif.",
-      "editor.hover.above": "Préférez l'affichage au-dessus de la ligne, s'il y a de la place.",
-      "editor.inlayHints.enabled": "Active les indices d'incrustation dans l'éditeur.",
-      "editor.inlayHints.enabled0": "Les indices d'incrustation sont activés",
+      "diffEditor.experimental.useTrueInlineView": "Si cette option est activée et que l'éditeur utilise l'affichage en ligne, les changements de mots sont affichés en ligne.",
+      "diffEditor.wordWrap2": "Les lignes s'enrouleront en fonction du paramètre `#editor.wordWrap#`.",
+      "dirtyEncoding": "Le fichier est sale. Veuillez le sauvegarder avant de le rouvrir avec un autre encodage.",
+      "editor.bracketPairColorization.enabled": "Contrôle si la colorisation des paires de crochets est activée ou non. Utilisez `#workbench.colorCustomizations#` pour surcharger les couleurs de mise en évidence des crochets.",
+      "editor.codeActions.triggerOnFocusChange": "Permet de déclencher `#editor.codeActionsOnSave#` lorsque `#files.autoSave#` est réglé sur `afterDelay`. Les actions de code doivent être réglées sur `toujours` pour être déclenchées lors des changements de fenêtre et de focus.",
+      "editor.cursorStyle": "Contrôle le style du curseur en mode d'insertion.",
+      "editor.defaultColorDecorators": "Contrôle si les décorations colorées en ligne doivent être affichées en utilisant le fournisseur de couleurs par défaut du document.",
+      "editor.defaultColorDecorators0": "Afficher les décorateurs de couleurs par défaut uniquement si aucune extension ne fournit de décorateurs de couleurs.",
+      "editor.defaultColorDecorators1": "Toujours afficher les décorateurs de couleur par défaut.",
+      "editor.defaultColorDecorators2": "Ne jamais afficher les décorateurs de couleur par défaut.",
+      "editor.detectIndentation": "Contrôle si `#editor.tabSize#` et `#editor.insertSpaces#` seront automatiquement détectés lors de l'ouverture d'un fichier en fonction de son contenu.",
+      "editor.experimental.preferTreeSitter": "Contrôle si l'analyse du tree sitter doit être activée pour des langues spécifiques. Ceci aura la priorité sur `editor.experimental.treeSitterTelemetry` pour les langues spécifiées.",
+      "editor.experimental.treeSitterTelemetry": "Contrôle si l'analyse de l'arbre doit être activée et si la télémétrie doit être collectée. Le réglage de `editor.experimental.preferTreeSitter` pour des langues spécifiques aura la priorité.",
+      "editor.experimentalEditContextEnabled": "Indique si le nouveau contexte d'édition expérimental doit être utilisé à la place de la zone de texte.",
+      "editor.find.history": "Contrôle la manière dont l'historique du widget de recherche doit être stocké",
+      "editor.find.history0": "Ne pas stocker l'historique des recherches à partir du widget de recherche.",
+      "editor.find.history1": "Conserver l'historique des recherches dans l'espace de travail actif",
       "editor.inlayHints.enabled1": "Les conseils d'incrustation sont affichés par défaut et sont masqués lorsque vous maintenez les touches `Ctrl+Alt`.",
       "editor.inlayHints.enabled2": "Les indices d'incrustation sont cachés par défaut et s'affichent en maintenant les touches `Ctrl+Alt`.",
-      "editor.inlayHints.enabled3": "Les indices d'incrustation sont désactivés",
-      "editor.inlayHints.fontFamily": "Contrôle la famille de polices des indices d'incrustation dans l'éditeur. Si la valeur est vide, la `#editor.fontFamily#` est utilisée.",
-      "editor.inlayHints.fontSize": "Contrôle la taille de la police des indices d'incrustation dans l'éditeur. Une valeur par défaut de 90% de `#editor.fontSize#` est utilisée lorsque la valeur configurée est inférieure à `5` ou supérieure à la taille de la police de l'éditeur.",
-      "editor.inlayHints.padding": "Active le rembourrage autour des indices de l'incrustation dans l'éditeur.",
-      "editor.inlineSuggest.enabled": "Contrôle l'affichage automatique des suggestions en ligne dans l'éditeur.",
-      "editor.language.colorizedBracketPairs": "Définit les paires de crochets qui sont colorisées par leur niveau d'imbrication si la colorisation des paires de crochets est activée.",
-      "editor.lineHeight": "Contrôle la hauteur de la ligne.\n - Utilisez 0 pour calculer automatiquement la hauteur de ligne à partir de la taille de la police.\n - Les valeurs comprises entre 0 et 8 seront utilisées comme un multiplicateur avec la taille de la police.\n - Les valeurs supérieures ou égales à 8 seront utilisées comme valeurs effectives.",
-      "editor.minimap.autohide": "Contrôle si la minimap est cachée automatiquement.",
-      "editor.multiCursorModifier": "Le modificateur à utiliser pour ajouter plusieurs curseurs avec la souris. Les gestes de la souris \"Aller à la définition\" et \"Ouvrir un lien\" s'adapteront de manière à ne pas entrer en conflit avec le [modificateur de curseurs multiples] (https://code.visualstudio.com/docs/editor/codebasics#_multicursor-modifier).",
+      "editor.inlayHints.fontFamily": "Contrôle la famille de police des indices d'incrustation dans l'éditeur. Si la valeur est vide, c'est la police `#editor.fontFamily#` qui est utilisée.",
+      "editor.inlayHints.fontSize": "Contrôle la taille de la police des indices d'incrustation dans l'éditeur. Par défaut, `#editor.fontSize#` est utilisé lorsque la valeur configurée est inférieure à `5` ou supérieure à la taille de la police de l'éditeur.",
+      "editor.inlayHints.maximumLength": "Longueur maximale des indices d'incrustation, pour une seule ligne, avant qu'ils ne soient tronqués par l'éditeur. Mettez `0` pour ne jamais les tronquer.",
+      "editor.inlineSuggest.edits.experimental.enabled": "Permet d'activer ou non les éditions expérimentales dans les suggestions en ligne.",
+      "editor.inlineSuggest.edits.experimental.onlyShowWhenCloseToCursor": "Contrôle l'affichage des suggestions en ligne uniquement lorsque le curseur est proche de la suggestion.",
+      "editor.inlineSuggest.edits.experimental.useInterleavedLinesDiff": "Permet d'activer ou non les lignes entrelacées expérimentales dans les suggestions en ligne.",
+      "editor.inlineSuggest.edits.experimental.useMixedLinesDiff": "Permet d'activer ou non les éditions expérimentales dans les suggestions en ligne.",
+      "editor.inlineSuggest.syntaxHighlightingEnabled": "Contrôle l'affichage de la coloration syntaxique pour les suggestions en ligne dans l'éditeur.",
+      "editor.insertSpaces": "Insérer des espaces lorsque l'on appuie sur `Tab`. Ce paramètre est modifié en fonction du contenu du fichier lorsque `#editor.detectIndentation#` est activé.",
+      "editor.minimap.sectionHeaderLetterSpacing": "Contrôle l'espace (en pixels) entre les caractères de l'en-tête de la section. Cela permet d'améliorer la lisibilité de l'en-tête dans des polices de petite taille.",
+      "editor.occurrencesHighlightDelay": "Contrôle le délai en millisecondes après lequel les occurrences sont mises en évidence.",
+      "editor.overtypeCursorStyle": "Contrôle le style du curseur en mode de saisie de surtypes.",
+      "editor.overtypeOnPaste": "Contrôle si le collage doit être surchargé.",
       "editor.quickSuggestions": "Contrôle si les suggestions doivent s'afficher automatiquement pendant la saisie. Cela peut être contrôlé pour la saisie de commentaires, de chaînes de caractères et d'autres codes. La suggestion rapide peut être configurée pour s'afficher sous forme de texte fantôme ou avec le widget de suggestion. Tenez également compte du paramètre '#editor.suggestOnTriggerCharacters#' qui contrôle si les suggestions sont déclenchées par des caractères spéciaux.",
-      "editor.quickSuggestions0": "Les suggestions rapides s'affichent dans le widget de suggestion",
-      "editor.quickSuggestions1": "Les suggestions rapides s'affichent sous forme de texte fantôme",
-      "editor.quickSuggestions2": "Les suggestions rapides sont désactivées",
-      "editor.scrollbar.horizontal": "Contrôle la visibilité de la barre de défilement horizontale.",
-      "editor.scrollbar.horizontal0": "La barre de défilement horizontale ne sera visible que lorsque cela sera nécessaire.",
-      "editor.scrollbar.horizontal1": "La barre de défilement horizontale sera toujours visible.",
-      "editor.scrollbar.horizontal2": "La barre de défilement horizontale sera toujours masquée.",
-      "editor.scrollbar.horizontalScrollbarSize": "La hauteur de la barre de défilement horizontale.",
-      "editor.scrollbar.scrollByPage": "Contrôle si les clics défilent par page ou sautent à la position du clic.",
-      "editor.scrollbar.vertical": "Contrôle la visibilité de la barre de défilement verticale.",
-      "editor.scrollbar.vertical0": "La barre de défilement verticale ne sera visible que lorsque cela sera nécessaire.",
-      "editor.scrollbar.vertical1": "La barre de défilement verticale sera toujours visible.",
-      "editor.scrollbar.vertical2": "La barre de défilement verticale sera toujours masquée.",
-      "editor.scrollbar.verticalScrollbarSize": "La largeur de la barre de défilement verticale.",
-      "editor.showFoldingControls1": "Ne montrez jamais les commandes de pliage et réduisez la taille de la gouttière.",
-      "editor.stickyScroll.enabled": "Affiche les scopes courants imbriqués pendant le défilement en haut de l'éditeur.",
-      "editor.stickyScroll.maxLineCount": "Définit le nombre maximum de lignes adhésives à afficher.",
-      "editor.suggest.matchOnWordStartOnly": "Lorsqu'il est activé, le filtrage IntelliSense exige que le premier caractère corresponde au début d'un mot, par exemple `c` sur `Console` ou `WebContext` mais _pas_ sur `description`. Lorsqu'il est désactivé, IntelliSense affiche plus de résultats mais les trie toujours par qualité de correspondance.",
-      "editor.suggest.preview": "Contrôle l'aperçu du résultat de la suggestion dans l'éditeur.",
-      "editor.suggest.showDeprecated": "Lorsqu'il est activé, IntelliSense affiche les suggestions `deprecated`.",
-      "editor.unicodeHighlight.allowedCharacters": "Définit les caractères autorisés qui ne sont pas mis en évidence.",
-      "editor.unicodeHighlight.allowedLocales": "Les caractères Unicode qui sont communs dans les régions autorisées ne sont pas mis en évidence.",
-      "editor.unicodeHighlight.ambiguousCharacters": "Contrôle si les caractères qui peuvent être confondus avec les caractères ASCII de base sont mis en évidence, à l'exception de ceux qui sont communs dans la locale de l'utilisateur actuel.",
-      "editor.unicodeHighlight.includeComments": "Contrôle si les caractères dans les commentaires doivent également être soumis à la mise en évidence de l'unicode.",
-      "editor.unicodeHighlight.includeStrings": "Contrôle si les caractères des chaînes de caractères doivent également être soumis à la mise en évidence unicode.",
-      "editor.unicodeHighlight.invisibleCharacters": "Contrôle si les caractères qui ne réservent qu'un espace ou qui n'ont aucune largeur sont mis en évidence.",
-      "editor.unicodeHighlight.nonBasicASCII": "Contrôle si tous les caractères ASCII non basiques sont mis en évidence. Seuls les caractères compris entre U+0020 et U+007E, la tabulation, le saut de ligne et le retour chariot sont considérés comme des caractères ASCII de base.",
-      "files.autoSave": "Contrôle la [sauvegarde automatique](https://code.visualstudio.com/docs/editor/codebasics#_save-auto-save) des éditeurs dont les modifications n'ont pas été sauvegardées.",
-      "files.autoSave.afterDelay": "Un éditeur avec des modifications est automatiquement enregistré après le `#files.autoSaveDelay#` configuré.",
-      "files.autoSave.off": "Un éditeur avec des modifications n'est jamais automatiquement sauvegardé.",
-      "files.autoSave.onFocusChange": "Un éditeur avec des modifications est automatiquement sauvegardé lorsque l'éditeur perd le focus.",
-      "files.autoSave.onWindowChange": "Un éditeur avec des modifications est automatiquement sauvegardé lorsque la fenêtre perd le focus.",
+      "editor.suggestFontSize": "Taille de la police pour le widget de suggestion. Si elle vaut `0`, la valeur de `#editor.fontSize#` est utilisée.",
+      "editor.suggestLineHeight": "Hauteur de ligne pour le widget de suggestion. Lorsqu'il vaut `0`, la valeur de `#editor.lineHeight#` est utilisée. La valeur minimale est de 8.",
+      "editor.tabSize": "Le nombre d'espaces que représente une tabulation. Ce paramètre est modifié en fonction du contenu du fichier lorsque `#editor.detectIndentation#` est activé.",
       "formatOnSaveTimeout": "Délai en millisecondes après lequel le formatage qui est exécuté lors de l'enregistrement du fichier est annulé.",
       "persistClosedEditors": "Contrôle la persistance ou non de l'historique de l'éditeur fermé pour l'espace de travail lors des rechargements de la fenêtre.",
       "showAllEditors": "Afficher tous les éditeurs ouverts",
       "splitHorizontal": "Split Editor Horizontal",
       "splitVertical": "Split Editor Vertical",
-      "status-bar-pin": "Ajouter à la barre d'état",
-      "status-bar-unpin": "Supprimer de la barre d'état"
+      "toggleStickyScroll": "Activer/désactiver le défilement épinglé"
     },
     "file-search": {
       "toggleIgnoredFiles": " (Appuyez sur {0} pour afficher/masquer les fichiers ignorés)"
+    },
+    "fileDialog": {
+      "showHidden": "Afficher les fichiers cachés"
     },
     "fileSystem": {
       "fileResource": {
@@ -176,6 +192,7 @@
       }
     },
     "filesystem": {
+      "copiedToClipboard": "Copie du lien de téléchargement dans le presse-papiers.",
       "copyDownloadLink": "Copier le lien de téléchargement",
       "dialog": {
         "initialLocation": "Aller à l'emplacement initial",
@@ -195,19 +212,26 @@
       "format": "Format:",
       "maxConcurrentUploads": "Nombre maximum de fichiers simultanés à télécharger lors du téléchargement de plusieurs fichiers. 0 signifie que tous les fichiers seront téléchargés simultanément.",
       "maxFileSizeMB": "Contrôle la taille maximale du fichier en Mo qu'il est possible d'ouvrir.",
+      "prepareDownload": "Préparation du téléchargement...",
+      "prepareDownloadLink": "Préparation du lien de téléchargement...",
       "processedOutOf": "Traitement de {0} sur {1}.",
+      "replaceTitle": "Remplacer le fichier",
+      "uploadFailed": "Une erreur s'est produite lors du téléchargement d'un fichier. {0}",
       "uploadFiles": "Télécharger des fichiers...",
       "uploadedOutOf": "Téléchargé {0} sur {1}"
     },
     "getting-started": {
       "apiComparator": "{0} Compatibilité avec l'API",
       "newExtension": "Construire une nouvelle extension",
-      "newPlugin": "Créer un nouveau plugin"
+      "newPlugin": "Créer un nouveau plugin",
+      "startup-editor": {
+        "welcomePage": "Ouvrez la page d'accueil, dont le contenu vous aidera à démarrer avec {0} et les extensions."
+      }
     },
     "git": {
       "aFewSecondsAgo": "il y a quelques secondes",
       "addSignedOff": "Ajouter Signé-par",
-      "amendReuseMessag": "Pour réutiliser le dernier message de validation, appuyez sur 'Enter' ou 'Escape' pour annuler.",
+      "amendReuseMessage": "Pour réutiliser le dernier message de validation, appuyez sur 'Enter' ou 'Escape' pour annuler.",
       "amendRewrite": "Réécrire le message de livraison précédent. Appuyez sur 'Enter' pour confirmer ou 'Escape' pour annuler.",
       "checkoutCreateLocalBranchWithName": "Créez une nouvelle branche locale avec le nom : {0}. Appuyez sur 'Enter' pour confirmer ou 'Escape' pour annuler.",
       "checkoutProvideBranchName": "Veuillez indiquer le nom de la succursale.",
@@ -224,18 +248,33 @@
       "gitDecorationsColors": "Utilisez la décoration par couleur dans le navigateur.",
       "mergeQuickPickPlaceholder": "Choisissez une branche à fusionner avec la branche {0} actuellement active :",
       "missingUserInfo": "Assurez-vous de configurer votre 'user.name' et 'user.email' dans git.",
+      "noHistoryForError": "Il n'y a pas d'historique disponible pour {0}",
       "noPreviousCommit": "Aucun engagement antérieur à modifier",
       "noRepositoriesSelected": "Aucun dépôt n'a été sélectionné.",
+      "prepositionIn": "en",
       "repositoryNotInitialized": "Le référentiel {0} n'est pas encore initialisé.",
       "stashChanges": "Modifications de la cachette. Appuyez sur \" Enter \" pour confirmer ou sur \" Escape \" pour annuler.",
       "stashChangesWithMessage": "Changements de cachette avec message : {0}. Appuyez sur 'Enter' pour confirmer ou 'Escape' pour annuler.",
+      "tabTitleIndex": "{0} (index)",
+      "tabTitleWorkingTree": "{0} (Arbre de travail)",
       "toggleBlameAnnotations": "Annotations sur le blâme"
     },
     "keybinding-schema-updater": {
       "deprecation": "Utilisez la clause `when` à la place."
     },
     "keymaps": {
+      "addKeybindingTitle": "Ajouter un raccourci clavier pour {0}",
+      "editKeybinding": "Modifier le couplage de touches...",
       "editKeybindingTitle": "Modifier le raccourci clavier pour {0}",
+      "editWhenExpression": "Modifier lorsque l'expression...",
+      "editWhenExpressionTitle": "Modifier l'expression pour {0}",
+      "keybinding": {
+        "copy": "Copier la reliure du clavier",
+        "copyCommandId": "Copier l'ID de la commande de liaison au clavier",
+        "copyCommandTitle": "Titre de la commande Copy Keybinding",
+        "edit": "Modifier le couplage de touches...",
+        "editWhenExpression": "Modifier l'association de touches lorsque l'expression..."
+      },
       "keybindingCollidesValidation": "Les combinaisons de touches sont actuellement en conflit",
       "requiredKeybindingValidation": "la valeur du keybinding est requise",
       "resetKeybindingConfirmation": "Voulez-vous vraiment réinitialiser ce raccourci clavier à sa valeur par défaut?",
@@ -251,7 +290,6 @@
       "tabbarDecorationsEnabled": "Afficher les décorateurs de problèmes (marqueurs de diagnostic) dans les barres d'onglets."
     },
     "memory-inspector": {
-      "address": "Adresse",
       "addressTooltip": "Emplacement de mémoire à afficher, une adresse ou une expression évaluant une adresse.",
       "ascii": "ASCII",
       "binary": "Binaire",
@@ -340,6 +378,8 @@
     },
     "navigator": {
       "autoReveal": "Révélation automobile",
+      "clipboardWarn": "L'accès au presse-papiers est refusé. Vérifiez les autorisations de votre navigateur.",
+      "clipboardWarnFirefox": "L'API Presse-papiers n'est pas disponible. Elle peut être activée par la préférence '{0}' sur la page '{1}'. Rechargez ensuite Theia. Notez que cela permettra à FireFox d'avoir un accès complet au presse-papiers du système.",
       "refresh": "Rafraîchir dans l'Explorateur",
       "reveal": "Révéler dans Explorer",
       "toggleHiddenFiles": "Basculer les fichiers cachés"
@@ -353,10 +393,16 @@
       "outputChannels": "Canaux de sortie",
       "showOutputChannel": "Afficher le canal de sortie..."
     },
+    "plugin": {
+      "blockNewTab": "Votre navigateur a empêché l'ouverture d'un nouvel onglet"
+    },
     "plugin-dev": {
       "alreadyRunning": "L'instance hébergée est déjà en cours d'exécution.",
       "debugInstance": "Instance de débogage",
       "debugMode": "Utilisation de inspect ou inspect-brk pour le débogage de Node.js",
+      "debugPorts": {
+        "debugPort": "Port à utiliser pour le débogage Node.js de ce serveur"
+      },
       "devHost": "Hôte de développement",
       "failed": "Échec de l'exécution de l'instance du plugin hébergé : {0}",
       "hostedPlugin": "Plugin hébergé",
@@ -381,10 +427,16 @@
       "watchMode": "Lancer le watcher sur le plugin en cours de développement"
     },
     "plugin-ext": {
+      "authentication-main": {
+        "loginTitle": "Connexion"
+      },
       "plugins": "Plugins",
-      "signInAgain": "L'extension '{0}' vous demande de vous reconnecter en utilisant {1}.",
       "webviewTrace": "Contrôle le traçage de la communication avec les webviews.",
       "webviewWarnIfUnsecure": "Avertit les utilisateurs que les webviews sont actuellement déployés de manière non sécurisée."
+    },
+    "preferences": {
+      "hostedPlugin": "Plugin hébergé",
+      "toolbar": "Barre d'outils"
     },
     "preview": {
       "openByDefault": "Ouvrir l'aperçu au lieu de l'éditeur par défaut."
@@ -395,7 +447,6 @@
       "lastModified": "Dernière modification",
       "location": "Localisation",
       "noProperties": "Aucune propriété disponible.",
-      "path": "Chemin",
       "properties": "Propriétés",
       "size": "Taille",
       "symbolicLink": "Lien symbolique"
@@ -409,6 +460,9 @@
       "config.untrackedChanges.hidden": "caché",
       "config.untrackedChanges.mixed": "mixte",
       "config.untrackedChanges.separate": "séparé",
+      "dirtyDiff": {
+        "close": "Fermer Modifier Regarder"
+      },
       "history": "Histoire",
       "noRepositoryFound": "Aucun référentiel trouvé",
       "unamend": "Non modifié",
@@ -424,33 +478,41 @@
       "extract-widget": "Déplacer la vue vers une fenêtre secondaire"
     },
     "shell-area": {
-      "bottom": "Fond",
-      "left": "Gauche",
-      "right": "Droit",
-      "secondary": "Fenêtre secondaire",
-      "top": "Haut"
+      "secondary": "Fenêtre secondaire"
     },
     "task": {
       "attachTask": "Attacher la tâche...",
       "clearHistory": "Histoire claire",
+      "noTaskToRun": "Aucune tâche à exécuter n'a été trouvée. Configurer les tâches...",
       "openUserTasks": "Tâches d'utilisateur ouvertes"
     },
     "terminal": {
-      "confirmClose": "Contrôle la confirmation de la fermeture de la fenêtre s'il y a des sessions de terminal actives.",
-      "confirmCloseAlways": "Vérifiez toujours s'il y a des terminaux.",
-      "confirmCloseChildren": "Confirmez s'il y a des terminaux qui ont des processus enfants.",
-      "confirmCloseNever": "Ne jamais confirmer.",
+      "defaultProfile": "Le profil par défaut utilisé sur {0}",
       "enableCopy": "Activer la fonction ctrl-c (cmd-c sur macOS) pour copier le texte sélectionné",
       "enablePaste": "Activer ctrl-v (cmd-v sur macOS) pour coller à partir du presse-papiers",
+      "profileArgs": "Les arguments du shell que ce profil utilise.",
+      "profileColor": "Un ID de couleur de thème de terminal à associer au terminal.",
+      "profileDefault": "Choisissez le profil par défaut...",
+      "profileIcon": "Un ID de codicon à associer à l'icône du terminal.\nterminal-tmux :\"$(terminal-tmux)\"",
+      "profileNew": "Nouveau terminal (avec profil)...",
+      "profilePath": "Le chemin du shell que ce profil utilise.",
+      "profiles": "Les profils à présenter lors de la création d'un nouveau terminal. Définissez manuellement la propriété path avec des args optionnels.\nDonnez la valeur `null` à un profil existant pour le masquer dans la liste, par exemple : `\"{0}\" : null`.",
+      "rendererType": "Contrôle la façon dont le terminal est rendu.",
+      "rendererTypeDeprecationMessage": "Le type de rendu n'est plus pris en charge en tant qu'option.",
+      "selectProfile": "Sélectionnez un profil pour le nouveau terminal",
+      "shell.deprecated": "Cette méthode est obsolète, la nouvelle méthode recommandée pour configurer votre shell par défaut est de créer un profil de terminal dans 'terminal.integrated.profiles.{0}' et de définir son nom de profil par défaut dans 'terminal.integrated.defaultProfile.{0}'.",
       "shellArgsLinux": "Les arguments de ligne de commande à utiliser dans le terminal Linux.",
       "shellArgsOsx": "Les arguments de ligne de commande à utiliser dans le terminal macOS.",
       "shellArgsWindows": "Les arguments de ligne de commande à utiliser dans le terminal Windows.",
       "shellLinux": "Le chemin du shell que le terminal utilise sous Linux (par défaut : '{0}'}).",
       "shellOsx": "Le chemin de l'interpréteur de commandes que le terminal utilise sous macOS (par défaut : '{0}'}).",
-      "shellWindows": "Le chemin du shell que le terminal utilise sous Windows. (par défaut : '{0}').",
-      "terminate": "Fin",
-      "terminateActive": "Voulez-vous mettre fin à la session active du terminal?",
-      "terminateActiveMultiple": "Voulez-vous mettre fin aux {0} sessions actives du terminal?"
+      "shellWindows": "Le chemin du shell que le terminal utilise sous Windows. (par défaut : '{0}')."
+    },
+    "test": {
+      "cancelAllTestRuns": "Annuler tous les essais",
+      "stackFrameAt": "à",
+      "testRunDefaultName": "{0} courir {1}",
+      "testRuns": "Essais"
     },
     "toolbar": {
       "addCommand": "Ajouter une commande à la barre d'outils",
@@ -474,18 +536,22 @@
     },
     "typehierarchy": {
       "subtypeHierarchy": "Hiérarchie des sous-types",
-      "supertypeHierarchy": "Hiérarchie des supertypes",
-      "typeHierarchy": "Hiérarchie des types"
+      "supertypeHierarchy": "Hiérarchie des supertypes"
     },
     "vsx-registry": {
-      "averageRating": "Note moyenne : {0} sur 5",
+      "confirmDialogMessage": "L'extension \"{0}\" n'est pas vérifiée et peut présenter un risque pour la sécurité.",
+      "confirmDialogTitle": "Êtes-vous sûr de vouloir procéder à l'installation ?",
       "downloadCount": "Compte de téléchargement : {0}",
       "errorFetching": "Erreur de récupération des extensions.",
+      "errorFetchingConfigurationHint": "Cela peut être dû à des problèmes de configuration du réseau.",
       "failedInstallingVSIX": "Échec de l'installation de {0} à partir de VSIX.",
       "invalidVSIX": "Le fichier sélectionné n'est pas un plugin \"*.vsix\" valide.",
       "license": "Licence : {0}",
+      "onlyShowVerifiedExtensionsDescription": "Cela permet à {0} de n'afficher que les extensions vérifiées.",
+      "onlyShowVerifiedExtensionsTitle": "Afficher uniquement les extensions vérifiées",
       "recommendedExtensions": "Une liste des noms des extensions dont l'utilisation est recommandée dans cet espace de travail.",
       "searchPlaceholder": "Rechercher les extensions dans {0}",
+      "showInstalled": "Afficher les extensions installées",
       "showRecommendedExtensions": "Contrôle si les notifications sont affichées pour les recommandations d'extension.",
       "vsx-extensions-contribution": {
         "update-version-uninstall-error": "Erreur lors de la suppression de l'extension : {0}.",
@@ -507,8 +573,9 @@
       "confirmMessage.uriMultiple": "Voulez-vous vraiment supprimer tous les {0} fichiers sélectionnés?",
       "confirmMessage.uriSingle": "Voulez-vous vraiment supprimer {0}?",
       "duplicate": "Duplicate",
-      "failApply": "Impossible d'appliquer les changements au nouveau fichier",
       "failSaveAs": "Impossible d'exécuter \"{0}\" pour le widget actuel.",
+      "newFilePlaceholder": "Nom du fichier",
+      "newFolderPlaceholder": "Nom du dossier",
       "noErasure": "Note : Rien ne sera effacé du disque",
       "openRecentPlaceholder": "Tapez le nom de l'espace de travail que vous voulez ouvrir.",
       "openRecentWorkspace": "Ouvrir l'espace de travail récent...",
@@ -518,7 +585,6 @@
       "trashTitle": "Déplacer {0} vers la corbeille",
       "trustEmptyWindow": "Contrôle si l'espace de travail vide est fiable ou non par défaut.",
       "trustEnabled": "Contrôle si la confiance de l'espace de travail est activée ou non. S'il est désactivé, tous les espaces de travail sont fiables.",
-      "trustPrompt": "Contrôle l'affichage de l'invite de démarrage pour la confiance dans un espace de travail.",
       "trustRequest": "Une extension demande la confiance dans l'espace de travail mais l'API correspondante n'est pas encore totalement prise en charge. Voulez-vous faire confiance à cet espace de travail?",
       "untitled-cleanup": "Il semble y avoir de nombreux fichiers d'espace de travail sans titre. Veuillez vérifier {0} et supprimer tous les fichiers inutilisés.",
       "workspaceFolderAdded": "Un espace de travail avec plusieurs racines a été créé. Voulez-vous enregistrer la configuration de votre espace de travail dans un fichier?",

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { interfaces } from '@theia/core/shared/inversify';
@@ -40,14 +40,13 @@ export const filesystemPreferenceSchema: PreferenceSchema = {
     properties: {
         'files.watcherExclude': {
             // eslint-disable-next-line max-len
-            description: nls.localizeByDefault('Configure glob patterns of file paths to exclude from file watching. Patterns must match on absolute paths (i.e. prefix with ** or the full path to match properly). Changing this setting requires a restart. When you experience Code consuming lots of CPU time on startup, you can exclude large folders to reduce the initial load.'),
+            description: nls.localizeByDefault('Configure paths or [glob patterns](https://aka.ms/vscode-glob-patterns) to exclude from file watching. Paths can either be relative to the watched folder or absolute. Glob patterns are matched relative from the watched folder. When you experience the file watcher process consuming a lot of CPU, make sure to exclude large folders that are of less interest (such as build output folders).'),
             additionalProperties: {
                 type: 'boolean'
             },
             default: {
                 '**/.git/objects/**': true,
-                '**/.git/subtree-cache/**': true,
-                '**/node_modules/**': true
+                '**/.git/subtree-cache/**': true
             },
             scope: 'resource'
         },
@@ -66,15 +65,15 @@ export const filesystemPreferenceSchema: PreferenceSchema = {
         'files.associations': {
             type: 'object',
             markdownDescription: nls.localizeByDefault(
-                'Configure file associations to languages (e.g. `\"*.extension\": \"html\"`). These have precedence over the default associations of the languages installed.'
+                // eslint-disable-next-line max-len
+                'Configure [glob patterns](https://aka.ms/vscode-glob-patterns) of file associations to languages (for example `\"*.extension\": \"html\"`). Patterns will match on the absolute path of a file if they contain a path separator and will match on the name of the file otherwise. These have precedence over the default associations of the languages installed.'
             )
         },
         'files.autoGuessEncoding': {
             type: 'boolean',
             default: false,
-            description: nls.localizeByDefault(
-                'When enabled, the editor will attempt to guess the character set encoding when opening files. This setting can also be configured per language.'
-            ),
+            // eslint-disable-next-line max-len
+            description: nls.localizeByDefault('When enabled, the editor will attempt to guess the character set encoding when opening files. This setting can also be configured per language. Note, this setting is not respected by text search. Only {0} is respected.', '`#files.encoding#`'),
             scope: 'language-overridable',
             included: Object.keys(SUPPORTED_ENCODINGS).length > 1
         },
@@ -94,6 +93,12 @@ export const filesystemPreferenceSchema: PreferenceSchema = {
             type: 'boolean',
             default: false,
             description: nls.localizeByDefault('When enabled, will trim trailing whitespace when saving a file.'),
+            scope: 'language-overridable'
+        },
+        'files.insertFinalNewline': {
+            type: 'boolean',
+            default: false,
+            description: nls.localizeByDefault('When enabled, insert a final new line at the end of the file when saving it.'),
             scope: 'language-overridable'
         },
         'files.maxConcurrentUploads': {
@@ -117,6 +122,7 @@ export interface FileSystemConfiguration {
     'files.participants.timeout': number
     'files.maxFileSizeMB': number
     'files.trimTrailingWhitespace': boolean
+    'files.insertFinalNewline': boolean
     'files.maxConcurrentUploads': number
 }
 

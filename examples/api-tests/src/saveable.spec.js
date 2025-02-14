@@ -11,12 +11,12 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 // @ts-check
 describe('Saveable', function () {
-    this.timeout(5000);
+    this.timeout(30000);
 
     const { assert } = chai;
 
@@ -81,13 +81,13 @@ describe('Saveable', function () {
 
     afterEach(async () => {
         toTearDown.dispose();
-        await preferences.set('files.autoSave', autoSave, undefined, rootUri.toString());
         // @ts-ignore
         editor = undefined;
         // @ts-ignore
         widget = undefined;
         await editorManager.closeAll({ save: false });
         await fileService.delete(fileUri.parent, { fromUserGesture: false, useTrash: false, recursive: true });
+        await preferences.set('files.autoSave', autoSave, undefined, rootUri.toString());
     });
 
     it('normal save', async function () {
@@ -245,7 +245,7 @@ describe('Saveable', function () {
             shouldSave: () => true
         });
         assert.isTrue(outOfSync, 'file should be out of sync');
-        assert.isTrue(widget.isDisposed, 'model should be disposed after close');
+        assert.isFalse(widget.isDisposed, 'model should not be disposed after close when we reject the save');
         const state = await fileService.read(fileUri);
         assert.equal(state.value, 'foo2', 'fs should NOT be updated');
     });
@@ -300,7 +300,7 @@ describe('Saveable', function () {
         try {
             await fileService.delete(fileUri);
             await waitForDidChangeTitle.promise;
-            assert.isTrue(widget.title.label.endsWith('(deleted)'), 'should be marked as deleted');
+            assert.isTrue(widget.title.label.endsWith('(Deleted)'), 'should be marked as deleted');
             assert.isTrue(Saveable.isDirty(widget), 'should be dirty after delete');
             assert.isFalse(widget.isDisposed, 'model should NOT be disposed after delete');
         } finally {
@@ -474,7 +474,7 @@ describe('Saveable', function () {
         try {
             await fileService.delete(fileUri);
             await waitForDidChangeTitle.promise;
-            assert.isTrue(widget.title.label.endsWith('(deleted)'));
+            assert.isTrue(widget.title.label.endsWith('(Deleted)'));
             assert.isFalse(widget.isDisposed);
         } finally {
             widget.title.changed.disconnect(listener);

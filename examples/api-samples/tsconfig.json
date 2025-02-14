@@ -10,6 +10,18 @@
   ],
   "references": [
     {
+      "path": "../../dev-packages/ovsx-client"
+    },
+    {
+      "path": "../../packages/ai-chat"
+    },
+    {
+      "path": "../../packages/ai-chat-ui"
+    },
+    {
+      "path": "../../packages/ai-core"
+    },
+    {
       "path": "../../packages/core"
     },
     {
@@ -26,6 +38,9 @@
     },
     {
       "path": "../../packages/search-in-workspace"
+    },
+    {
+      "path": "../../packages/test"
     },
     {
       "path": "../../packages/toolbar"

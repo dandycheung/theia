@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import multer = require('multer');
@@ -25,6 +25,7 @@ import { HTTP_FILE_UPLOAD_PATH } from '../common/file-upload';
 
 @injectable()
 export class NodeFileUploadService implements BackendApplicationContribution {
+    private static readonly UPLOAD_DIR = 'theia_upload';
 
     async configure(app: express.Application): Promise<void> {
         const [dest, http_path] = await Promise.all([
@@ -52,7 +53,7 @@ export class NodeFileUploadService implements BackendApplicationContribution {
      * @returns Path to a folder where to temporarily store uploads.
      */
     protected async getTemporaryUploadDest(): Promise<string> {
-        return path.join(os.tmpdir(), 'theia_upload');
+        return path.join(os.tmpdir(), NodeFileUploadService.UPLOAD_DIR);
     }
 
     protected async handleFileUpload(request: express.Request, response: express.Response): Promise<void> {
@@ -63,11 +64,23 @@ export class NodeFileUploadService implements BackendApplicationContribution {
         }
         try {
             const target = FileUri.fsPath(fields.uri);
-            await fs.move(request.file.path, target, { overwrite: true });
+            if (!fields.leaveInTemp) {
+                await fs.move(request.file.path, target, { overwrite: true });
+            } else {
+                // leave the file where it is, just rename it to its original name
+                fs.rename(request.file.path, request.file.path.replace(request.file.filename, request.file.originalname));
+            }
             response.status(200).send(target); // ok
         } catch (error) {
             console.error(error);
-            response.sendStatus(500); // internal server error
+            if (error.message) {
+                // internal server error with error message as response
+                response.status(500).send(error.message);
+            } else {
+                // default internal server error
+                response.sendStatus(500);
+            }
         }
     }
+
 }

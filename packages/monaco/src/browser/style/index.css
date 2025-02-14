@@ -21,7 +21,6 @@
 .monaco-editor .zone-widget {
   position: absolute;
   z-index: 10;
-  background-color: var(--theia-editorWidget-background);
 }
 
 .monaco-editor .zone-widget .zone-widget-container {
@@ -99,28 +98,8 @@
 
 /* Monaco Quick Input */
 .quick-input-widget {
-  width: 600px !important;
-  margin-left: -300px !important;
   background-color: var(--theia-quickInput-background) !important;
   color: var(--theia-foreground) !important;
-}
-
-.quick-input-list
-  .quick-input-list-rows
-  > .quick-input-list-row
-  .monaco-icon-label,
-.quick-input-list
-  .quick-input-list-rows
-  > .quick-input-list-row
-  .monaco-icon-label
-  .monaco-icon-label-container,
-.quick-input-list
-  .quick-input-list-rows
-  > .quick-input-list-row
-  .monaco-icon-label
-  .monaco-icon-label-container
-  > .monaco-icon-name-container {
-  display: flex !important;
 }
 
 .quick-input-list .monaco-list-row.focused {
@@ -166,17 +145,7 @@
 }
 
 .monaco-icon-label > .monaco-icon-label-container {
-  flex: 1 !important;
-  line-height: 22px;
-}
-
-.quick-input-list
-  .quick-input-list-rows
-  > .quick-input-list-row
-  .monaco-icon-label
-  .monaco-icon-label-container
-  > .monaco-icon-name-container {
-  flex: 0 !important;
+  flex: 1;
 }
 
 .quick-input-list-rows
@@ -185,8 +154,9 @@
   .monaco-icon-description-container
   .label-description {
     font-family: var(--theia-ui-font-family);
-    font-size: calc(var(--theia-ui-font-size1) * 0.95) !important;
+    font-size: calc(var(--theia-ui-font-size1) * 0.9) !important;
     color: var(--theia-foreground) !important;
+    white-space: inherit;
 }
 
 .quick-input-list-rows
@@ -200,12 +170,29 @@
     color: var(--theia-foreground) !important;
 }
 
+.quick-input-list .monaco-icon-label.codicon,
+.quick-input-list .monaco-icon-label.file-icon {
+  display: flex;
+  text-align: left;
+}
+
 .quick-input-list .monaco-icon-label::before {
-  transform: scale(0.8);
+  height: 22px;
+}
+
+.codicon-file.default-file-icon.file-icon {
+  padding-left: 2px;
+  height: 22px;
+}
+
+.codicon-file.default-file-icon.file-icon::before {
+  margin-right: 4px;
+  font-size: var(--theia-ui-font-size1);
 }
 
 .quick-input-list .monaco-icon-label.codicon::before {
-  padding-top: 3px;
+  position: relative;
+  top: 3px;
 }
 
 .quick-input-list .monaco-icon-label.theia-file-icons-js {
@@ -261,6 +248,10 @@
 
 .quick-input-widget input {
   background-color: var(--theia-input-background) !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row.focused>.contents>.main .monaco-highlighted-label .highlight {
+    color: var(--vscode-editorSuggestWidget-focusHighlightForeground) !important;
 }
 
 .symbol-icon-center {

@@ -11,7 +11,7 @@
 // with the GNU Classpath Exception which is available at
 // https://www.gnu.org/software/classpath/license.html.
 //
-// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0 WITH Classpath-exception-2.0
+// SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
 import { injectable, inject } from '@theia/core/shared/inversify';
@@ -163,7 +163,10 @@ export class PreviewContribution extends NavigatableWidgetOpenHandler<PreviewWid
         const disposable = ref.onDidDoubleClick(async location => {
             const { editor } = await this.openSource(ref);
             editor.revealPosition(location.range.start);
-            editor.selection = location.range;
+            editor.selection = {
+                ...location.range,
+                direction: 'ltr'
+            };
             ref.revealForSourceLine(location.range.start.line);
         });
         ref.disposed.connect(() => disposable.dispose());
